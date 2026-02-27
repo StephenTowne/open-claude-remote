@@ -1,0 +1,9 @@
+export const DEFAULT_PORT = 3000;
+export const DEFAULT_SESSION_TTL_MS = 86400000; // 24 hours
+export const DEFAULT_AUTH_RATE_LIMIT = 5; // per minute per IP
+export const DEFAULT_MAX_BUFFER_LINES = 10000;
+export const WS_HEARTBEAT_INTERVAL_MS = 30000;
+export const WS_HEARTBEAT_TIMEOUT_MS = 35000;
+export const TOKEN_BYTES = 32;
+export const SESSION_ID_BYTES = 32;
+export const MAX_WS_MESSAGE_SIZE = 1024 * 1024; // 1MB

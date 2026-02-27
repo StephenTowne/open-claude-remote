@@ -1,0 +1,208 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { AuthModule } from '../../../src/auth/auth-middleware.js';
+
+function createMockReq(overrides: Record<string, unknown> = {}) {
+  return {
+    headers: { cookie: '' },
+    ip: '192.168.1.100',
+    protocol: 'http',
+    socket: { remoteAddress: '192.168.1.100' },
+    body: {},
+    ...overrides,
+  } as any;
+}
+
+function createMockRes() {
+  const res: any = {
+    statusCode: 200,
+    headers: {} as Record<string, string>,
+    body: null,
+    status(code: number) { res.statusCode = code; return res; },
+    json(data: unknown) { res.body = data; return res; },
+    setHeader(key: string, value: string) { res.headers[key] = value; },
+  };
+  return res;
+}
+
+describe('AuthModule', () => {
+  const TEST_TOKEN = 'test-token-for-auth-module-testing-1234';
+  let authModule: AuthModule;
+
+  beforeEach(() => {
+    authModule = new AuthModule({
+      token: TEST_TOKEN,
+      sessionTtlMs: 60_000, // 1 minute for testing
+      rateLimitPerMinute: 5,
+    });
+  });
+
+  afterEach(() => {
+    authModule.destroy();
+  });
+
+  describe('verifyToken', () => {
+    it('should return true for correct token', () => {
+      expect(authModule.verifyToken(TEST_TOKEN)).toBe(true);
+    });
+
+    it('should return false for incorrect token', () => {
+      expect(authModule.verifyToken('wrong-token')).toBe(false);
+    });
+
+    it('should return false for token with different length', () => {
+      expect(authModule.verifyToken('short')).toBe(false);
+    });
+
+    it('should return false for empty string', () => {
+      expect(authModule.verifyToken('')).toBe(false);
+    });
+  });
+
+  describe('createSession / validateSession', () => {
+    it('should create a valid session', () => {
+      const sessionId = authModule.createSession('192.168.1.100');
+      expect(sessionId).toBeTruthy();
+      expect(typeof sessionId).toBe('string');
+      expect(authModule.validateSession(sessionId)).toBe(true);
+    });
+
+    it('should generate unique session IDs', () => {
+      const s1 = authModule.createSession('1.2.3.4');
+      const s2 = authModule.createSession('1.2.3.4');
+      expect(s1).not.toBe(s2);
+    });
+
+    it('should reject unknown session ID', () => {
+      expect(authModule.validateSession('nonexistent-session-id')).toBe(false);
+    });
+
+    it('should expire session after TTL', () => {
+      vi.useFakeTimers();
+      const sessionId = authModule.createSession('1.2.3.4');
+      expect(authModule.validateSession(sessionId)).toBe(true);
+
+      vi.advanceTimersByTime(61_000); // past 1 minute TTL
+      expect(authModule.validateSession(sessionId)).toBe(false);
+      vi.useRealTimers();
+    });
+  });
+
+  describe('getSessionFromRequest', () => {
+    it('should extract session_id from cookie header', () => {
+      const req = createMockReq({ headers: { cookie: 'session_id=abc123' } });
+      expect(authModule.getSessionFromRequest(req)).toBe('abc123');
+    });
+
+    it('should return null when no cookie header', () => {
+      const req = createMockReq({ headers: {} });
+      expect(authModule.getSessionFromRequest(req)).toBeNull();
+    });
+
+    it('should return null when session_id cookie is missing', () => {
+      const req = createMockReq({ headers: { cookie: 'other=value' } });
+      expect(authModule.getSessionFromRequest(req)).toBeNull();
+    });
+  });
+
+  describe('getSessionFromCookieHeader', () => {
+    it('should extract session_id from raw cookie string', () => {
+      expect(authModule.getSessionFromCookieHeader('session_id=xyz789')).toBe('xyz789');
+    });
+
+    it('should return null for empty string', () => {
+      expect(authModule.getSessionFromCookieHeader('')).toBeNull();
+    });
+  });
+
+  describe('requireAuth middleware', () => {
+    it('should call next() for valid session', () => {
+      const sessionId = authModule.createSession('1.2.3.4');
+      const req = createMockReq({ headers: { cookie: `session_id=${sessionId}` } });
+      const res = createMockRes();
+      const next = vi.fn();
+
+      authModule.requireAuth(req, res, next);
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should return 401 for missing session', () => {
+      const req = createMockReq();
+      const res = createMockRes();
+      const next = vi.fn();
+
+      authModule.requireAuth(req, res, next);
+      expect(res.statusCode).toBe(401);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('should return 401 for invalid session', () => {
+      const req = createMockReq({ headers: { cookie: 'session_id=invalid' } });
+      const res = createMockRes();
+      const next = vi.fn();
+
+      authModule.requireAuth(req, res, next);
+      expect(res.statusCode).toBe(401);
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleAuth', () => {
+    it('should succeed with correct token and set cookie', () => {
+      const req = createMockReq({ body: { token: TEST_TOKEN } });
+      const res = createMockRes();
+
+      authModule.handleAuth(req, res);
+      expect(res.body).toEqual({ ok: true });
+      expect(res.headers['Set-Cookie']).toBeDefined();
+      expect(res.headers['Set-Cookie']).toContain('session_id=');
+      expect(res.headers['Set-Cookie']).toContain('HttpOnly');
+    });
+
+    it('should return 401 for wrong token', () => {
+      const req = createMockReq({ body: { token: 'wrong' } });
+      const res = createMockRes();
+
+      authModule.handleAuth(req, res);
+      expect(res.statusCode).toBe(401);
+      expect(res.body).toEqual({ error: 'Invalid token' });
+    });
+
+    it('should return 401 for missing token', () => {
+      const req = createMockReq({ body: {} });
+      const res = createMockRes();
+
+      authModule.handleAuth(req, res);
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('should return 429 when rate limited', () => {
+      for (let i = 0; i < 5; i++) {
+        const req = createMockReq({ body: { token: 'wrong' } });
+        const res = createMockRes();
+        authModule.handleAuth(req, res);
+      }
+
+      // 6th attempt should be rate limited
+      const req = createMockReq({ body: { token: TEST_TOKEN } });
+      const res = createMockRes();
+      authModule.handleAuth(req, res);
+      expect(res.statusCode).toBe(429);
+    });
+
+    it('should not set secure cookie over HTTP', () => {
+      const req = createMockReq({ body: { token: TEST_TOKEN }, protocol: 'http' });
+      const res = createMockRes();
+
+      authModule.handleAuth(req, res);
+      expect(res.headers['Set-Cookie']).not.toContain('Secure');
+    });
+
+    it('should set secure cookie over HTTPS', () => {
+      const req = createMockReq({ body: { token: TEST_TOKEN }, protocol: 'https' });
+      const res = createMockRes();
+
+      authModule.handleAuth(req, res);
+      expect(res.headers['Set-Cookie']).toContain('Secure');
+    });
+  });
+});

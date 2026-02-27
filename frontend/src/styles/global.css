@@ -1,0 +1,40 @@
+@import './variables.css';
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Prevent pull-to-refresh on mobile */
+  overscroll-behavior: none;
+}
+
+/* Disable text selection on UI elements (keep terminal selectable) */
+button, input, label, nav {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input {
+  font-family: inherit;
+  font-size: 16px; /* Prevents iOS zoom on focus */
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}

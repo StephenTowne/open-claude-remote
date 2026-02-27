@@ -1,0 +1,258 @@
+#!/bin/bash
+# pre-commit hook: 安全检查 + TypeScript 类型检查 + auto-doc 检查
+#
+# 跳过方式：
+#   SKIP_HOOKS=1    git commit ...   # 跳过所有检查
+#   SKIP_SECURITY=1 git commit ...   # 仅跳过安全检查
+#   SKIP_LINT=1     git commit ...   # 仅跳过类型检查
+#   SKIP_DOCS=1     git commit ...   # 仅跳过文档检查
+
+set -uo pipefail
+
+# ─── Section 0: 环境初始化 + 跳过机制 ───────────────────────────────
+
+if [ "${SKIP_HOOKS:-0}" = "1" ]; then
+    echo "pre-commit: SKIP_HOOKS=1, 跳过所有检查"
+    exit 0
+fi
+
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+cd "$PROJECT_ROOT"
+
+ERRORS=0
+
+# ─── Section 1: 安全检查 ────────────────────────────────────────────
+
+if [ "${SKIP_SECURITY:-0}" != "1" ]; then
+    SECURITY_FAILED=0
+
+    # 1a: 拦截 .env 文件提交
+    ENV_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.env($|\.)' | grep -v '\.env\.example$' || true)
+    if [ -n "$ENV_FILES" ]; then
+        echo ""
+        echo "security: 检测到 .env 文件被暂存，禁止提交"
+        echo "$ENV_FILES" | while read -r f; do echo "  - $f"; done
+        echo "  请执行: git reset HEAD <file> 取消暂存"
+        SECURITY_FAILED=1
+    fi
+
+    # 1b: 拦截敏感文件（私钥、证书、凭证文件）
+    SENSITIVE_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -iE '(id_rsa|id_ed25519|\.pem|\.key|\.p12|\.pfx|credentials\.json|service.account\.json)$' || true)
+    if [ -n "$SENSITIVE_FILES" ]; then
+        echo ""
+        echo "security: 检测到敏感文件被暂存，禁止提交"
+        echo "$SENSITIVE_FILES" | while read -r f; do echo "  - $f"; done
+        SECURITY_FAILED=1
+    fi
+
+    # 1c: 内容扫描 — 检测硬编码密钥/令牌
+    STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -vE '\.(png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|lock|min\.js|min\.css)$' || true)
+    if [ -n "$STAGED_FILES" ]; then
+        # 使用 git show :0:<file> 读取暂存区内容，只检查新增行 (+)
+        SECRETS_FOUND=""
+        while IFS= read -r file; do
+            # 获取暂存区中该文件的新增内容
+            DIFF_CONTENT=$(git diff --cached -U0 -- "$file" 2>/dev/null | grep '^+' | grep -v '^+++' || true)
+            if [ -z "$DIFF_CONTENT" ]; then
+                continue
+            fi
+
+            # AWS Access Key
+            if echo "$DIFF_CONTENT" | grep -qE 'AKIA[0-9A-Z]{16}'; then
+                SECRETS_FOUND="${SECRETS_FOUND}\n  - ${file}: 疑似 AWS Access Key"
+            fi
+            # OpenAI API Key
+            if echo "$DIFF_CONTENT" | grep -qE 'sk-[a-zA-Z0-9]{20,}'; then
+                SECRETS_FOUND="${SECRETS_FOUND}\n  - ${file}: 疑似 OpenAI API Key"
+            fi
+            # GitHub Personal Access Token
+            if echo "$DIFF_CONTENT" | grep -qE '(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}'; then
+                SECRETS_FOUND="${SECRETS_FOUND}\n  - ${file}: 疑似 GitHub Token"
+            fi
+            # GitLab Personal Access Token
+            if echo "$DIFF_CONTENT" | grep -qE 'glpat-[A-Za-z0-9\-]{20,}'; then
+                SECRETS_FOUND="${SECRETS_FOUND}\n  - ${file}: 疑似 GitLab Token"
+            fi
+            # Slack Token
+            if echo "$DIFF_CONTENT" | grep -qE 'xox[bpors]-[A-Za-z0-9\-]{10,}'; then
+                SECRETS_FOUND="${SECRETS_FOUND}\n  - ${file}: 疑似 Slack Token"
+            fi
+            # PEM 私钥
+            if echo "$DIFF_CONTENT" | grep -q -E -e '-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'; then
+                SECRETS_FOUND="${SECRETS_FOUND}\n  - ${file}: 疑似 PEM 私钥"
+            fi
+            # 硬编码 password / secret_key / api_key 赋值
+            if echo "$DIFF_CONTENT" | grep -iE '(password|secret_key|api_key|apikey|secret)\s*[=:]\s*["\x27][^\s"'\'']{8,}' | grep -qvE '(example|placeholder|changeme|your[_-]|<|TODO|FIXME|process\.env|os\.environ|os\.getenv|getenv)'; then
+                SECRETS_FOUND="${SECRETS_FOUND}\n  - ${file}: 疑似硬编码密码/密钥"
+            fi
+        done <<< "$STAGED_FILES"
+
+        if [ -n "$SECRETS_FOUND" ]; then
+            echo ""
+            echo "security: 检测到疑似硬编码密钥/令牌"
+            echo -e "$SECRETS_FOUND"
+            echo "  如果是误报，请使用 SKIP_SECURITY=1 git commit ..."
+            SECURITY_FAILED=1
+        fi
+    fi
+
+    if [ "$SECURITY_FAILED" -ne 0 ]; then
+        ERRORS=1
+    fi
+fi
+
+# ─── Section 2: TypeScript 类型检查 (tsc) ────────────────────────────
+
+if [ "${SKIP_LINT:-0}" != "1" ]; then
+    TS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx)$' || true)
+    if [ -n "$TS_FILES" ]; then
+        TSC_FAILED=0
+
+        # 2a: 检查 backend TS 文件
+        BACKEND_TS=$(echo "$TS_FILES" | grep '^backend/' || true)
+        if [ -n "$BACKEND_TS" ]; then
+            echo "typecheck: 检查 backend (tsc --noEmit)..."
+            if ! (cd "$PROJECT_ROOT/backend" && npx tsc --noEmit 2>&1); then
+                TSC_FAILED=1
+            fi
+        fi
+
+        # 2b: 检查 frontend TS/TSX 文件
+        FRONTEND_TS=$(echo "$TS_FILES" | grep '^frontend/' || true)
+        if [ -n "$FRONTEND_TS" ]; then
+            echo "typecheck: 检查 frontend (tsc --noEmit)..."
+            if ! (cd "$PROJECT_ROOT/frontend" && npx tsc --noEmit 2>&1); then
+                TSC_FAILED=1
+            fi
+        fi
+
+        # 2c: 检查 shared TS 文件（若变更则同时检查 backend 和 frontend）
+        SHARED_TS=$(echo "$TS_FILES" | grep '^shared/' || true)
+        if [ -n "$SHARED_TS" ]; then
+            echo "typecheck: shared/ 有变更，检查 shared build..."
+            if ! (cd "$PROJECT_ROOT" && pnpm --filter @claude-remote/shared build 2>&1); then
+                TSC_FAILED=1
+            fi
+            # shared 变更可能影响 backend/frontend，补充检查
+            if [ -z "$BACKEND_TS" ]; then
+                echo "typecheck: shared 变更，补充检查 backend..."
+                if ! (cd "$PROJECT_ROOT/backend" && npx tsc --noEmit 2>&1); then
+                    TSC_FAILED=1
+                fi
+            fi
+            if [ -z "$FRONTEND_TS" ]; then
+                echo "typecheck: shared 变更，补充检查 frontend..."
+                if ! (cd "$PROJECT_ROOT/frontend" && npx tsc --noEmit 2>&1); then
+                    TSC_FAILED=1
+                fi
+            fi
+        fi
+
+        if [ "$TSC_FAILED" -ne 0 ]; then
+            echo ""
+            echo "typecheck: TypeScript 类型检查失败，请修复以上错误后重新提交"
+            echo "  手动检查: cd backend && npx tsc --noEmit"
+            echo "  跳过检查: SKIP_LINT=1 git commit ..."
+            ERRORS=1
+        fi
+    fi
+fi
+
+# ─── Section 4: Auto-doc 检查（原有逻辑） ───────────────────────────
+
+if [ "${SKIP_DOCS:-0}" != "1" ]; then
+    # 检测暂存区中是否有结构性变更（A/D/R）的源代码文件
+    STRUCTURAL_CHANGES=$(git diff --cached --name-status --diff-filter=ADR | \
+        grep -E '\.(py|ts|tsx|js|jsx|go|java|rs)$' | \
+        grep -vE '(test_|_test\.|\.test\.|\.spec\.|__pycache__|node_modules|dist/)' || true)
+
+    if [ -n "$STRUCTURAL_CHANGES" ]; then
+        # 提取变更文件所在的目录
+        AFFECTED_DIRS=$(echo "$STRUCTURAL_CHANGES" | awk '{print $2}' | xargs -I{} dirname {} | sort -u)
+
+        # 检查每个受影响目录的 INDEX.md 是否也在本次 commit 中
+        MISSING_UPDATES=""
+        for dir in $AFFECTED_DIRS; do
+            INDEX_FILE="$dir/INDEX.md"
+            if [ -f "$INDEX_FILE" ]; then
+                if ! git diff --cached --name-only | grep -q "^${INDEX_FILE}$"; then
+                    MISSING_UPDATES="${MISSING_UPDATES}\n  - ${INDEX_FILE}"
+                fi
+            fi
+        done
+
+        # 检查 ARCHITECTURE.md（仅当有新目录级别的变更时）
+        NEW_DIRS=$(echo "$STRUCTURAL_CHANGES" | grep "^A" | awk '{print $2}' | xargs -I{} dirname {} | sort -u)
+        HAS_NEW_DOMAIN=false
+        for dir in $NEW_DIRS; do
+            EXISTING_IN_DIR=$(git ls-tree HEAD -- "$dir/" 2>/dev/null | grep -cE '\.(py|ts|tsx)$' || echo "0")
+            if [ "$EXISTING_IN_DIR" = "0" ]; then
+                HAS_NEW_DOMAIN=true
+                break
+            fi
+        done
+
+        if [ "$HAS_NEW_DOMAIN" = true ] && [ -f "ARCHITECTURE.md" ]; then
+            if ! git diff --cached --name-only | grep -q "^ARCHITECTURE.md$"; then
+                MISSING_UPDATES="${MISSING_UPDATES}\n  - ARCHITECTURE.md (检测到新目录/领域)"
+            fi
+        fi
+
+        if [ -n "$MISSING_UPDATES" ]; then
+            echo ""
+            echo "auto-doc: 检测到结构性变更（文件新增/删除/重命名），但文档未同步更新"
+            echo ""
+            echo "变更文件："
+            echo "$STRUCTURAL_CHANGES" | awk '{printf "  %s %s\n", $1, $2}'
+            echo ""
+            echo "需要更新的文档："
+            echo -e "$MISSING_UPDATES"
+            echo ""
+            echo "请先执行 /auto-doc 更新文档，然后将文档变更一起提交"
+            echo "提示：描述应包含区分性信息，避免只是文件名的中文翻译"
+            echo "跳过检查：SKIP_DOCS=1 git commit ..."
+            ERRORS=1
+        fi
+    fi
+
+    # 2b: 短描述警告（非阻断）— 检测 INDEX.md 中新增行的描述是否过短
+    STAGED_INDEX_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep 'INDEX\.md$' || true)
+    if [ -n "$STAGED_INDEX_FILES" ]; then
+        SHORT_DESC_WARNINGS=""
+        while IFS= read -r idx_file; do
+            # 提取 INDEX.md diff 中的新增行（以 - 开头的列表项）
+            NEW_LINES=$(git diff --cached -U0 -- "$idx_file" 2>/dev/null | grep '^+- ' | grep -v '^+++' || true)
+            if [ -z "$NEW_LINES" ]; then
+                continue
+            fi
+            while IFS= read -r line; do
+                # 提取冒号后的描述部分
+                DESC=$(echo "$line" | sed 's/^+- [^:]*: //')
+                # 检查描述长度是否少于 8 个字符
+                if [ ${#DESC} -lt 8 ]; then
+                    SHORT_DESC_WARNINGS="${SHORT_DESC_WARNINGS}\n  ⚠ ${idx_file}: ${line##+- }"
+                fi
+            done <<< "$NEW_LINES"
+        done <<< "$STAGED_INDEX_FILES"
+
+        if [ -n "$SHORT_DESC_WARNINGS" ]; then
+            echo ""
+            echo "auto-doc: ⚠ 以下 INDEX.md 条目描述过短（<8字符），建议补充区分性信息："
+            echo -e "$SHORT_DESC_WARNINGS"
+            echo "（此为警告，不阻断提交）"
+        fi
+    fi
+fi
+
+# ─── Section 5: 汇总结果 ────────────────────────────────────────────
+
+if [ "$ERRORS" -ne 0 ]; then
+    echo ""
+    echo "═══════════════════════════════════════════"
+    echo "  pre-commit 检查未通过，提交已阻止"
+    echo "  跳过所有检查: SKIP_HOOKS=1 git commit ..."
+    echo "═══════════════════════════════════════════"
+    exit 1
+fi
+
+exit 0
