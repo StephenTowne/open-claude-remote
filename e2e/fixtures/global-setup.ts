@@ -6,7 +6,7 @@ import { createConnection } from 'node:net';
 const PROJECT_ROOT = resolve(import.meta.dirname, '../..');
 const STATE_FILE = resolve(import.meta.dirname, '../.server-state.json');
 const AUTH_TOKEN = 'e2e-test-token-fixed-value-1234567890';
-const PORT = 3456;
+const PORT = 3000;
 const HOST = '127.0.0.1';
 
 

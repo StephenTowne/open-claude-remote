@@ -5,15 +5,22 @@ import { logger } from '../logger/logger.js';
 
 /**
  * Raw hook payload from Claude Code Notification hook.
- * The notification hook sends JSON with a "message" field.
+ * Real payloads include: session_id, hook_event_name, message, notification_type, cwd, transcript_path.
+ * The tool name is embedded in the message field: "Claude needs your permission to use <ToolName>"
  */
 export interface HookPayload {
-  type?: string;
   message?: string;
+  notification_type?: string;
+  hook_event_name?: string;
+  session_id?: string;
+  // Legacy fields (may exist in older Claude Code versions)
   tool_name?: string;
   tool_input?: Record<string, unknown>;
   [key: string]: unknown;
 }
+
+// Pattern: "Claude needs your permission to use <ToolName>"
+const PERMISSION_TOOL_RE = /permission to use (\S+)$/;
 
 /**
  * Receives and parses Hook HTTP POST from Claude Code.
@@ -26,8 +33,11 @@ export class HookReceiver extends EventEmitter {
   processHook(payload: HookPayload): ApprovalRequest | null {
     logger.info({ payload }, 'Hook received');
 
-    // Claude Code notification hooks send a message describing what needs approval
-    const toolName = payload.tool_name ?? 'unknown_tool';
+    // Extract tool name: prefer explicit tool_name, then parse from message
+    const toolName = payload.tool_name
+      ?? this.extractToolFromMessage(payload.message)
+      ?? 'unknown_tool';
+
     const description = payload.message
       ?? (payload.tool_name ? `Tool call: ${payload.tool_name}` : 'Approval requested (no details provided)');
 
@@ -41,5 +51,11 @@ export class HookReceiver extends EventEmitter {
     logger.info({ approvalId: approval.id, tool: approval.tool }, 'Approval request created from hook');
     this.emit('approval', approval);
     return approval;
+  }
+
+  private extractToolFromMessage(message?: string): string | null {
+    if (!message) return null;
+    const match = PERMISSION_TOOL_RE.exec(message);
+    return match ? match[1] : null;
   }
 }

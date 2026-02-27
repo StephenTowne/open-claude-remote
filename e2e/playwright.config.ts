@@ -13,7 +13,7 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   retries: 1,
-  reporter: [['html', { open: 'never' }]],
+  reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     viewport: { width: 390, height: 844 },
     headless: true,

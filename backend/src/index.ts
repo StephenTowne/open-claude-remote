@@ -153,7 +153,7 @@ async function main() {
 
   // When running via pnpm dev (stdin is a pipe, not TTY), detect parent process exit
   // via stdin close event — this fires when concurrently/pnpm terminates
-  // Also handle Kitty keyboard protocol Ctrl+C (\x1b[99;5u) which doesn't generate SIGINT
+  // Also handle Ctrl+C which may come through stdin in pipe mode
   if (!process.stdin.isTTY) {
     process.stdin.resume();
 
@@ -162,14 +162,18 @@ async function main() {
     const CTRL_C = '\x03';
     const KITTY_CTRL_C_RE = /\x1b\[99;5(?::(?:[12]))?(?:;\d+)*u/;
 
-    process.stdin.on('data', (data: Buffer) => {
-      const str = data.toString();
-      logger.info({ hex: data.toString('hex'), len: data.length, str: str.replace(/\x1b/g, 'ESC') }, 'stdin data received in non-TTY mode');
-      // Single Ctrl+C (classic ETX or Kitty protocol) → shutdown immediately
-      // In pipe mode, Ctrl+C intent is to terminate the process
-      if (str === CTRL_C || KITTY_CTRL_C_RE.test(str)) {
-        logger.info('Ctrl+C detected in pipe mode, initiating shutdown');
-        shutdown(0);
+    // Use 'readable' event for immediate reads without waiting for newline
+    // In pipe mode, 'data' event is line-buffered and waits for Enter
+    process.stdin.on('readable', () => {
+      let chunk;
+      while ((chunk = process.stdin.read()) !== null) {
+        const str = chunk.toString();
+        logger.info({ hex: chunk.toString('hex'), len: chunk.length, str: str.replace(/\x1b/g, 'ESC') }, 'stdin data received in non-TTY mode');
+        // Single Ctrl+C (classic ETX or Kitty protocol) → shutdown immediately
+        if (str === CTRL_C || KITTY_CTRL_C_RE.test(str)) {
+          logger.info('Ctrl+C detected in pipe mode, initiating shutdown');
+          shutdown(0);
+        }
       }
     });
 
