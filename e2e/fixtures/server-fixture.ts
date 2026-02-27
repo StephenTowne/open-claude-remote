@@ -9,7 +9,6 @@ interface ServerState {
   pid: number;
   url: string;
   token: string;
-  settingsBackedUp: boolean;
 }
 
 function loadState(): ServerState {
@@ -39,6 +38,25 @@ export const test = base.extend<ServerFixture>({
   authenticate: async ({}, use) => {
     const state = loadState();
     const fn = async (page: Page) => {
+      // Inject WS seq tracker before navigation — persists across page loads
+      await page.addInitScript(() => {
+        (window as unknown as Record<string, number>).__wsSeq = 0;
+        const OrigWS = window.WebSocket;
+        window.WebSocket = class extends OrigWS {
+          constructor(...args: ConstructorParameters<typeof OrigWS>) {
+            super(...args);
+            this.addEventListener('message', (e: MessageEvent) => {
+              try {
+                const msg = JSON.parse(e.data as string) as { seq?: number };
+                const w = window as unknown as Record<string, number>;
+                if (typeof msg.seq === 'number' && msg.seq > (w.__wsSeq ?? 0)) {
+                  w.__wsSeq = msg.seq;
+                }
+              } catch { /* ignore non-JSON */ }
+            });
+          }
+        };
+      });
       await page.goto(state.url);
       // Fill token input
       await page.getByLabel('Authentication token').fill(state.token);

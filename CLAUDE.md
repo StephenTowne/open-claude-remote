@@ -56,6 +56,7 @@
 * 涉及架构决策 → 先读 `docs/adrs/` 下对应文档
 * 涉及 WebSocket 消息变更 → 先读 `shared/src/ws-protocol.ts`
 * 涉及编写测试 → 先读 `docs/rules/test_rules.md`
+* 涉及打印日志 → 先读 `docs/rules/log_rules.md`
 
 # 输出约束
 * 遇到不确定的架构决策时，先询问而非自行决定

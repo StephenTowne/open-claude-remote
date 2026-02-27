@@ -13,44 +13,35 @@ echo "Proxy URL: $PROXY_URL"
 # Create .claude dir if needed
 mkdir -p "$HOME/.claude"
 
-# Hook command: reads stdin (hook payload) and POSTs to proxy
+if ! command -v jq &> /dev/null; then
+  echo "Error: jq is required but not found. Install it with: brew install jq"
+  exit 1
+fi
+
+# Use jq --arg to safely embed the command string (handles quotes/special chars)
 HOOK_COMMAND="curl -s -X POST ${PROXY_URL}/api/hook -H 'Content-Type: application/json' -d \"\$(cat)\""
 
-# Build the hook config
-HOOK_CONFIG=$(cat <<EOF
-{
-  "hooks": {
-    "Notification": [
+HOOK_CONFIG=$(jq -n --arg cmd "$HOOK_COMMAND" '{
+  hooks: {
+    Notification: [
       {
-        "matcher": "permission_prompt",
-        "hooks": [
+        matcher: "permission_prompt",
+        hooks: [
           {
-            "type": "command",
-            "command": "${HOOK_COMMAND}"
+            type: "command",
+            command: $cmd
           }
         ]
       }
     ]
   }
-}
-EOF
-)
+}')
 
 if [ -f "$SETTINGS_FILE" ]; then
-  # Try to merge with jq if available
-  if command -v jq &> /dev/null; then
-    echo "Merging hook configuration into existing settings..."
-    MERGED=$(jq -s '.[0] * .[1]' "$SETTINGS_FILE" <(echo "$HOOK_CONFIG"))
-    echo "$MERGED" > "$SETTINGS_FILE"
-    echo "Updated $SETTINGS_FILE with hook configuration."
-  else
-    echo "Existing settings found at $SETTINGS_FILE"
-    echo "jq not found — cannot auto-merge. Please manually add this hook configuration:"
-    echo ""
-    echo "$HOOK_CONFIG"
-    echo ""
-    echo "Install jq to enable auto-merge: brew install jq"
-  fi
+  echo "Merging hook configuration into existing settings..."
+  MERGED=$(jq -s '.[0] * .[1]' "$SETTINGS_FILE" <(echo "$HOOK_CONFIG"))
+  echo "$MERGED" > "$SETTINGS_FILE"
+  echo "Updated $SETTINGS_FILE with hook configuration."
 else
   echo "$HOOK_CONFIG" > "$SETTINGS_FILE"
   echo "Created $SETTINGS_FILE with hook configuration."

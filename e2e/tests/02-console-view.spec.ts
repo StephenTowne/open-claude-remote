@@ -1,6 +1,6 @@
 import { test, expect } from '../fixtures/server-fixture.js';
 import { SELECTORS } from '../helpers/selectors.js';
-import { waitForConnected, waitForStatus, waitForTerminal } from '../helpers/wait-helpers.js';
+import { waitForConnected, waitForStatus, waitForTerminal, waitForTerminalContent } from '../helpers/wait-helpers.js';
 import { expectTerminalSnapshot, expectPageSnapshot } from '../helpers/screenshot-helper.js';
 
 test.describe('Console View', () => {
@@ -35,15 +35,12 @@ test.describe('Console View', () => {
 
   test('console page screenshot baseline', async ({ page }) => {
     await waitForConnected(page);
-    await waitForTerminal(page);
-    // Small delay for terminal content to render
-    await page.waitForTimeout(2000);
+    await waitForTerminalContent(page);
     await expectPageSnapshot(page, 'console-page');
   });
 
   test('terminal screenshot baseline', async ({ page }) => {
-    await waitForTerminal(page);
-    await page.waitForTimeout(2000);
+    await waitForTerminalContent(page);
     await expectTerminalSnapshot(page, 'initial');
   });
 });
