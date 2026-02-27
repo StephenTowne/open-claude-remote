@@ -5,10 +5,14 @@ import { logger } from '../logger/logger.js';
  * Relays PC terminal stdin/stdout to/from the PTY process.
  * Sets stdin to raw mode so all keystrokes pass through directly.
  */
+const CTRL_C = '\x03';
+const DOUBLE_CTRL_C_WINDOW_MS = 500;
+
 export class TerminalRelay {
   private stdinHandler: ((data: Buffer) => void) | null = null;
   private resizeHandler: (() => void) | null = null;
   private wasRaw: boolean = false;
+  private lastCtrlCTime: number = 0;
 
   constructor(private ptyManager: PtyManager) {}
 
@@ -28,7 +32,18 @@ export class TerminalRelay {
 
     // stdin → PTY
     this.stdinHandler = (data: Buffer) => {
-      this.ptyManager.write(data.toString());
+      const str = data.toString();
+      this.ptyManager.write(str);
+
+      // Double Ctrl+C within window → send SIGINT to proxy process itself
+      if (str === CTRL_C) {
+        const now = Date.now();
+        if (now - this.lastCtrlCTime <= DOUBLE_CTRL_C_WINDOW_MS) {
+          logger.info('Double Ctrl+C detected, sending SIGINT to proxy process');
+          process.kill(process.pid, 'SIGINT');
+        }
+        this.lastCtrlCTime = now;
+      }
     };
     process.stdin.on('data', this.stdinHandler);
 

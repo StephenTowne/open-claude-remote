@@ -109,6 +109,10 @@ node backend/dist/index.js
 3. 输入终端上显示的 Token
 4. 进入控制台，开始远程操作
 
+### 停止服务
+
+PC 终端处于 raw mode，单次 Ctrl+C 会直接发给 Claude Code（用于取消当前任务）。**连按两次 Ctrl+C（间隔 < 500ms）停止整个代理服务**。
+
 ## 开发
 
 ```bash
@@ -124,7 +128,19 @@ cd frontend && pnpm test -- tests/components/ApprovalCard.test.tsx
 # 类型检查
 cd backend && npx tsc --noEmit
 cd frontend && npx tsc --noEmit
+
+# E2E 测试（Playwright，真实浏览器 + 真实 Claude CLI）
+cd e2e && npx playwright test                    # 全部运行
+cd e2e && npx playwright test tests/01-auth.spec.ts  # 单个文件
+cd e2e && npx playwright test --headed           # 可视化运行
+cd e2e && npx playwright test --update-snapshots # 更新截图基线
+cd e2e && npx playwright show-report             # 查看 HTML 报告
 ```
+
+> E2E 测试是独立包（不在 pnpm workspace 内），首次运行需先安装依赖：
+> ```bash
+> cd e2e && npm install && npx playwright install chromium
+> ```
 
 ## 项目结构
 
@@ -155,6 +171,11 @@ claude-code-remote/
 │       ├── hooks/           # useWebSocket / useTerminal / useAuth / useApproval
 │       ├── stores/          # Zustand 状态管理
 │       └── services/        # REST API 客户端
+│
+├── e2e/                     # Playwright 浏览器端到端测试（独立包）
+│   ├── fixtures/            # 服务器生命周期管理（global-setup/teardown）
+│   ├── helpers/             # 选择器、等待工具、截图工具
+│   └── tests/               # 6 个测试文件，20 个测试用例
 │
 └── scripts/
     ├── setup-hooks.sh       # 配置 Claude Code Notification Hook
@@ -198,7 +219,8 @@ claude-code-remote/
 | 构建工具 | Vite 6 |
 | 终端渲染 | xterm.js 5 (WebGL) |
 | 状态管理 | Zustand 5 |
-| 测试 | vitest 3, @testing-library/react |
+| 单元/集成测试 | vitest 3, @testing-library/react |
+| E2E 测试 | Playwright (Chromium) |
 | 包管理 | pnpm workspace monorepo |
 
 ## License
