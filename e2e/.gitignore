@@ -6,3 +6,4 @@ blob-report/
 .server-state.json
 screenshots/**/diff/
 screenshots/**/actual/
+**-snapshots/
