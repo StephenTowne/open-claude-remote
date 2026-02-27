@@ -22,11 +22,13 @@ git diff --name-status HEAD -- "*.py" "*.ts" "*.tsx" "*.go" "*.java" "*.rs" "*.r
 
 - **Has A/D/R output** → Execute incremental update (Step 1-4) before finishing
 - **No A/D/R output (only M)** → Skip. Do NOT trigger for content-only modifications
+- When changed files are E2E tests, include them in INDEX scope (same template style as existing INDEX entries)
 
 ## When to Skip (overrides trigger)
 
 - Content modifications (M): bug fixes, logic changes → **never trigger**
-- Test files, comments, docstrings, config files, build artifacts → **skip**
+- Test files（`test_`/`_test`/`.test.`/`.spec.`）, comments, docstrings, config files, build artifacts → **skip**
+- **E2E test files are an exception**: include them in INDEX using existing template style (e.g. `tests/e2e/**`, `**/*.e2e.*`)
 
 ---
 

@@ -153,8 +153,31 @@ async function main() {
 
   // When running via pnpm dev (stdin is a pipe, not TTY), detect parent process exit
   // via stdin close event — this fires when concurrently/pnpm terminates
+  // Also handle Kitty keyboard protocol Ctrl+C (\x1b[99;5u) which doesn't generate SIGINT
   if (!process.stdin.isTTY) {
     process.stdin.resume();
+
+    // Kitty keyboard protocol CSI u variants for Ctrl+C:
+    // Match press/repeat (event type 1 or 2) but not release (3)
+    const KITTY_CTRL_C_RE = /\x1b\[99;5(?::(?:[12]))?(?:;\d+)*u/;
+    let lastCtrlCTime = 0;
+    const DOUBLE_CTRL_C_WINDOW_MS = 500;
+
+    process.stdin.on('data', (data: Buffer) => {
+      const str = data.toString();
+      logger.info({ hex: data.toString('hex'), len: data.length, str: str.replace(/\x1b/g, 'ESC') }, 'stdin data received in non-TTY mode');
+      // Double Ctrl+C within window → shutdown
+      if (KITTY_CTRL_C_RE.test(str)) {
+        const now = Date.now();
+        logger.info({ timeSinceLast: now - lastCtrlCTime }, 'Kitty Ctrl+C detected');
+        if (now - lastCtrlCTime <= DOUBLE_CTRL_C_WINDOW_MS) {
+          logger.info('Double Ctrl+C (Kitty protocol) detected in pipe mode, initiating shutdown');
+          shutdown(0);
+        }
+        lastCtrlCTime = now;
+      }
+    });
+
     process.stdin.once('close', () => {
       logger.info('stdin pipe closed (parent process exited), initiating shutdown');
       shutdown(0);
