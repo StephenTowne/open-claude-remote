@@ -168,7 +168,7 @@ export class WsServer {
       this.heartbeatInterval = null;
     }
     for (const client of this.clients) {
-      client.ws.close();
+      client.ws.terminate();
     }
     this.clients.clear();
     this.wss.close();

@@ -113,14 +113,18 @@ async function main() {
     shuttingDown = true;
     logger.info({ exitCode }, 'Shutting down...');
     relay.stop();
+    // Pause stdin to remove it as an active event loop handle
+    if (!process.stdin.isTTY) {
+      process.stdin.pause();
+    }
     ptyManager.destroy();
     wsServer.destroy();
     authModule.destroy();
     httpServer.close(() => {
       process.exit(exitCode);
     });
-    // Force exit if httpServer.close hangs
-    setTimeout(() => process.exit(exitCode), 2000).unref();
+    // Force exit if httpServer.close hangs (ref'd to guarantee it fires)
+    setTimeout(() => process.exit(exitCode), 2000);
   };
 
   // Handle PTY exit → graceful shutdown
@@ -130,8 +134,24 @@ async function main() {
     setTimeout(() => shutdown(exitCode), 500);
   });
 
-  process.on('SIGINT', () => shutdown(0));
-  process.on('SIGTERM', () => shutdown(0));
+  process.on('SIGINT', () => {
+    logger.info('SIGINT received');
+    shutdown(0);
+  });
+  process.on('SIGTERM', () => {
+    logger.info('SIGTERM received');
+    shutdown(0);
+  });
+
+  // When running via pnpm dev (stdin is a pipe, not TTY), detect parent process exit
+  // via stdin close event — this fires when concurrently/pnpm terminates
+  if (!process.stdin.isTTY) {
+    process.stdin.resume();
+    process.stdin.once('close', () => {
+      logger.info('stdin pipe closed (parent process exited), initiating shutdown');
+      shutdown(0);
+    });
+  }
 
   // 16. Start listening
   httpServer.listen(config.port, config.host, () => {
