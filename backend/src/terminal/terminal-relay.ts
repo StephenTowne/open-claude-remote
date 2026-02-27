@@ -6,6 +6,10 @@ import { logger } from '../logger/logger.js';
  * Sets stdin to raw mode so all keystrokes pass through directly.
  */
 const CTRL_C = '\x03';
+// Kitty keyboard protocol CSI u variants for Ctrl+C:
+//   basic: \x1b[99;5u  |  with event type: \x1b[99;5:1u  |  with text: \x1b[99;5;99u
+// Match press/repeat (event type 1 or 2) but not release (3)
+const KITTY_CTRL_C_RE = /\x1b\[99;5(?::(?:[12]))?(?:;\d+)*u/;
 const DOUBLE_CTRL_C_WINDOW_MS = 500;
 
 export class TerminalRelay {
@@ -36,7 +40,11 @@ export class TerminalRelay {
       this.ptyManager.write(str);
 
       // Double Ctrl+C within window → send SIGINT to proxy process itself
-      if (str === CTRL_C) {
+      // Support both classic ETX (\x03) and kitty keyboard protocol CSI u encoding
+      if (str.startsWith('\x1b')) {
+        logger.debug({ hex: data.toString('hex'), len: data.length }, 'stdin escape sequence received');
+      }
+      if (str === CTRL_C || KITTY_CTRL_C_RE.test(str)) {
         const now = Date.now();
         if (now - this.lastCtrlCTime <= DOUBLE_CTRL_C_WINDOW_MS) {
           logger.info('Double Ctrl+C detected, sending SIGINT to proxy process');

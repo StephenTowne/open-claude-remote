@@ -12,7 +12,7 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    onSend(trimmed + '\r\r');
+    onSend(trimmed);
     setText('');
     inputRef.current?.focus();
   }, [text, onSend]);

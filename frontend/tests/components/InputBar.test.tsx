@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { InputBar } from '../../src/components/input/InputBar.js';
 
 describe('InputBar', () => {
-  it('should call onSend with text + \\r\\r on Send button click', () => {
+  it('should call onSend with text on Send button click', () => {
     const onSend = vi.fn();
     render(<InputBar onSend={onSend} />);
 
@@ -12,12 +12,11 @@ describe('InputBar', () => {
     });
     fireEvent.click(screen.getByText('Send'));
 
-    // Claude Code TUI needs \r\r to submit: first \r ends the line,
-    // second \r submits from the resulting empty line.
-    expect(onSend).toHaveBeenCalledWith('hello\r\r');
+    // InputBar passes text as-is; ConsolePage adds Enter keystroke separately
+    expect(onSend).toHaveBeenCalledWith('hello');
   });
 
-  it('should call onSend with text + \\r\\r on Enter key', () => {
+  it('should call onSend with text on Enter key', () => {
     const onSend = vi.fn();
     render(<InputBar onSend={onSend} />);
 
@@ -25,7 +24,8 @@ describe('InputBar', () => {
     fireEvent.change(input, { target: { value: 'hello' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    expect(onSend).toHaveBeenCalledWith('hello\r\r');
+    // InputBar passes text as-is; ConsolePage adds Enter keystroke separately
+    expect(onSend).toHaveBeenCalledWith('hello');
   });
 
   it('should not call onSend when input is empty', () => {

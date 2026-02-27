@@ -14,10 +14,17 @@ import { SessionController } from './session/session-controller.js';
 import { TerminalRelay } from './terminal/terminal-relay.js';
 import { createApiRouter } from './api/router.js';
 import { logger } from './logger/logger.js';
+import { writePidFile, removePidFile } from './utils/pid-file.js';
 
 async function main() {
   // 1. Load configuration
   const config = loadConfig();
+
+  // Write PID file for `pnpm stop`
+  // Use project root (backend/../) so the path is consistent regardless of CWD
+  const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  const pidFilePath = resolve(projectRoot, 'logs', 'app.pid');
+  writePidFile(pidFilePath);
 
   // 2. Generate or use provided auth token
   const token = config.token ?? generateToken();
@@ -112,6 +119,7 @@ async function main() {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info({ exitCode }, 'Shutting down...');
+    removePidFile(pidFilePath);
     relay.stop();
     // Pause stdin to remove it as an active event loop handle
     if (!process.stdin.isTTY) {

@@ -61,7 +61,8 @@
       "Bash(pnpm exec depcheck:*)",
       "Bash(pnpm remove:*)",
       "Bash(pnpm add:*)",
-      "Bash(APP_ENV=development pnpm test:e2e:*)"
+      "Bash(APP_ENV=development pnpm test:e2e:*)",
+      "Bash(kill 59759:*)"
     ]
   },
   "enabledPlugins": {}

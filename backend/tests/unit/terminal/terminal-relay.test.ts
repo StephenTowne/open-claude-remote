@@ -165,6 +165,74 @@ describe('TerminalRelay', () => {
       (process.stdin as EventEmitter).emit('data', Buffer.from('\x03'));
       expect(killSpy).toHaveBeenCalledWith(process.pid, 'SIGINT');
     });
+
+    it('triggers SIGINT on kitty-encoded Ctrl+C (\\x1b[99;5u) pressed twice within 500ms', () => {
+      stubProcessIO(true);
+      const pty = makePtyManager();
+      const killSpy = vi.fn();
+      process.kill = killSpy as unknown as typeof process.kill;
+
+      const relay = new TerminalRelay(pty);
+      relay.start();
+
+      const kittyCtrlC = '\x1b[99;5u';
+      (process.stdin as EventEmitter).emit('data', Buffer.from(kittyCtrlC));
+      vi.advanceTimersByTime(300);
+      (process.stdin as EventEmitter).emit('data', Buffer.from(kittyCtrlC));
+
+      expect(pty.write).toHaveBeenCalledTimes(2);
+      expect(killSpy).toHaveBeenCalledWith(process.pid, 'SIGINT');
+    });
+
+    it('triggers SIGINT when mixing classic \\x03 and kitty-encoded Ctrl+C', () => {
+      stubProcessIO(true);
+      const pty = makePtyManager();
+      const killSpy = vi.fn();
+      process.kill = killSpy as unknown as typeof process.kill;
+
+      const relay = new TerminalRelay(pty);
+      relay.start();
+
+      (process.stdin as EventEmitter).emit('data', Buffer.from('\x03'));
+      vi.advanceTimersByTime(200);
+      (process.stdin as EventEmitter).emit('data', Buffer.from('\x1b[99;5u'));
+
+      expect(killSpy).toHaveBeenCalledWith(process.pid, 'SIGINT');
+    });
+
+    it('triggers SIGINT on kitty Ctrl+C with event type (\\x1b[99;5:1u)', () => {
+      stubProcessIO(true);
+      const pty = makePtyManager();
+      const killSpy = vi.fn();
+      process.kill = killSpy as unknown as typeof process.kill;
+
+      const relay = new TerminalRelay(pty);
+      relay.start();
+
+      const kittyCtrlCPress = '\x1b[99;5:1u';
+      (process.stdin as EventEmitter).emit('data', Buffer.from(kittyCtrlCPress));
+      vi.advanceTimersByTime(300);
+      (process.stdin as EventEmitter).emit('data', Buffer.from(kittyCtrlCPress));
+
+      expect(killSpy).toHaveBeenCalledWith(process.pid, 'SIGINT');
+    });
+
+    it('does NOT trigger SIGINT for kitty-encoded Ctrl+C with gap exceeding 500ms', () => {
+      stubProcessIO(true);
+      const pty = makePtyManager();
+      const killSpy = vi.fn();
+      process.kill = killSpy as unknown as typeof process.kill;
+
+      const relay = new TerminalRelay(pty);
+      relay.start();
+
+      const kittyCtrlC = '\x1b[99;5u';
+      (process.stdin as EventEmitter).emit('data', Buffer.from(kittyCtrlC));
+      vi.advanceTimersByTime(600);
+      (process.stdin as EventEmitter).emit('data', Buffer.from(kittyCtrlC));
+
+      expect(killSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('stop()', () => {

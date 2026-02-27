@@ -60,7 +60,13 @@ export function ConsolePage() {
   }, [connect]);
 
   const handleSend = useCallback((text: string) => {
+    // Send text first, then Enter key separately
+    // The terminal (Claude Code CLI) requires these to be separate inputs
     send({ type: 'user_input', data: text });
+    // Use setTimeout to ensure Enter is processed as a separate keystroke
+    setTimeout(() => {
+      send({ type: 'user_input', data: '\r' });
+    }, 0);
   }, [send]);
 
   return (
