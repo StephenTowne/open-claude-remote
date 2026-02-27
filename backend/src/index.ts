@@ -159,22 +159,17 @@ async function main() {
 
     // Kitty keyboard protocol CSI u variants for Ctrl+C:
     // Match press/repeat (event type 1 or 2) but not release (3)
+    const CTRL_C = '\x03';
     const KITTY_CTRL_C_RE = /\x1b\[99;5(?::(?:[12]))?(?:;\d+)*u/;
-    let lastCtrlCTime = 0;
-    const DOUBLE_CTRL_C_WINDOW_MS = 500;
 
     process.stdin.on('data', (data: Buffer) => {
       const str = data.toString();
       logger.info({ hex: data.toString('hex'), len: data.length, str: str.replace(/\x1b/g, 'ESC') }, 'stdin data received in non-TTY mode');
-      // Double Ctrl+C within window → shutdown
-      if (KITTY_CTRL_C_RE.test(str)) {
-        const now = Date.now();
-        logger.info({ timeSinceLast: now - lastCtrlCTime }, 'Kitty Ctrl+C detected');
-        if (now - lastCtrlCTime <= DOUBLE_CTRL_C_WINDOW_MS) {
-          logger.info('Double Ctrl+C (Kitty protocol) detected in pipe mode, initiating shutdown');
-          shutdown(0);
-        }
-        lastCtrlCTime = now;
+      // Single Ctrl+C (classic ETX or Kitty protocol) → shutdown immediately
+      // In pipe mode, Ctrl+C intent is to terminate the process
+      if (str === CTRL_C || KITTY_CTRL_C_RE.test(str)) {
+        logger.info('Ctrl+C detected in pipe mode, initiating shutdown');
+        shutdown(0);
       }
     });
 

@@ -114,7 +114,7 @@ function startServer(): Promise<{ proc: ChildProcess; url: string }> {
       HOST,
       AUTH_TOKEN,
       CLAUDE_COMMAND: 'claude',
-      LOG_DIR: join(PROJECT_ROOT, 'e2e/logs'),
+      LOG_DIR: join(PROJECT_ROOT, 'logs/e2e'),
     };
 
     const proc = spawn('node', [serverEntry], {

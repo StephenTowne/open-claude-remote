@@ -4,6 +4,8 @@ import {
   DEFAULT_AUTH_RATE_LIMIT,
   DEFAULT_MAX_BUFFER_LINES,
 } from '@claude-remote/shared';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { detectLanIp } from './utils/network.js';
 import { logger } from './logger/logger.js';
 
@@ -43,7 +45,7 @@ export function loadConfig(): AppConfig {
     sessionTtlMs: parseInt(process.env.SESSION_TTL ?? String(DEFAULT_SESSION_TTL_MS), 10),
     authRateLimit: parseInt(process.env.AUTH_RATE_LIMIT ?? String(DEFAULT_AUTH_RATE_LIMIT), 10),
     maxBufferLines: parseInt(process.env.MAX_BUFFER_LINES ?? String(DEFAULT_MAX_BUFFER_LINES), 10),
-    logDir: process.env.LOG_DIR ?? './logs',
+    logDir: process.env.LOG_DIR ?? resolve(dirname(fileURLToPath(import.meta.url)), '../..', 'logs'),
   };
 
   logger.info({ port: config.port, host: config.host, claudeCommand: config.claudeCommand }, 'Configuration loaded');

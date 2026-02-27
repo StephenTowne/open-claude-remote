@@ -41,6 +41,7 @@
 * PTY 数据流：原始 ANSI 字符串，**不做解析或转义**，直接透传给 xterm.js
 * WebSocket 消息：严格遵循 `shared/src/ws-protocol.ts` 定义的类型，所有消息必须包含 `type` 字段
 * 审批流程：Hook 通知 → 生成 ApprovalRequest（UUID）→ WS 广播 → 手机响应 → PTY 写入按键（`y` 或 `\x1b`）
+* 日志目录：统一写入项目根目录 `logs/`（`app.log`、`error.log`、`app.pid`），E2E 测试写入 `logs/e2e/`
 
 # 精准检索策略（Precision Search）
 * 检索路径：先读 `ARCHITECTURE.md` 了解整体结构 → 定位模块目录 → 精准读取

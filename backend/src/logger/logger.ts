@@ -1,8 +1,11 @@
 import pino from 'pino';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 
-const logDir = process.env.LOG_DIR ?? resolve(process.cwd(), 'logs');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const projectRoot = resolve(__dirname, '../../..');  // logger/ → src/ → backend/ → root/
+const logDir = process.env.LOG_DIR ?? resolve(projectRoot, 'logs');
 
 // Ensure log directory exists
 try {
