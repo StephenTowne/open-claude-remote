@@ -4,7 +4,7 @@ import { useAppStore } from '../stores/app-store.js';
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
 
-export function useWebSocket(onMessage: (msg: ServerMessage) => void) {
+export function useWebSocket(onMessage: (msg: ServerMessage) => void, wsUrl?: string) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempt = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -37,11 +37,13 @@ export function useWebSocket(onMessage: (msg: ServerMessage) => void) {
       return;
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const url = wsUrl ?? (() => {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${window.location.host}/ws`;
+    })();
 
     setConnectionStatusRef.current('connecting');
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -67,7 +69,7 @@ export function useWebSocket(onMessage: (msg: ServerMessage) => void) {
     ws.onerror = () => {
       // onclose will fire after onerror
     };
-  }, [scheduleReconnect]);
+  }, [scheduleReconnect, wsUrl]);
 
   // Keep connectRef in sync
   useEffect(() => {

@@ -2,10 +2,12 @@ import { createServer } from 'node:http';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
+import { CLAUDE_REMOTE_DIR } from '@claude-remote/shared';
 import { loadConfig } from './config.js';
-import { generateToken } from './auth/token-generator.js';
 import { AuthModule } from './auth/auth-middleware.js';
 import { PtyManager } from './pty/pty-manager.js';
 import { WsServer } from './ws/ws-server.js';
@@ -16,6 +18,9 @@ import { createApiRouter } from './api/router.js';
 import { PushService } from './push/push-service.js';
 import { logger } from './logger/logger.js';
 import { writePidFile, removePidFile } from './utils/pid-file.js';
+import { getOrCreateSharedToken } from './registry/shared-token.js';
+import { findAvailablePort } from './registry/port-finder.js';
+import { InstanceRegistryManager } from './registry/instance-registry.js';
 
 async function main() {
   // 1. Load configuration
@@ -27,10 +32,18 @@ async function main() {
   const pidFilePath = resolve(projectRoot, 'logs', 'app.pid');
   writePidFile(pidFilePath);
 
-  // 2. Generate or use provided auth token
-  const token = config.token ?? generateToken();
+  // 2. Shared config directory and token
+  const sharedConfigDir = resolve(homedir(), CLAUDE_REMOTE_DIR);
+  const { token, source: tokenSource } = getOrCreateSharedToken(sharedConfigDir);
 
-  // 3. Create Express app
+  // 3. Instance ID and registry
+  const instanceId = randomUUID();
+  const registry = new InstanceRegistryManager(sharedConfigDir);
+
+  // 4. Find available port (auto-increment if preferred port is occupied)
+  const actualPort = await findAvailablePort(config.port, config.host);
+
+  // 5. Create Express app
   const app = express();
   app.use(express.json());
   app.use(cors({
@@ -42,8 +55,9 @@ async function main() {
       }
       try {
         const url = new URL(origin);
-        const expectedHost = config.host === '127.0.0.1' ? 'localhost' : config.host;
-        if (url.hostname === config.host || url.hostname === expectedHost || url.hostname === 'localhost') {
+        // 允许同一 host 的任意端口（多实例跨端口访问）
+        const allowedHosts = [config.displayIp, 'localhost', '127.0.0.1'];
+        if (allowedHosts.includes(url.hostname)) {
           callback(null, true);
           return;
         }
@@ -55,29 +69,36 @@ async function main() {
     credentials: true,
   }));
 
-  // 4. Create HTTP server
+  // 6. Create HTTP server
   const httpServer = createServer(app);
 
-  // 5. Setup auth module
+  // 7. Setup auth module
   const authModule = new AuthModule({
     token,
     sessionTtlMs: config.sessionTtlMs,
     rateLimitPerMinute: config.authRateLimit,
   });
 
-  // 6. Setup Hook receiver
+  // 8. Setup Hook receiver
   const hookReceiver = new HookReceiver();
 
-  // 7. Setup Push service
+  // 9. Setup Push service
   const pushService = new PushService();
 
-  // 8. Session controller reference (set after PTY spawn)
+  // 10. Session controller reference (set after PTY spawn)
   let sessionController: SessionController | null = null;
 
-  // 9. Mount REST API
-  app.use('/api', createApiRouter(authModule, hookReceiver, () => sessionController, pushService));
+  // 11. Mount REST API (with instance routes)
+  app.use('/api', createApiRouter({
+    authModule,
+    hookReceiver,
+    getController: () => sessionController,
+    pushService,
+    listInstances: () => registry.list(),
+    currentInstanceId: instanceId,
+  }));
 
-  // 9. Serve frontend static files (if built)
+  // 12. Serve frontend static files (if built)
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const frontendDist = resolve(__dirname, '../../frontend/dist');
   if (existsSync(frontendDist)) {
@@ -94,20 +115,20 @@ async function main() {
     logger.warn('Frontend dist not found, skipping static file serving');
   }
 
-  // 10. Create WebSocket server
+  // 13. Create WebSocket server
   const wsServer = new WsServer(httpServer, authModule);
 
-  // 11. Spawn PTY with Claude Code CLI
+  // 14. Spawn PTY with Claude Code CLI
   const ptyManager = new PtyManager();
 
-  // 12. Create Session Controller
+  // 15. Create Session Controller
   sessionController = new SessionController(ptyManager, wsServer, hookReceiver, config.maxBufferLines);
   sessionController.setPushService(pushService);
 
-  // 13. Start Terminal Relay (raw mode)
+  // 16. Start Terminal Relay (raw mode)
   const relay = new TerminalRelay(ptyManager);
 
-  // 14. Spawn Claude Code
+  // 17. Spawn Claude Code
   ptyManager.spawn({
     command: config.claudeCommand,
     args: config.claudeArgs,
@@ -118,12 +139,25 @@ async function main() {
   relay.start();
   sessionController.setStatus('running');
 
-  // 15. Unified graceful shutdown
+  // 18. Register instance in shared registry
+  registry.register({
+    instanceId,
+    name: config.instanceName,
+    host: config.displayIp,
+    port: actualPort,
+    pid: process.pid,
+    cwd: config.claudeCwd,
+    startedAt: new Date().toISOString(),
+  });
+
+  // 19. Unified graceful shutdown
   let shuttingDown = false;
   const shutdown = (exitCode: number = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info({ exitCode }, 'Shutting down...');
+    // Unregister from shared registry
+    registry.unregister(instanceId);
     removePidFile(pidFilePath);
     relay.stop();
     // Pause stdin to remove it as an active event loop handle
@@ -188,37 +222,47 @@ async function main() {
     });
   }
 
-  // 16. Start listening
-  httpServer.listen(config.port, config.host, () => {
-    const url = `http://${config.host}:${config.port}`;
+  // 20. Start listening
+  httpServer.listen(actualPort, config.host, () => {
+    const url = `http://${config.displayIp}:${actualPort}`;
     const isCli = process.env.CLI_MODE === 'true';
 
     if (isCli) {
       // CLI mode: write connection info to file, keep terminal clean
       const logDir = resolve(projectRoot, 'logs');
       mkdirSync(logDir, { recursive: true });
-      const connectionInfo = `URL: ${url}\nToken: ${token}\n`;
+      const connectionInfo = `URL: ${url}\nToken: ${token}\nInstanceId: ${instanceId}\nName: ${config.instanceName}\n`;
       writeFileSync(resolve(logDir, 'connection.txt'), connectionInfo);
-      logger.info({ url }, 'Server started');
+      logger.info({ url, instanceName: config.instanceName }, 'Server started');
     } else {
       // Dev/production mode: print banner to stderr
-      const tokenPreview = token.length >= 16
-        ? `${token.substring(0, 8)}...${token.substring(token.length - 8)}`
-        : token;
+      const isFirstInstance = tokenSource === 'generated';
 
       process.stderr.write('\n');
       process.stderr.write('╔══════════════════════════════════════════════════╗\n');
       process.stderr.write('║         Claude Code Remote Proxy Started         ║\n');
       process.stderr.write('╠══════════════════════════════════════════════════╣\n');
-      process.stderr.write(`║  URL:   ${url.padEnd(40)}║\n`);
-      process.stderr.write(`║  Token: ${tokenPreview.padEnd(40)}║\n`);
-      process.stderr.write('╠══════════════════════════════════════════════════╣\n');
-      process.stderr.write(`║  Full Token (copy to phone):                     ║\n`);
-      process.stderr.write(`║  ${token.padEnd(48)}║\n`);
+      process.stderr.write(`║  Instance: ${config.instanceName.padEnd(37)}║\n`);
+      process.stderr.write(`║  URL:      ${url.padEnd(37)}║\n`);
+
+      if (isFirstInstance) {
+        // 首次启动（生成了新 Token）：完整显示 Token
+        const tokenPreview = token.length >= 16
+          ? `${token.substring(0, 8)}...${token.substring(token.length - 8)}`
+          : token;
+        process.stderr.write(`║  Token:    ${tokenPreview.padEnd(37)}║\n`);
+        process.stderr.write('╠══════════════════════════════════════════════════╣\n');
+        process.stderr.write(`║  Full Token (copy to phone):                     ║\n`);
+        process.stderr.write(`║  ${token.padEnd(48)}║\n`);
+      } else {
+        // 后续启动（读取共享 Token）：简短提示
+        process.stderr.write(`║  Token:    ${'(shared, see first instance)'.padEnd(37)}║\n`);
+      }
+
       process.stderr.write('╚══════════════════════════════════════════════════╝\n');
       process.stderr.write('\n');
 
-      logger.info({ url, host: config.host, port: config.port }, 'Server started');
+      logger.info({ url, host: config.host, port: actualPort, instanceName: config.instanceName, tokenSource }, 'Server started');
     }
   });
 }

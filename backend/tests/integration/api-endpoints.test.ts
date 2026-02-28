@@ -59,7 +59,7 @@ describe('REST API Endpoints', () => {
       expect(setCookie).toBeTruthy();
       expect(setCookie).toContain('session_id=');
       expect(setCookie).toContain('HttpOnly');
-      expect(setCookie).toContain('SameSite=Strict');
+      expect(setCookie).toContain('SameSite=Lax');
     });
 
     it('should return 401 for wrong token', async () => {

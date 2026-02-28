@@ -6,6 +6,7 @@ export function useAuth() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const setAuthenticated = useAppStore((s) => s.setAuthenticated);
+  const setCachedToken = useAppStore((s) => s.setCachedToken);
 
   const login = useCallback(async (token: string) => {
     setError(null);
@@ -14,6 +15,7 @@ export function useAuth() {
       const ok = await authenticate(token);
       if (ok) {
         setAuthenticated(true);
+        setCachedToken(token);
       } else {
         setError('Invalid token');
       }
@@ -22,7 +24,7 @@ export function useAuth() {
     } finally {
       setLoading(false);
     }
-  }, [setAuthenticated]);
+  }, [setAuthenticated, setCachedToken]);
 
   return { login, error, loading };
 }

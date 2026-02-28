@@ -115,7 +115,7 @@ export class AuthModule {
     res.setHeader('Set-Cookie', cookie.serialize('session_id', sessionId, {
       httpOnly: true,
       secure: req.protocol === 'https',
-      sameSite: 'strict',
+      sameSite: 'lax',
       path: '/',
       maxAge: Math.floor(this.sessionTtlMs / 1000),
     }));

@@ -31,4 +31,20 @@ describe('parseCliArgs', () => {
     const options = parseCliArgs(['node', 'cli.js', 'chat', '--model', 'claude-sonnet-4-6']);
     expect(options.claudeArgs).toEqual(['chat', '--model', 'claude-sonnet-4-6']);
   });
+
+  it('should parse --name option', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--name', 'my-project']);
+    expect(options.name).toBe('my-project');
+  });
+
+  it('should parse --name=<value> form', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--name=api']);
+    expect(options.name).toBe('api');
+  });
+
+  it('should combine --name with other options', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--port', '8080', '--name', 'backend']);
+    expect(options.port).toBe(8080);
+    expect(options.name).toBe('backend');
+  });
 });

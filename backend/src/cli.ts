@@ -6,9 +6,10 @@
  *   claude-remote [options] [--] [claude args...]
  *
  * 代理层选项：
- *   --port <number>      服务端口 (默认: 3000)
+ *   --port <number>      服务端口 (默认: 3000, 被占用时自动递增)
  *   --host <ip>          绑定地址 (默认: 自动检测 LAN IP)
- *   --token <string>     认证 Token (默认: 随机生成)
+ *   --token <string>     认证 Token (默认: 共享 Token)
+ *   --name <string>      实例名称 (默认: 工作目录名)
  *   --help, -h           显示帮助信息
  *
  * 其他所有参数透传给 claude 命令。
@@ -22,6 +23,7 @@ export interface CliOptions {
   port?: number;
   host?: string;
   token?: string;
+  name?: string;
   help: boolean;
   claudeArgs: string[];
 }
@@ -59,6 +61,9 @@ export function parseCliArgs(argv: string[]): CliOptions {
     } else if (arg === '--token') {
       options.token = argv[++i];
       i++;
+    } else if (arg === '--name') {
+      options.name = argv[++i];
+      i++;
     } else if (arg === '--') {
       // Stop parsing, pass all remaining args to claude
       options.claudeArgs.push(...argv.slice(i + 1));
@@ -71,6 +76,9 @@ export function parseCliArgs(argv: string[]): CliOptions {
       i++;
     } else if (arg.startsWith('--token=')) {
       options.token = arg.split('=')[1];
+      i++;
+    } else if (arg.startsWith('--name=')) {
+      options.name = arg.split('=')[1];
       i++;
     } else {
       // Unknown arg: pass to claude
@@ -90,15 +98,17 @@ Claude Code Remote - 在局域网内通过手机远程控制 Claude Code
   claude-remote [options] [--] [claude args...]
 
 代理层选项：
-  --port <number>      服务端口 (默认: 3000)
+  --port <number>      服务端口 (默认: 3000, 被占用时自动递增)
   --host <ip>          绑定地址 (默认: 自动检测 LAN IP)
-  --token <string>     认证 Token (默认: 随机生成)
+  --token <string>     认证 Token (默认: 共享 Token)
+  --name <string>      实例名称 (默认: 工作目录名)
   --help, -h           显示帮助信息
 
 环境变量：
   PORT                 服务端口
   HOST                 绑定地址
-  AUTH_TOKEN           固定 Token
+  AUTH_TOKEN           固定 Token (覆盖共享 Token)
+  INSTANCE_NAME        实例名称
   CLAUDE_COMMAND       Claude CLI 命令路径 (默认: claude)
   CLAUDE_CWD           Claude 工作目录 (默认: 当前目录)
   MAX_BUFFER_LINES     输出缓冲区行数 (默认: 10000)
@@ -107,6 +117,7 @@ Claude Code Remote - 在局域网内通过手机远程控制 Claude Code
   claude-remote                    # 启动 Claude Code
   claude-remote chat               # 启动 Claude Code 并进入 chat 模式
   claude-remote --port 8080        # 使用端口 8080
+  claude-remote --name api         # 自定义实例名称
   claude-remote -- --dangerously-skip-permissions  # 透传参数给 claude
 
 更多 Claude Code 选项请运行：claude --help
@@ -131,6 +142,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   }
   if (options.token !== undefined) {
     process.env.AUTH_TOKEN = options.token;
+  }
+  if (options.name !== undefined) {
+    process.env.INSTANCE_NAME = options.name;
   }
   if (options.claudeArgs.length > 0) {
     process.env.CLAUDE_ARGS = JSON.stringify(options.claudeArgs);

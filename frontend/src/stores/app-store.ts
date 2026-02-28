@@ -15,6 +15,10 @@ interface AppState {
   // Session
   sessionStatus: SessionStatus;
   setSessionStatus: (status: SessionStatus) => void;
+
+  // Cached token for cross-instance auth
+  cachedToken: string | null;
+  setCachedToken: (token: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -26,4 +30,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   sessionStatus: 'idle',
   setSessionStatus: (status) => set({ sessionStatus: status }),
+
+  cachedToken: null,
+  setCachedToken: (token) => set({ cachedToken: token }),
 }));

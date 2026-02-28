@@ -200,7 +200,7 @@ describe('Authentication Flow', () => {
       await stopTestServer(ctx);
     });
 
-    it('should set HttpOnly, SameSite=Strict, Path=/ in cookie', async () => {
+    it('should set HttpOnly, SameSite=Lax, Path=/ in cookie', async () => {
       const res = await fetch(`${ctx.baseUrl}/api/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -208,7 +208,7 @@ describe('Authentication Flow', () => {
       });
       const setCookie = res.headers.get('set-cookie')!;
       expect(setCookie).toContain('HttpOnly');
-      expect(setCookie).toContain('SameSite=Strict');
+      expect(setCookie).toContain('SameSite=Lax');
       expect(setCookie).toContain('Path=/');
     });
 

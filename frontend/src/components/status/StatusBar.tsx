@@ -1,4 +1,5 @@
 import { useAppStore } from '../../stores/app-store.js';
+import { useInstanceStore } from '../../stores/instance-store.js';
 
 const STATUS_CONFIG = {
   idle: { color: 'var(--status-idle)', label: 'Idle' },
@@ -18,6 +19,11 @@ export function StatusBar() {
   const statusCfg = STATUS_CONFIG[sessionStatus];
   const connCfg = CONNECTION_CONFIG[connectionStatus];
 
+  const instances = useInstanceStore((s) => s.instances);
+  const activeInstanceId = useInstanceStore((s) => s.activeInstanceId);
+  const activeInstance = instances.find(i => i.instanceId === activeInstanceId);
+  const instanceName = activeInstance?.name;
+
   return (
     <div style={{
       height: 'var(--statusbar-height)',
@@ -34,6 +40,11 @@ export function StatusBar() {
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
           Claude Remote
         </span>
+        {instanceName && (
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            / {instanceName}
+          </span>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
