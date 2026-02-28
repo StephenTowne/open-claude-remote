@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { ConsolePage } from '../../src/pages/ConsolePage.js';
 import { useAppStore } from '../../src/stores/app-store.js';
 import { useInstanceStore } from '../../src/stores/instance-store.js';
@@ -21,9 +21,7 @@ vi.mock('../../src/hooks/useInstances.js', () => ({
   useInstances: () => ({ activeInstanceId: 'inst-1' }),
 }));
 
-const mockReadLastLines = vi.fn(() => [] as string[]);
 const mockWrite = vi.fn((_data: string, callback?: () => void) => {
-  // 同步调用 callback，模拟 xterm 处理完成后触发扫描
   callback?.();
 });
 
@@ -31,7 +29,6 @@ vi.mock('../../src/hooks/useTerminal.js', () => ({
   useTerminal: () => ({
     write: mockWrite,
     scrollToBottom: vi.fn(),
-    readLastLines: mockReadLastLines,
   }),
 }));
 
@@ -79,7 +76,6 @@ describe('ConsolePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedHandleMessage = null;
-    mockReadLastLines.mockReturnValue([]);
     viewportState.keyboardHeight = 0;
 
     useAppStore.setState({
@@ -293,7 +289,6 @@ describe('ConsolePage', () => {
       expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
     });
 
-    // 应从最低 port（3000）开始轮询，而非停在最高 port 末尾
     expect(mockedAuthenticateToInstance).toHaveBeenNthCalledWith(1, '127.0.0.1', 3000, 'cached-token');
     expect(screen.getByText('已切换到 3000')).toBeDefined();
   });
@@ -311,106 +306,278 @@ describe('ConsolePage', () => {
     expect(screen.queryByText('测试提示消息')).toBeNull();
   });
 
-  it('should show PromptSelector when terminal output contains selection prompt', async () => {
-    const promptLines = [
-      '  1. Option A',
-      '❯ 2. Option B',
-      '  3. Option C',
-      'Enter to select · Tab/Arrow keys to navigate · Esc to cancel',
-    ];
-    mockReadLastLines.mockReturnValue(promptLines);
+  // ---- ask_question WS message tests ----
 
+  it('should show QuestionPanel when ask_question WS message is received', async () => {
     render(<ConsolePage />);
 
     await act(async () => {
-      capturedHandleMessage?.({ type: 'terminal_output', data: 'some data', seq: 1 });
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [
+          {
+            question: 'Which library?',
+            header: 'Library',
+            options: [
+              { label: 'React', description: 'UI lib' },
+              { label: 'Vue', description: 'Progressive' },
+            ],
+          },
+        ],
+      });
     });
 
-    expect(screen.getByTestId('prompt-selector')).toBeDefined();
-    expect(screen.getByText('Option A')).toBeDefined();
-    expect(screen.getByText('Option B')).toBeDefined();
-    expect(screen.getByText('Option C')).toBeDefined();
-    // InputBar 和 VirtualKeyBar 应被隐藏
+    expect(screen.getByTestId('question-panel')).toBeDefined();
+    expect(screen.getByText('Which library?')).toBeDefined();
+    expect(screen.getByText('React')).toBeDefined();
+    expect(screen.getByText('Vue')).toBeDefined();
+    // InputBar and VirtualKeyBar should be hidden
     expect(screen.queryByTestId('virtual-key-bar')).toBeNull();
   });
 
-  it('should hide PromptSelector and restore InputBar after selecting an option', async () => {
-    const promptLines = [
-      '❯ 1. Yes',
-      '  2. No',
-      'Enter to select · Tab/Arrow keys to navigate · Esc to cancel',
-    ];
-    mockReadLastLines.mockReturnValue(promptLines);
-
+  it('should send arrow keys + Enter and dismiss panel when single-select option is clicked', async () => {
     render(<ConsolePage />);
 
-    // 触发提示出现
     await act(async () => {
-      capturedHandleMessage?.({ type: 'terminal_output', data: 'some data', seq: 1 });
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [
+          {
+            question: 'Choose?',
+            options: [
+              { label: 'Yes' },
+              { label: 'No' },
+            ],
+          },
+        ],
+      });
     });
 
-    expect(screen.getByTestId('prompt-selector')).toBeDefined();
+    expect(screen.getByTestId('question-panel')).toBeDefined();
 
-    // 点击第二个选项（No），当前选中 0，目标为 1，需要发送 1 次 ↓
-    mockReadLastLines.mockReturnValue([]);
+    // Click second option (No), current selectedIndex=0, target=1
     await act(async () => {
-      screen.getByText('No').click();
+      fireEvent.click(screen.getByText('No'));
     });
 
-    // PromptSelector 应消失，InputBar 应恢复
-    expect(screen.queryByTestId('prompt-selector')).toBeNull();
-    // 应发送一次 ↓ 箭头和 Enter
+    // Should send 1 down arrow + Enter
     expect(mockSend).toHaveBeenCalledWith({ type: 'user_input', data: '\x1b[B' });
+    expect(mockSend).toHaveBeenCalledWith({ type: 'user_input', data: '\r' });
+
+    // Panel should be dismissed
+    expect(screen.queryByTestId('question-panel')).toBeNull();
+  });
+
+  it('should handle multiSelect: toggle selected options without dismissing panel', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [
+          {
+            question: 'Which features?',
+            options: [
+              { label: 'Auth' },
+              { label: 'API' },
+              { label: 'DB' },
+            ],
+            multiSelect: true,
+          },
+        ],
+      });
+    });
+
+    // Click first option (Auth)
+    await act(async () => {
+      fireEvent.click(screen.getByText('Auth'));
+    });
+
+    // Panel should still be visible (multiSelect doesn't auto-dismiss)
+    expect(screen.getByTestId('question-panel')).toBeDefined();
+    // Sends Enter for selection
     expect(mockSend).toHaveBeenCalledWith({ type: 'user_input', data: '\r' });
   });
 
-  it('should update PromptSelector when options text changes with same length and selected index', async () => {
-    mockReadLastLines.mockReturnValue([
-      '❯ 1. Alpha',
-      '  2. Beta',
-      'Enter to select · Tab/Arrow keys to navigate · Esc to cancel',
-    ]);
-
+  it('should show text input when Other option is selected', async () => {
     render(<ConsolePage />);
 
     await act(async () => {
-      capturedHandleMessage?.({ type: 'terminal_output', data: 'first output', seq: 1 });
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [
+          {
+            question: 'Choose?',
+            options: [
+              { label: 'A' },
+              { label: 'Other' },
+            ],
+          },
+        ],
+      });
     });
 
-    expect(screen.getByText('Alpha')).toBeDefined();
-    expect(screen.getByText('Beta')).toBeDefined();
-
-    // 长度和 selectedIndex 保持不变，仅文本变化
-    mockReadLastLines.mockReturnValue([
-      '❯ 1. Gamma',
-      '  2. Delta',
-      'Enter to select · Tab/Arrow keys to navigate · Esc to cancel',
-    ]);
-
+    // Click Other option (index 1)
     await act(async () => {
-      capturedHandleMessage?.({ type: 'terminal_output', data: 'second output', seq: 2 });
+      fireEvent.click(screen.getByText('Other'));
     });
 
-    expect(screen.queryByText('Alpha')).toBeNull();
-    expect(screen.queryByText('Beta')).toBeNull();
-    expect(screen.getByText('Gamma')).toBeDefined();
-    expect(screen.getByText('Delta')).toBeDefined();
+    // Panel should still be visible with text input
+    expect(screen.getByTestId('question-panel')).toBeDefined();
+    expect(screen.getByPlaceholderText('输入自定义内容...')).toBeDefined();
   });
 
-  it('should not show PromptSelector when terminal output has no prompt marker', async () => {
-    mockReadLastLines.mockReturnValue([
-      '  1. Some text',
-      '  2. Other text',
-      // 无 "Tab/Arrow keys to navigate"
-    ]);
-
+  it('should handle multiple questions sequentially', async () => {
     render(<ConsolePage />);
 
     await act(async () => {
-      capturedHandleMessage?.({ type: 'terminal_output', data: 'normal output', seq: 1 });
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [
+          {
+            question: 'Q1?',
+            options: [{ label: 'A1' }, { label: 'B1' }],
+          },
+          {
+            question: 'Q2?',
+            options: [{ label: 'A2' }, { label: 'B2' }],
+          },
+        ],
+      });
     });
 
-    expect(screen.queryByTestId('prompt-selector')).toBeNull();
-    expect(screen.getByTestId('virtual-key-bar')).toBeDefined();
+    // Should show first question
+    expect(screen.getByText('Q1?')).toBeDefined();
+    expect(screen.getByText('1 / 2')).toBeDefined();
+
+    // Answer first question (click first option, no arrow needed)
+    await act(async () => {
+      fireEvent.click(screen.getByText('A1'));
+    });
+
+    // Should advance to second question
+    expect(screen.getByText('Q2?')).toBeDefined();
+    expect(screen.getByText('2 / 2')).toBeDefined();
+
+    // Answer second question
+    await act(async () => {
+      fireEvent.click(screen.getByText('A2'));
+    });
+
+    // Panel should be dismissed
+    expect(screen.queryByTestId('question-panel')).toBeNull();
+  });
+
+  it('should clear askState when status_update with non-waiting_input is received', async () => {
+    render(<ConsolePage />);
+
+    // Show question panel
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [
+          { question: 'Q?', options: [{ label: 'A' }] },
+        ],
+      });
+    });
+
+    expect(screen.getByTestId('question-panel')).toBeDefined();
+
+    // Receive status_update with 'running'
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'status_update',
+        status: 'running',
+      });
+    });
+
+    // Panel should be dismissed
+    expect(screen.queryByTestId('question-panel')).toBeNull();
+  });
+
+  it('should keep ask panel when status_update waiting_input is received', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [{ question: 'Q?', options: [{ label: 'A' }] }],
+      });
+    });
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'status_update',
+        status: 'waiting_input',
+      });
+    });
+
+    expect(screen.getByTestId('question-panel')).toBeDefined();
+  });
+
+  it('should ignore heartbeat message without side effects', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'heartbeat',
+        timestamp: Date.now(),
+      });
+    });
+
+    expect(mockWrite).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('question-panel')).toBeNull();
+  });
+
+  it('should write error message to terminal when error message is received', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'error',
+        code: 'ws_error',
+        message: 'socket down',
+      });
+    });
+
+    expect(mockWrite).toHaveBeenCalledWith('\r\n\x1b[31m[Error] socket down\x1b[0m\r\n');
+  });
+
+  it('should submit Other input only when trimmed value is non-empty', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [
+          {
+            question: 'Choose?',
+            options: [{ label: 'A' }, { label: 'Other' }],
+          },
+        ],
+      });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Other'));
+    });
+
+    const input = screen.getByPlaceholderText('输入自定义内容...');
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '   ' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+
+    const callsAfterBlank = mockSend.mock.calls.length;
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'custom value' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+
+    expect(mockSend.mock.calls.length).toBeGreaterThan(callsAfterBlank);
+    expect(mockSend).toHaveBeenCalledWith({ type: 'user_input', data: 'custom value' });
+    expect(mockSend).toHaveBeenCalledWith({ type: 'user_input', data: '\r' });
   });
 });

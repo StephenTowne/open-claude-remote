@@ -21,13 +21,21 @@ export function createHookRoutes(hookReceiver: HookReceiver): Router {
       return;
     }
 
-    const notification = hookReceiver.processHook(payload);
-    if (!notification) {
-      res.json({ ok: true, ignored: true });
-      return;
-    }
+    const result = hookReceiver.processHook(payload);
 
-    res.json({ ok: true, tool: notification.tool });
+    switch (result.type) {
+      case 'ask_question':
+        // Empty JSON response — PreToolUse hook with empty stdout defaults to approve
+        res.json({});
+        break;
+      case 'notification':
+        res.json({ ok: true, tool: result.notification!.tool });
+        break;
+      case 'ignored':
+      default:
+        res.json({ ok: true, ignored: true });
+        break;
+    }
   });
 
   return router;

@@ -42,6 +42,23 @@ export interface SessionEndedMessage {
   reason: string;
 }
 
+export interface QuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface Question {
+  question: string;
+  header?: string;
+  options: QuestionOption[];
+  multiSelect?: boolean;
+}
+
+export interface AskQuestionMessage {
+  type: 'ask_question';
+  questions: Question[];
+}
+
 export interface TerminalResizeMessage {
   type: 'terminal_resize';
   cols: number;
@@ -55,7 +72,8 @@ export type ServerMessage =
   | HeartbeatMessage
   | ErrorMessage
   | SessionEndedMessage
-  | TerminalResizeMessage;
+  | TerminalResizeMessage
+  | AskQuestionMessage;
 
 // ==============================
 // Client → Server Messages

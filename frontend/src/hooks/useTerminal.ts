@@ -100,23 +100,5 @@ export function useTerminal(
     termRef.current?.scrollToBottom();
   }, []);
 
-  /**
-   * 读取 buffer 末尾最近 n 行的纯文本（xterm 已处理 ANSI，直接返回可见字符）。
-   * 用于检测 Claude Code 的交互式选择提示。
-   */
-  const readLastLines = useCallback((n: number = 50): string[] => {
-    const term = termRef.current;
-    if (!term) return [];
-    const buf = term.buffer.active;
-    const end = buf.length;
-    const start = Math.max(0, end - n);
-    const lines: string[] = [];
-    for (let y = start; y < end; y++) {
-      const line = buf.getLine(y);
-      if (line) lines.push(line.translateToString(true));
-    }
-    return lines;
-  }, []);
-
-  return { write, clear, scrollToBottom, terminal: termRef, readLastLines };
+  return { write, clear, scrollToBottom, terminal: termRef };
 }

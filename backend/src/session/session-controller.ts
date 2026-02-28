@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws';
-import type { SessionStatus } from '@claude-remote/shared';
+import type { SessionStatus, Question } from '@claude-remote/shared';
 import { PtyManager } from '../pty/pty-manager.js';
 import { OutputBuffer } from '../pty/output-buffer.js';
 import { WsServer } from '../ws/ws-server.js';
@@ -158,6 +158,28 @@ export class SessionController {
       }
 
       logger.info({ tool: notification.tool }, 'Hook notification processed, status set to waiting_input');
+    });
+
+    this.hookReceiver.on('ask_question', (data: { sessionId?: string; questions: Question[] }) => {
+      this._status = 'waiting_input';
+      this.wsServer.broadcast({ type: 'ask_question', questions: data.questions });
+
+      if (this.pushService) {
+        this.pushService.notifyAll({
+          title: 'Claude Code 需要回答',
+          body: data.questions[0]?.question ?? 'Claude 提出了问题',
+          tag: 'claude-question',
+          renotify: true,
+        }).catch((err) => {
+          logger.error({ err, sessionId: data.sessionId }, 'Push notification failed');
+        });
+      }
+
+      logger.info({
+        sessionId: data.sessionId,
+        questionCount: data.questions.length,
+        firstQuestion: data.questions[0]?.question,
+      }, 'AskUserQuestion broadcast');
     });
   }
 
