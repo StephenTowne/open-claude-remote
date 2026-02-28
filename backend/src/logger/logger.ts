@@ -19,11 +19,25 @@ const errorLogPath = resolve(logDir, 'error.log');
 
 const isDev = process.env.NODE_ENV !== 'production';
 const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+const isCli = process.env.CLI_MODE === 'true';
 
 function createLogger() {
   if (isTest) {
     // Silent logger in test environment
     return pino({ level: 'silent' });
+  }
+
+  if (isCli) {
+    // CLI mode: only write to files, keep terminal clean
+    return pino({
+      level: 'info',
+      transport: {
+        targets: [
+          { target: 'pino/file', options: { destination: logFilePath }, level: 'info' },
+          { target: 'pino/file', options: { destination: errorLogPath }, level: 'error' },
+        ],
+      },
+    });
   }
 
   if (isDev) {

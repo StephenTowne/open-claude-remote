@@ -1,19 +1,20 @@
 import { WebSocket } from 'ws';
-import type { ApprovalRequest, SessionStatus } from '@claude-remote/shared';
+import type { SessionStatus } from '@claude-remote/shared';
 import { PtyManager } from '../pty/pty-manager.js';
 import { OutputBuffer } from '../pty/output-buffer.js';
 import { WsServer } from '../ws/ws-server.js';
-import { HookReceiver } from '../hooks/hook-receiver.js';
+import { HookReceiver, type HookNotification } from '../hooks/hook-receiver.js';
 import { handleWsMessage } from '../ws/ws-handler.js';
 import { logger } from '../logger/logger.js';
+import type { PushService } from '../push/push-service.js';
 
 /**
  * Core coordinator: wires PTY ↔ WebSocket ↔ Terminal ↔ Hooks.
  */
 export class SessionController {
   private _status: SessionStatus = 'idle';
-  private _pendingApproval: ApprovalRequest | null = null;
   private buffer: OutputBuffer;
+  private pushService: PushService | null = null;
 
   constructor(
     private ptyManager: PtyManager,
@@ -31,12 +32,15 @@ export class SessionController {
     return this._status;
   }
 
-  get pendingApproval(): ApprovalRequest | null {
-    return this._pendingApproval;
-  }
-
   get connectedClients(): number {
     return this.wsServer.clientCount;
+  }
+
+  /**
+   * Inject PushService for hook-triggered notifications.
+   */
+  setPushService(pushService: PushService): void {
+    this.pushService = pushService;
   }
 
   /**
@@ -79,7 +83,7 @@ export class SessionController {
   }
 
   /**
-   * Wire WS messages → PTY / approval responses
+   * Wire WS messages → PTY input
    */
   private setupWsHandlers(): void {
     this.wsServer.onMessage((ws: WebSocket, data: string) => {
@@ -87,9 +91,6 @@ export class SessionController {
         onUserInput: (input: string) => {
           logger.debug({ length: input.length }, 'User input from mobile');
           this.ptyManager.write(input);
-        },
-        onApprovalResponse: (id: string, approved: boolean) => {
-          this.handleApprovalResponse(id, approved);
         },
         onResize: (_cols: number, _rows: number) => {
           // PTY size follows PC terminal, ignore mobile resize
@@ -105,60 +106,36 @@ export class SessionController {
         data: this.buffer.getFullContent(),
         seq: this.buffer.sequenceNumber,
         status: this._status,
-        pendingApproval: this._pendingApproval ?? undefined,
       });
     });
   }
 
   /**
-   * Wire Hook notifications → approval requests → WS broadcast
+   * Wire Hook notifications → status update + Push notification
    */
   private setupHookHandlers(): void {
-    this.hookReceiver.on('approval', (approval: ApprovalRequest) => {
-      this._pendingApproval = approval;
-      this._status = 'waiting_approval';
+    this.hookReceiver.on('notification', (notification: HookNotification) => {
+      this._status = 'waiting_input';
 
       this.wsServer.broadcast({
         type: 'status_update',
-        status: 'waiting_approval',
-        detail: `Waiting for approval: ${approval.tool}`,
+        status: 'waiting_input',
+        detail: `Waiting for input: ${notification.tool}`,
       });
 
-      this.wsServer.broadcast({
-        type: 'approval_request',
-        approval,
-      });
+      // Send push notification if service is available
+      if (this.pushService) {
+        this.pushService.notifyAll({
+          title: 'Claude Code 需要输入',
+          body: notification.message,
+          tag: 'claude-input',
+          renotify: true,
+        }).catch((err) => {
+          logger.error({ err }, 'Failed to send push notification');
+        });
+      }
 
-      logger.info({ approvalId: approval.id, tool: approval.tool }, 'Approval request broadcast to clients');
-    });
-  }
-
-  /**
-   * Handle approval response from mobile client.
-   */
-  private handleApprovalResponse(id: string, approved: boolean): void {
-    if (!this._pendingApproval || this._pendingApproval.id !== id) {
-      logger.warn({ id }, 'Approval response for unknown/stale request');
-      return;
-    }
-
-    logger.info({ id, approved }, 'Processing approval response');
-
-    if (approved) {
-      // Write 'y' to PTY to approve
-      this.ptyManager.write('y');
-    } else {
-      // Write Escape to reject
-      this.ptyManager.write('\x1b');
-    }
-
-    this._pendingApproval = null;
-    this._status = 'running';
-
-    this.wsServer.broadcast({
-      type: 'status_update',
-      status: 'running',
-      detail: approved ? 'Approved' : 'Rejected',
+      logger.info({ tool: notification.tool }, 'Hook notification processed, status set to waiting_input');
     });
   }
 

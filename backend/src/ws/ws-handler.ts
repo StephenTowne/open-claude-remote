@@ -4,7 +4,6 @@ import { logger } from '../logger/logger.js';
 
 export interface WsHandlerCallbacks {
   onUserInput: (data: string) => void;
-  onApprovalResponse: (id: string, approved: boolean) => void;
   onResize: (cols: number, rows: number) => void;
 }
 
@@ -24,12 +23,6 @@ export function handleWsMessage(ws: WebSocket, raw: string, callbacks: WsHandler
     case 'user_input':
       if (typeof msg.data === 'string') {
         callbacks.onUserInput(msg.data);
-      }
-      break;
-
-    case 'approval_response':
-      if (typeof msg.id === 'string' && typeof msg.approved === 'boolean') {
-        callbacks.onApprovalResponse(msg.id, msg.approved);
       }
       break;
 

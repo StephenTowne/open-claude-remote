@@ -32,6 +32,7 @@
   --statusbar-height: 44px;
   --inputbar-height: 56px;
   --min-touch-target: 44px;
+  --keybar-height: 48px;
 
   /* Font */
   --font-mono: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;

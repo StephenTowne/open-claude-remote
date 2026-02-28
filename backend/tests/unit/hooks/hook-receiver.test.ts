@@ -5,7 +5,7 @@ describe('HookReceiver', () => {
   it('should extract tool name from real Claude Code notification payload', () => {
     const receiver = new HookReceiver();
     const handler = vi.fn();
-    receiver.on('approval', handler);
+    receiver.on('notification', handler);
 
     // Real payload from Claude Code Notification hook
     const payload = {
@@ -15,33 +15,32 @@ describe('HookReceiver', () => {
       notification_type: 'permission_prompt',
     };
 
-    const approval = receiver.processHook(payload);
+    const result = receiver.processHook(payload);
 
-    expect(approval).not.toBeNull();
-    expect(approval!.tool).toBe('Read');
-    expect(approval!.description).toBe('Claude needs your permission to use Read');
-    expect(approval!.id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(handler).toHaveBeenCalledWith(approval);
+    expect(result).not.toBeNull();
+    expect(result!.tool).toBe('Read');
+    expect(result!.message).toBe('Claude needs your permission to use Read');
+    expect(handler).toHaveBeenCalledWith(result);
   });
 
   it('should extract tool name for Bash tool', () => {
     const receiver = new HookReceiver();
-    const approval = receiver.processHook({
+    const result = receiver.processHook({
       message: 'Claude needs your permission to use Bash',
       notification_type: 'permission_prompt',
     });
 
-    expect(approval!.tool).toBe('Bash');
+    expect(result!.tool).toBe('Bash');
   });
 
   it('should extract tool name for Write tool', () => {
     const receiver = new HookReceiver();
-    const approval = receiver.processHook({
+    const result = receiver.processHook({
       message: 'Claude needs your permission to use Write',
       notification_type: 'permission_prompt',
     });
 
-    expect(approval!.tool).toBe('Write');
+    expect(result!.tool).toBe('Write');
   });
 
   it('should fallback to legacy tool_name field if present', () => {
@@ -52,26 +51,41 @@ describe('HookReceiver', () => {
       tool_input: { command: 'ls -la' },
     };
 
-    const approval = receiver.processHook(payload);
+    const result = receiver.processHook(payload);
 
-    expect(approval!.tool).toBe('Bash');
-    expect(approval!.description).toBe('Claude wants to run: ls -la');
-    expect(approval!.params).toEqual({ command: 'ls -la' });
+    expect(result!.tool).toBe('Bash');
+    expect(result!.message).toBe('Claude wants to run: ls -la');
   });
 
-  it('should handle minimal payload with friendly description', () => {
+  it('should handle minimal payload with friendly message', () => {
     const receiver = new HookReceiver();
-    const approval = receiver.processHook({});
+    const result = receiver.processHook({});
 
-    expect(approval).not.toBeNull();
-    expect(approval!.tool).toBe('unknown_tool');
-    expect(approval!.description).toBe('Approval requested (no details provided)');
+    expect(result).not.toBeNull();
+    expect(result!.tool).toBe('unknown_tool');
+    expect(result!.message).toBe('Approval requested (no details provided)');
   });
 
-  it('should generate unique IDs for each request', () => {
+  it('should emit notification event', () => {
     const receiver = new HookReceiver();
-    const a1 = receiver.processHook({ message: 'test1' });
-    const a2 = receiver.processHook({ message: 'test2' });
-    expect(a1!.id).not.toBe(a2!.id);
+    const handler = vi.fn();
+    receiver.on('notification', handler);
+
+    receiver.processHook({ message: 'test' });
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it('should ignore non-permission notification_type payload', () => {
+    const receiver = new HookReceiver();
+    const handler = vi.fn();
+    receiver.on('notification', handler);
+
+    const result = receiver.processHook({
+      message: 'Claude has completed the task',
+      notification_type: 'task_complete',
+    });
+
+    expect(result).toBeNull();
+    expect(handler).not.toHaveBeenCalled();
   });
 });

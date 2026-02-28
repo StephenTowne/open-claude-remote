@@ -3,20 +3,20 @@ import type { ServerMessage } from '@claude-remote/shared';
 import { StatusBar } from '../components/status/StatusBar.js';
 import { TerminalView } from '../components/terminal/TerminalView.js';
 import { InputBar } from '../components/input/InputBar.js';
-import { ApprovalCard } from '../components/approval/ApprovalCard.js';
+import { VirtualKeyBar } from '../components/input/VirtualKeyBar.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useTerminal } from '../hooks/useTerminal.js';
-import { useApproval } from '../hooks/useApproval.js';
 import { useViewport } from '../hooks/useViewport.js';
+import { usePushNotification } from '../hooks/usePushNotification.js';
 import { useAppStore } from '../stores/app-store.js';
 
 export function ConsolePage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { write, scrollToBottom } = useTerminal(containerRef);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
-  const setPendingApproval = useAppStore((s) => s.setPendingApproval);
   const { keyboardHeight } = useViewport();
+  usePushNotification();
 
   const handleMessage = useCallback((msg: ServerMessage) => {
     switch (msg.type) {
@@ -27,16 +27,10 @@ export function ConsolePage() {
       case 'history_sync':
         write(msg.data);
         setSessionStatus(msg.status);
-        if (msg.pendingApproval) {
-          setPendingApproval(msg.pendingApproval);
-        }
         scrollToBottom();
         break;
       case 'status_update':
         setSessionStatus(msg.status);
-        break;
-      case 'approval_request':
-        setPendingApproval(msg.approval);
         break;
       case 'session_ended':
         setSessionStatus('idle');
@@ -45,10 +39,9 @@ export function ConsolePage() {
         write(`\r\n\x1b[31m[Error] ${msg.message}\x1b[0m\r\n`);
         break;
     }
-  }, [write, scrollToBottom, setSessionStatus, setPendingApproval]);
+  }, [write, scrollToBottom, setSessionStatus]);
 
   const { connect, send } = useWebSocket(handleMessage);
-  const { pendingApproval, approve, reject } = useApproval(send);
 
   // Connect only once on mount
   const connectCalledRef = useRef(false);
@@ -60,13 +53,20 @@ export function ConsolePage() {
   }, [connect]);
 
   const handleSend = useCallback((text: string) => {
-    // Send text first, then Enter key separately
-    // The terminal (Claude Code CLI) requires these to be separate inputs
-    send({ type: 'user_input', data: text });
-    // Use setTimeout to ensure Enter is processed as a separate keystroke
-    setTimeout(() => {
+    if (text) {
+      // Send text first, then Enter key separately
+      send({ type: 'user_input', data: text });
+      setTimeout(() => {
+        send({ type: 'user_input', data: '\r' });
+      }, 0);
+    } else {
+      // Empty submit = just Enter
       send({ type: 'user_input', data: '\r' });
-    }, 0);
+    }
+  }, [send]);
+
+  const handleKeyPress = useCallback((data: string) => {
+    send({ type: 'user_input', data });
   }, [send]);
 
   return (
@@ -80,14 +80,8 @@ export function ConsolePage() {
       <StatusBar />
       <ConnectionBanner />
       <TerminalView containerRef={containerRef} />
+      <VirtualKeyBar onKeyPress={handleKeyPress} />
       <InputBar onSend={handleSend} />
-      {pendingApproval && (
-        <ApprovalCard
-          approval={pendingApproval}
-          onApprove={approve}
-          onReject={reject}
-        />
-      )}
     </div>
   );
 }

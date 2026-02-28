@@ -21,8 +21,13 @@ export function createHookRoutes(hookReceiver: HookReceiver): Router {
       return;
     }
 
-    const approval = hookReceiver.processHook(payload);
-    res.json({ ok: true, approvalId: approval?.id });
+    const notification = hookReceiver.processHook(payload);
+    if (!notification) {
+      res.json({ ok: true, ignored: true });
+      return;
+    }
+
+    res.json({ ok: true, tool: notification.tool });
   });
 
   return router;

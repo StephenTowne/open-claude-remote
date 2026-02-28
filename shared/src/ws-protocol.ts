@@ -8,7 +8,7 @@ export interface TerminalOutputMessage {
   seq: number;
 }
 
-export type SessionStatus = 'idle' | 'running' | 'waiting_approval';
+export type SessionStatus = 'idle' | 'running' | 'waiting_input';
 
 export interface StatusUpdateMessage {
   type: 'status_update';
@@ -16,24 +16,11 @@ export interface StatusUpdateMessage {
   detail?: string;
 }
 
-export interface ApprovalRequest {
-  id: string;
-  tool: string;
-  description: string;
-  params?: Record<string, unknown>;
-}
-
-export interface ApprovalRequestMessage {
-  type: 'approval_request';
-  approval: ApprovalRequest;
-}
-
 export interface HistorySyncMessage {
   type: 'history_sync';
   data: string;
   seq: number;
   status: SessionStatus;
-  pendingApproval?: ApprovalRequest;
 }
 
 export interface HeartbeatMessage {
@@ -56,7 +43,6 @@ export interface SessionEndedMessage {
 export type ServerMessage =
   | TerminalOutputMessage
   | StatusUpdateMessage
-  | ApprovalRequestMessage
   | HistorySyncMessage
   | HeartbeatMessage
   | ErrorMessage
@@ -69,12 +55,6 @@ export type ServerMessage =
 export interface UserInputMessage {
   type: 'user_input';
   data: string;
-}
-
-export interface ApprovalResponseMessage {
-  type: 'approval_response';
-  id: string;
-  approved: boolean;
 }
 
 export interface ResizeMessage {
@@ -90,6 +70,5 @@ export interface ClientHeartbeatMessage {
 
 export type ClientMessage =
   | UserInputMessage
-  | ApprovalResponseMessage
   | ResizeMessage
   | ClientHeartbeatMessage;

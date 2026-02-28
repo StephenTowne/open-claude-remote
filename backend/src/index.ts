@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import express from 'express';
 import cors from 'cors';
 import { loadConfig } from './config.js';
@@ -13,6 +13,7 @@ import { HookReceiver } from './hooks/hook-receiver.js';
 import { SessionController } from './session/session-controller.js';
 import { TerminalRelay } from './terminal/terminal-relay.js';
 import { createApiRouter } from './api/router.js';
+import { PushService } from './push/push-service.js';
 import { logger } from './logger/logger.js';
 import { writePidFile, removePidFile } from './utils/pid-file.js';
 
@@ -67,11 +68,14 @@ async function main() {
   // 6. Setup Hook receiver
   const hookReceiver = new HookReceiver();
 
-  // 7. Session controller reference (set after PTY spawn)
+  // 7. Setup Push service
+  const pushService = new PushService();
+
+  // 8. Session controller reference (set after PTY spawn)
   let sessionController: SessionController | null = null;
 
-  // 8. Mount REST API
-  app.use('/api', createApiRouter(authModule, hookReceiver, () => sessionController));
+  // 9. Mount REST API
+  app.use('/api', createApiRouter(authModule, hookReceiver, () => sessionController, pushService));
 
   // 9. Serve frontend static files (if built)
   const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -98,6 +102,7 @@ async function main() {
 
   // 12. Create Session Controller
   sessionController = new SessionController(ptyManager, wsServer, hookReceiver, config.maxBufferLines);
+  sessionController.setPushService(pushService);
 
   // 13. Start Terminal Relay (raw mode)
   const relay = new TerminalRelay(ptyManager);
@@ -186,24 +191,35 @@ async function main() {
   // 16. Start listening
   httpServer.listen(config.port, config.host, () => {
     const url = `http://${config.host}:${config.port}`;
-    const tokenPreview = token.length >= 16
-      ? `${token.substring(0, 8)}...${token.substring(token.length - 8)}`
-      : token;
+    const isCli = process.env.CLI_MODE === 'true';
 
-    // Print access info to stderr so it doesn't mix with PTY output
-    process.stderr.write('\n');
-    process.stderr.write('╔══════════════════════════════════════════════════╗\n');
-    process.stderr.write('║         Claude Code Remote Proxy Started         ║\n');
-    process.stderr.write('╠══════════════════════════════════════════════════╣\n');
-    process.stderr.write(`║  URL:   ${url.padEnd(40)}║\n`);
-    process.stderr.write(`║  Token: ${tokenPreview.padEnd(40)}║\n`);
-    process.stderr.write('╠══════════════════════════════════════════════════╣\n');
-    process.stderr.write(`║  Full Token (copy to phone):                     ║\n`);
-    process.stderr.write(`║  ${token.padEnd(48)}║\n`);
-    process.stderr.write('╚══════════════════════════════════════════════════╝\n');
-    process.stderr.write('\n');
+    if (isCli) {
+      // CLI mode: write connection info to file, keep terminal clean
+      const logDir = resolve(projectRoot, 'logs');
+      mkdirSync(logDir, { recursive: true });
+      const connectionInfo = `URL: ${url}\nToken: ${token}\n`;
+      writeFileSync(resolve(logDir, 'connection.txt'), connectionInfo);
+      logger.info({ url }, 'Server started');
+    } else {
+      // Dev/production mode: print banner to stderr
+      const tokenPreview = token.length >= 16
+        ? `${token.substring(0, 8)}...${token.substring(token.length - 8)}`
+        : token;
 
-    logger.info({ url, host: config.host, port: config.port }, 'Server started');
+      process.stderr.write('\n');
+      process.stderr.write('╔══════════════════════════════════════════════════╗\n');
+      process.stderr.write('║         Claude Code Remote Proxy Started         ║\n');
+      process.stderr.write('╠══════════════════════════════════════════════════╣\n');
+      process.stderr.write(`║  URL:   ${url.padEnd(40)}║\n`);
+      process.stderr.write(`║  Token: ${tokenPreview.padEnd(40)}║\n`);
+      process.stderr.write('╠══════════════════════════════════════════════════╣\n');
+      process.stderr.write(`║  Full Token (copy to phone):                     ║\n`);
+      process.stderr.write(`║  ${token.padEnd(48)}║\n`);
+      process.stderr.write('╚══════════════════════════════════════════════════╝\n');
+      process.stderr.write('\n');
+
+      logger.info({ url, host: config.host, port: config.port }, 'Server started');
+    }
   });
 }
 

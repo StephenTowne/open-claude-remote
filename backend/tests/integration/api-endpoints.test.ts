@@ -159,6 +159,75 @@ describe('REST API Endpoints', () => {
 
   // ─── POST /api/hook ─────────────────────────────────────────
 
+  describe('Push API', () => {
+    it('should return 503 for /api/push/vapid-key when VAPID key is not ready in time', async () => {
+      const cookie = await authenticate(ctx.baseUrl);
+      const originalWait = ctx.pushService.waitForVapidPublicKey.bind(ctx.pushService);
+      ctx.pushService.waitForVapidPublicKey = async () => null;
+
+      try {
+        const res = await fetch(`${ctx.baseUrl}/api/push/vapid-key`, {
+          headers: { cookie },
+        });
+        expect(res.status).toBe(503);
+        const body = await res.json();
+        expect(body).toEqual({ error: 'Push notifications not available' });
+      } finally {
+        ctx.pushService.waitForVapidPublicKey = originalWait;
+      }
+    });
+
+    it('should return 401 for /api/push/vapid-key without authentication', async () => {
+      const res = await fetch(`${ctx.baseUrl}/api/push/vapid-key`);
+      expect(res.status).toBe(401);
+    });
+
+    it('should return vapidPublicKey for authenticated request', async () => {
+      const cookie = await authenticate(ctx.baseUrl);
+      const res = await fetch(`${ctx.baseUrl}/api/push/vapid-key`, {
+        headers: { cookie },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(typeof body.vapidPublicKey).toBe('string');
+      expect(body.vapidPublicKey.length).toBeGreaterThan(10);
+    });
+
+    it('should return 400 for invalid /api/push/subscribe payload', async () => {
+      const cookie = await authenticate(ctx.baseUrl);
+      const res = await fetch(`${ctx.baseUrl}/api/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', cookie },
+        body: JSON.stringify({ endpoint: 'https://push.example.com/sub1' }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('should subscribe and unsubscribe successfully with valid payload', async () => {
+      const cookie = await authenticate(ctx.baseUrl);
+      const endpoint = 'https://push.example.com/sub1';
+
+      const subRes = await fetch(`${ctx.baseUrl}/api/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', cookie },
+        body: JSON.stringify({
+          endpoint,
+          keys: { p256dh: 'key1', auth: 'auth1' },
+        }),
+      });
+      expect(subRes.status).toBe(200);
+      expect(await subRes.json()).toEqual({ ok: true });
+
+      const unsubRes = await fetch(`${ctx.baseUrl}/api/push/subscribe`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', cookie },
+        body: JSON.stringify({ endpoint }),
+      });
+      expect(unsubRes.status).toBe(200);
+      expect(await unsubRes.json()).toEqual({ ok: true, removed: true });
+    });
+  });
+
   describe('POST /api/hook', () => {
     it('should accept valid hook payload from localhost', async () => {
       const res = await fetch(`${ctx.baseUrl}/api/hook`, {
@@ -173,7 +242,7 @@ describe('REST API Endpoints', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.ok).toBe(true);
-      expect(body.approvalId).toBeTruthy();
+      expect(body.tool).toBe('Bash');
     });
 
     it('should return 400 for invalid payload', async () => {
@@ -185,14 +254,14 @@ describe('REST API Endpoints', () => {
       expect(res.status).toBe(400);
     });
 
-    it('should return approval ID as UUID format', async () => {
+    it('should return tool name in response', async () => {
       const res = await fetch(`${ctx.baseUrl}/api/hook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'test', tool_name: 'Read' }),
       });
       const body = await res.json();
-      expect(body.approvalId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(body.tool).toBe('Read');
     });
 
     it('should not require auth (it is internal-only by localhost check)', async () => {

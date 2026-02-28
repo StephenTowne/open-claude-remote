@@ -11,6 +11,7 @@ import { WsServer } from '../../../src/ws/ws-server.js';
 import { HookReceiver } from '../../../src/hooks/hook-receiver.js';
 import { SessionController } from '../../../src/session/session-controller.js';
 import { createApiRouter } from '../../../src/api/router.js';
+import { PushService } from '../../../src/push/push-service.js';
 
 export const TEST_TOKEN = 'integration-test-token-abcdef1234567890';
 
@@ -28,6 +29,7 @@ export interface TestContext {
   wsServer: WsServer;
   hookReceiver: HookReceiver;
   sessionController: SessionController;
+  pushService: PushService;
   baseUrl: string;
   port: number;
 }
@@ -61,8 +63,9 @@ export async function startTestServer(options?: TestServerOptions): Promise<Test
   const hookReceiver = new HookReceiver();
 
   let sessionController: SessionController | null = null;
+  const pushService = new PushService();
 
-  app.use('/api', createApiRouter(authModule, hookReceiver, () => sessionController));
+  app.use('/api', createApiRouter(authModule, hookReceiver, () => sessionController, pushService));
 
   const wsServer = new WsServer(httpServer, authModule);
 
@@ -98,6 +101,7 @@ export async function startTestServer(options?: TestServerOptions): Promise<Test
     wsServer,
     hookReceiver,
     sessionController: sessionController!,
+    pushService,
     baseUrl,
     port,
   };

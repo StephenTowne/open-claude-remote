@@ -3,7 +3,7 @@ import { useAppStore } from '../../stores/app-store.js';
 const STATUS_CONFIG = {
   idle: { color: 'var(--status-idle)', label: 'Idle' },
   running: { color: 'var(--status-running)', label: 'Running' },
-  waiting_approval: { color: 'var(--status-waiting)', label: 'Waiting' },
+  waiting_input: { color: 'var(--status-waiting)', label: 'Waiting Input' },
 } as const;
 
 const CONNECTION_CONFIG = {

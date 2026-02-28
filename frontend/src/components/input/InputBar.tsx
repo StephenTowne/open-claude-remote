@@ -11,7 +11,6 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
 
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed) return;
     onSend(trimmed);
     setText('');
     inputRef.current?.focus();
@@ -23,6 +22,8 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
       handleSubmit();
     }
   }, [handleSubmit]);
+
+  const hasText = text.trim().length > 0;
 
   return (
     <div style={{
@@ -43,7 +44,7 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        placeholder="Type a message..."
+        placeholder="输入命令或数字选择..."
         style={{
           flex: 1,
           height: 40,
@@ -58,19 +59,21 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
       />
       <button
         onClick={handleSubmit}
-        disabled={disabled || !text.trim()}
+        disabled={disabled}
         style={{
           minWidth: 'var(--min-touch-target)',
           height: 'var(--min-touch-target)',
           borderRadius: 8,
-          background: text.trim() ? 'var(--status-running)' : 'var(--bg-tertiary)',
-          color: text.trim() ? '#fff' : 'var(--text-muted)',
+          background: hasText ? 'var(--status-running)' : 'var(--bg-tertiary)',
+          color: hasText ? '#fff' : 'var(--text-secondary)',
           fontWeight: 600,
-          fontSize: 14,
+          fontSize: hasText ? 14 : 20,
           transition: 'background 0.15s',
+          border: 'none',
+          cursor: 'pointer',
         }}
       >
-        Send
+        {hasText ? 'Send' : '↵'}
       </button>
     </div>
   );

@@ -15,7 +15,6 @@ describe('WS Handler', () => {
   beforeEach(() => {
     callbacks = {
       onUserInput: vi.fn(),
-      onApprovalResponse: vi.fn(),
       onResize: vi.fn(),
     };
   });
@@ -24,12 +23,6 @@ describe('WS Handler', () => {
     const ws = createMockWs();
     handleWsMessage(ws, JSON.stringify({ type: 'user_input', data: 'hello' }), callbacks);
     expect(callbacks.onUserInput).toHaveBeenCalledWith('hello');
-  });
-
-  it('should route approval_response messages', () => {
-    const ws = createMockWs();
-    handleWsMessage(ws, JSON.stringify({ type: 'approval_response', id: 'abc-123', approved: true }), callbacks);
-    expect(callbacks.onApprovalResponse).toHaveBeenCalledWith('abc-123', true);
   });
 
   it('should route resize messages', () => {
@@ -58,7 +51,6 @@ describe('WS Handler', () => {
     const ws = createMockWs();
     handleWsMessage(ws, JSON.stringify({ type: 'unknown_type' }), callbacks);
     expect(callbacks.onUserInput).not.toHaveBeenCalled();
-    expect(callbacks.onApprovalResponse).not.toHaveBeenCalled();
   });
 
   it('should validate user_input has string data', () => {

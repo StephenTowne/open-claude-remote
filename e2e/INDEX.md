@@ -7,8 +7,10 @@
 - server-fixture.ts: 扩展 Playwright fixture，提供 serverUrl/authToken 与 authenticate() 登录助手并注入 WS seq 跟踪
 
 ## helpers/
+- hooks-setup.ts: 管理 E2E 期间 Claude settings.json 的 Notification Hook 注入与恢复，确保 permission_prompt 可转发到 /api/hook
 - screenshot-helper.ts: 封装终端/整页截图断言与手动截图工具，统一 toHaveScreenshot 容差配置
 - selectors.ts: 统一维护认证页、控制台、审批卡与连接横幅选择器常量，避免测试内硬编码
+- server-manager.ts: 提供按 spec 启停的后端进程管理，含端口占用清理、启动就绪等待与优雅/强制停止兜底
 - wait-helpers.ts: 提供连接状态、审批卡、终端渲染与 WS seq 增量等待工具，替代固定 sleep
 
 ## tests/

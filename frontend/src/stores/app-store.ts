@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ApprovalRequest, SessionStatus } from '@claude-remote/shared';
+import type { SessionStatus } from '@claude-remote/shared';
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
@@ -15,10 +15,6 @@ interface AppState {
   // Session
   sessionStatus: SessionStatus;
   setSessionStatus: (status: SessionStatus) => void;
-
-  // Approval
-  pendingApproval: ApprovalRequest | null;
-  setPendingApproval: (approval: ApprovalRequest | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -30,7 +26,4 @@ export const useAppStore = create<AppState>((set) => ({
 
   sessionStatus: 'idle',
   setSessionStatus: (status) => set({ sessionStatus: status }),
-
-  pendingApproval: null,
-  setPendingApproval: (approval) => set({ pendingApproval: approval }),
 }));

@@ -1,6 +1,4 @@
 import { EventEmitter } from 'node:events';
-import { randomUUID } from 'node:crypto';
-import type { ApprovalRequest } from '@claude-remote/shared';
 import { logger } from '../logger/logger.js';
 
 /**
@@ -19,38 +17,49 @@ export interface HookPayload {
   [key: string]: unknown;
 }
 
+/**
+ * Simplified notification info emitted from hook processing.
+ */
+export interface HookNotification {
+  tool: string;
+  message: string;
+}
+
 // Pattern: "Claude needs your permission to use <ToolName>"
 const PERMISSION_TOOL_RE = /permission to use (\S+)$/;
 
 /**
  * Receives and parses Hook HTTP POST from Claude Code.
- * Emits 'approval' events when a permission_prompt notification arrives.
+ * Emits 'notification' events when a hook arrives.
  */
 export class HookReceiver extends EventEmitter {
   /**
    * Process an incoming hook payload.
    */
-  processHook(payload: HookPayload): ApprovalRequest | null {
+  processHook(payload: HookPayload): HookNotification | null {
     logger.info({ payload }, 'Hook received');
+
+    if (payload.notification_type && payload.notification_type !== 'permission_prompt') {
+      logger.debug({ notificationType: payload.notification_type }, 'Non-permission hook ignored');
+      return null;
+    }
 
     // Extract tool name: prefer explicit tool_name, then parse from message
     const toolName = payload.tool_name
       ?? this.extractToolFromMessage(payload.message)
       ?? 'unknown_tool';
 
-    const description = payload.message
+    const message = payload.message
       ?? (payload.tool_name ? `Tool call: ${payload.tool_name}` : 'Approval requested (no details provided)');
 
-    const approval: ApprovalRequest = {
-      id: randomUUID(),
+    const notification: HookNotification = {
       tool: String(toolName),
-      description: String(description),
-      params: payload.tool_input,
+      message: String(message),
     };
 
-    logger.info({ approvalId: approval.id, tool: approval.tool }, 'Approval request created from hook');
-    this.emit('approval', approval);
-    return approval;
+    logger.info({ tool: notification.tool }, 'Hook notification created');
+    this.emit('notification', notification);
+    return notification;
   }
 
   private extractToolFromMessage(message?: string): string | null {

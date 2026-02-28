@@ -13,7 +13,6 @@ export function createStatusRoutes(authModule: AuthModule, getController: () => 
     }
     res.json({
       status: controller.status,
-      pendingApproval: controller.pendingApproval,
       connectedClients: controller.connectedClients,
     });
   });
