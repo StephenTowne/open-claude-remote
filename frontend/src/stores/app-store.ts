@@ -10,7 +10,10 @@ interface AppState {
 
   // Connection
   connectionStatus: ConnectionStatus;
+  instanceConnectionStatus: Record<string, ConnectionStatus>;
   setConnectionStatus: (status: ConnectionStatus) => void;
+  setInstanceConnectionStatus: (instanceId: string, status: ConnectionStatus) => void;
+  removeInstanceConnectionStatus: (instanceId: string) => void;
 
   // Session
   sessionStatus: SessionStatus;
@@ -26,7 +29,18 @@ export const useAppStore = create<AppState>((set) => ({
   setAuthenticated: (value) => set({ isAuthenticated: value }),
 
   connectionStatus: 'disconnected',
+  instanceConnectionStatus: {},
   setConnectionStatus: (status) => set({ connectionStatus: status }),
+  setInstanceConnectionStatus: (instanceId, status) => set((state) => ({
+    instanceConnectionStatus: {
+      ...state.instanceConnectionStatus,
+      [instanceId]: status,
+    },
+  })),
+  removeInstanceConnectionStatus: (instanceId) => set((state) => {
+    const { [instanceId]: _, ...rest } = state.instanceConnectionStatus;
+    return { instanceConnectionStatus: rest };
+  }),
 
   sessionStatus: 'idle',
   setSessionStatus: (status) => set({ sessionStatus: status }),

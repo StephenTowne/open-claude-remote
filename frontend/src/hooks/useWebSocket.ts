@@ -2,15 +2,35 @@ import { useEffect, useRef, useCallback } from 'react';
 import type { ServerMessage, ClientMessage } from '@claude-remote/shared';
 import { useAppStore } from '../stores/app-store.js';
 
+const DEFAULT_INSTANCE_ID = '__default__';
+
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
 
-export function useWebSocket(onMessage: (msg: ServerMessage) => void, wsUrl?: string) {
+export function useWebSocket(
+  onMessage: (msg: ServerMessage) => void,
+  wsUrl?: string,
+  instanceId = DEFAULT_INSTANCE_ID,
+) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempt = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const onMessageRef = useRef(onMessage);
+  const connectionTokenRef = useRef(0);
+  const isDisposedRef = useRef(false);
+
   const setConnectionStatus = useAppStore((s) => s.setConnectionStatus);
   const setConnectionStatusRef = useRef(setConnectionStatus);
+  const setInstanceConnectionStatus = useAppStore((s) => s.setInstanceConnectionStatus);
+  const setInstanceConnectionStatusRef = useRef(setInstanceConnectionStatus);
+
+  const setStatus = useCallback((status: 'connecting' | 'connected' | 'disconnected') => {
+    // Only update global connectionStatus for default (single-instance) connections.
+    // In multi-instance mode, UI components read instanceConnectionStatus instead.
+    if (instanceId === DEFAULT_INSTANCE_ID) {
+      setConnectionStatusRef.current(status);
+    }
+    setInstanceConnectionStatusRef.current(instanceId, status);
+  }, [instanceId]);
 
   // Keep refs up to date without causing re-renders
   useEffect(() => {
@@ -21,12 +41,19 @@ export function useWebSocket(onMessage: (msg: ServerMessage) => void, wsUrl?: st
     setConnectionStatusRef.current = setConnectionStatus;
   }, [setConnectionStatus]);
 
+  useEffect(() => {
+    setInstanceConnectionStatusRef.current = setInstanceConnectionStatus;
+  }, [setInstanceConnectionStatus]);
+
   const connectRef = useRef<(() => void) | undefined>(undefined);
 
-  const scheduleReconnect = useCallback(() => {
+  const scheduleReconnect = useCallback((token: number) => {
     const delay = RECONNECT_DELAYS[Math.min(reconnectAttempt.current, RECONNECT_DELAYS.length - 1)];
     reconnectAttempt.current++;
     reconnectTimer.current = setTimeout(() => {
+      if (isDisposedRef.current || token !== connectionTokenRef.current) {
+        return;
+      }
       connectRef.current?.();
     }, delay);
   }, []);
@@ -42,16 +69,32 @@ export function useWebSocket(onMessage: (msg: ServerMessage) => void, wsUrl?: st
       return `${protocol}//${window.location.host}/ws`;
     })();
 
-    setConnectionStatusRef.current('connecting');
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = undefined;
+    }
+
+    // Safe to reset: this hook relies on key={instanceId} for rebuild,
+    // so connect() is never called after cleanup within the same hook instance.
+    isDisposedRef.current = false;
+    const token = ++connectionTokenRef.current;
+
+    setStatus('connecting');
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setConnectionStatusRef.current('connected');
+      if (isDisposedRef.current || token !== connectionTokenRef.current || wsRef.current !== ws) {
+        return;
+      }
+      setStatus('connected');
       reconnectAttempt.current = 0;
     };
 
     ws.onmessage = (event) => {
+      if (isDisposedRef.current || token !== connectionTokenRef.current || wsRef.current !== ws) {
+        return;
+      }
       try {
         const msg = JSON.parse(event.data) as ServerMessage;
         onMessageRef.current(msg);
@@ -61,15 +104,18 @@ export function useWebSocket(onMessage: (msg: ServerMessage) => void, wsUrl?: st
     };
 
     ws.onclose = () => {
+      if (isDisposedRef.current || token !== connectionTokenRef.current || wsRef.current !== ws) {
+        return;
+      }
       wsRef.current = null;
-      setConnectionStatusRef.current('disconnected');
-      scheduleReconnect();
+      setStatus('disconnected');
+      scheduleReconnect(token);
     };
 
     ws.onerror = () => {
       // onclose will fire after onerror
     };
-  }, [scheduleReconnect, wsUrl]);
+  }, [scheduleReconnect, setStatus, wsUrl]);
 
   // Keep connectRef in sync
   useEffect(() => {
@@ -83,11 +129,17 @@ export function useWebSocket(onMessage: (msg: ServerMessage) => void, wsUrl?: st
   }, []);
 
   const disconnect = useCallback(() => {
+    isDisposedRef.current = true;
+    connectionTokenRef.current++;
+
     if (reconnectTimer.current) {
       clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = undefined;
     }
-    wsRef.current?.close();
+
+    const ws = wsRef.current;
     wsRef.current = null;
+    ws?.close();
   }, []);
 
   useEffect(() => {
@@ -96,11 +148,16 @@ export function useWebSocket(onMessage: (msg: ServerMessage) => void, wsUrl?: st
     };
     window.addEventListener('offline', handleOffline);
     return () => {
+      isDisposedRef.current = true;
+      connectionTokenRef.current++;
       window.removeEventListener('offline', handleOffline);
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = undefined;
       }
-      wsRef.current?.close();
+      const ws = wsRef.current;
+      wsRef.current = null;
+      ws?.close();
     };
   }, []);
 

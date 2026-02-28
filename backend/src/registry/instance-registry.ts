@@ -19,6 +19,9 @@ function isProcessAlive(pid: number): boolean {
 /**
  * 实例注册表管理器。
  * 操作 ~/.claude-remote/instances.json 实现多实例发现。
+ *
+ * 注意：read-modify-write 流程非原子操作，多实例并发启动时可能丢失注册。
+ * 实际影响较低：下次 list() 调用时会发现所有存活实例。
  */
 export class InstanceRegistryManager {
   private readonly registryPath: string;

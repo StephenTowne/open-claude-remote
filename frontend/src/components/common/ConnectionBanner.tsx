@@ -1,7 +1,14 @@
 import { useAppStore } from '../../stores/app-store.js';
+import { useInstanceStore } from '../../stores/instance-store.js';
 
 export function ConnectionBanner() {
-  const status = useAppStore((s) => s.connectionStatus);
+  const activeInstanceId = useInstanceStore((s) => s.activeInstanceId);
+  const status = useAppStore((s) => {
+    if (!activeInstanceId) {
+      return s.connectionStatus;
+    }
+    return s.instanceConnectionStatus[activeInstanceId] ?? 'disconnected';
+  });
 
   if (status === 'connected') return null;
 

@@ -19,7 +19,7 @@ import { authenticateToInstance, buildInstanceWsUrl } from '../services/instance
  * 终端内容子组件。用 key={instanceId} 强制重建以实现 Tab 切换时
  * 旧 WS 关闭 + 新 WS 建连 + history_sync 恢复。
  */
-function ConsoleContent({ wsUrl }: { wsUrl?: string }) {
+function ConsoleContent({ wsUrl, instanceId }: { wsUrl?: string; instanceId?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { write, scrollToBottom, resize } = useTerminal(containerRef);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
@@ -55,7 +55,7 @@ function ConsoleContent({ wsUrl }: { wsUrl?: string }) {
     }
   }, [write, scrollToBottom, resize, setSessionStatus]);
 
-  const { connect, send } = useWebSocket(handleMessage, wsUrl);
+  const { connect, send } = useWebSocket(handleMessage, wsUrl, instanceId);
 
   // Connect only once on mount
   const connectCalledRef = useRef(false);
@@ -135,7 +135,7 @@ export function ConsolePage() {
       <StatusBar />
       <InstanceTabs onSwitch={handleInstanceSwitch} />
       {/* key=activeInstanceId 强制 React 重建整个终端+WS */}
-      <ConsoleContent key={activeInstanceId ?? 'default'} wsUrl={wsUrl} />
+      <ConsoleContent key={activeInstanceId ?? 'default'} wsUrl={wsUrl} instanceId={activeInstanceId ?? undefined} />
     </div>
   );
 }

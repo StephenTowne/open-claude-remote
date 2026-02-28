@@ -40,7 +40,7 @@ export function loadConfig(): AppConfig {
   const displayIp = process.env.DISPLAY_IP ?? detectLanIp() ?? detectNonLoopbackIp() ?? '127.0.0.1';
   const config: AppConfig = {
     port: parseInt(process.env.PORT ?? String(DEFAULT_PORT), 10),
-    host: '0.0.0.0', // Always bind to all interfaces for remote access
+    host: process.env.HOST ?? '0.0.0.0', // Default: bind to all interfaces for remote access
     displayIp,
     claudeCommand: process.env.CLAUDE_COMMAND ?? 'claude',
     claudeArgs: parseJsonArray(process.env.CLAUDE_ARGS),

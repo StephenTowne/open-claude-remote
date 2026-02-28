@@ -15,12 +15,18 @@ const CONNECTION_CONFIG = {
 
 export function StatusBar() {
   const sessionStatus = useAppStore((s) => s.sessionStatus);
-  const connectionStatus = useAppStore((s) => s.connectionStatus);
-  const statusCfg = STATUS_CONFIG[sessionStatus];
-  const connCfg = CONNECTION_CONFIG[connectionStatus];
-
   const instances = useInstanceStore((s) => s.instances);
   const activeInstanceId = useInstanceStore((s) => s.activeInstanceId);
+
+  const connectionStatus = useAppStore((s) => {
+    if (!activeInstanceId) {
+      return s.connectionStatus;
+    }
+    return s.instanceConnectionStatus[activeInstanceId] ?? 'disconnected';
+  });
+
+  const statusCfg = STATUS_CONFIG[sessionStatus];
+  const connCfg = CONNECTION_CONFIG[connectionStatus];
   const activeInstance = instances.find(i => i.instanceId === activeInstanceId);
   const instanceName = activeInstance?.name;
 

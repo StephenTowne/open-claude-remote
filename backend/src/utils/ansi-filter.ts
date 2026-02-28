@@ -84,7 +84,6 @@ export class AlternateScreenFilter {
     let result = '';
     let currentPos = 0;
     let inAltScreen = this._inAlternateScreen;
-    let lastWasSeq = false;
 
     for (const seg of segments) {
       // 处理序列之前的内容（如果有）
@@ -103,7 +102,6 @@ export class AlternateScreenFilter {
       }
 
       currentPos = seg.index + seg.length;
-      lastWasSeq = true;
     }
 
     // 处理最后一个序列之后的内容

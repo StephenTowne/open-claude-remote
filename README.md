@@ -23,7 +23,17 @@ Claude Code Remote 在 PC 和 Claude Code CLI 之间架设代理层：
 - pnpm >= 9
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 已安装并可用
 
-### 步骤
+### 一键安装
+
+```bash
+git clone <repo-url> claude-code-remote
+cd claude-code-remote
+./install.sh
+```
+
+脚本会自动完成：依赖安装 → 项目构建 → 全局链接 `claude-remote` 命令 → 配置 Claude Code Hook。
+
+### 手动安装
 
 ```bash
 # 1. 克隆并安装依赖
