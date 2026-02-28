@@ -85,5 +85,9 @@ export function useTerminal(containerRef: React.RefObject<HTMLDivElement | null>
     termRef.current?.scrollToBottom();
   }, []);
 
-  return { write, clear, scrollToBottom, terminal: termRef };
+  const resize = useCallback((cols: number, rows: number) => {
+    termRef.current?.resize(cols, rows);
+  }, []);
+
+  return { write, clear, scrollToBottom, resize, terminal: termRef };
 }

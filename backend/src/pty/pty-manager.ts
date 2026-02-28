@@ -15,18 +15,29 @@ export interface PtyManagerEvents {
   data: (data: string) => void;
   exit: (exitCode: number, signal?: number) => void;
   error: (err: Error) => void;
+  resize: (cols: number, rows: number) => void;
 }
 
 /**
  * Manages a PTY process (Claude Code CLI).
- * Emits: 'data', 'exit', 'error'
+ * Emits: 'data', 'exit', 'error', 'resize'
  */
 export class PtyManager extends EventEmitter {
   private process: pty.IPty | null = null;
   private _exited: boolean = false;
+  private _cols: number = 80;
+  private _rows: number = 24;
 
   get exited(): boolean {
     return this._exited;
+  }
+
+  get cols(): number {
+    return this._cols;
+  }
+
+  get rows(): number {
+    return this._rows;
   }
 
   /**
@@ -39,6 +50,10 @@ export class PtyManager extends EventEmitter {
 
     const cols = options.cols ?? process.stdout.columns ?? 80;
     const rows = options.rows ?? process.stdout.rows ?? 24;
+
+    // Store initial size
+    this._cols = cols;
+    this._rows = rows;
 
     logger.info({ command: options.command, args: options.args, cwd: options.cwd, cols, rows }, 'Spawning PTY process');
 
@@ -87,7 +102,10 @@ export class PtyManager extends EventEmitter {
     if (!this.process) return;
     try {
       this.process.resize(cols, rows);
+      this._cols = cols;
+      this._rows = rows;
       logger.debug({ cols, rows }, 'PTY resized');
+      this.emit('resize', cols, rows);
     } catch (err) {
       logger.error({ err }, 'Failed to resize PTY');
     }

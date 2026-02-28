@@ -21,7 +21,7 @@ import { authenticateToInstance, buildInstanceWsUrl } from '../services/instance
  */
 function ConsoleContent({ wsUrl }: { wsUrl?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { write, scrollToBottom } = useTerminal(containerRef);
+  const { write, scrollToBottom, resize } = useTerminal(containerRef);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
 
   const handleMessage = useCallback((msg: ServerMessage) => {
@@ -33,7 +33,15 @@ function ConsoleContent({ wsUrl }: { wsUrl?: string }) {
       case 'history_sync':
         write(msg.data);
         setSessionStatus(msg.status);
+        // Sync PTY size to ensure ANSI sequences work correctly
+        if (msg.cols && msg.rows) {
+          resize(msg.cols, msg.rows);
+        }
         scrollToBottom();
+        break;
+      case 'terminal_resize':
+        // PTY size changed, sync xterm.js size
+        resize(msg.cols, msg.rows);
         break;
       case 'status_update':
         setSessionStatus(msg.status);
@@ -45,7 +53,7 @@ function ConsoleContent({ wsUrl }: { wsUrl?: string }) {
         write(`\r\n\x1b[31m[Error] ${msg.message}\x1b[0m\r\n`);
         break;
     }
-  }, [write, scrollToBottom, setSessionStatus]);
+  }, [write, scrollToBottom, resize, setSessionStatus]);
 
   const { connect, send } = useWebSocket(handleMessage, wsUrl);
 

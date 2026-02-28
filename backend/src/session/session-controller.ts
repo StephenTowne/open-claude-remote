@@ -5,6 +5,7 @@ import { OutputBuffer } from '../pty/output-buffer.js';
 import { WsServer } from '../ws/ws-server.js';
 import { HookReceiver, type HookNotification } from '../hooks/hook-receiver.js';
 import { handleWsMessage } from '../ws/ws-handler.js';
+import { AlternateScreenFilter } from '../utils/ansi-filter.js';
 import { logger } from '../logger/logger.js';
 import type { PushService } from '../push/push-service.js';
 
@@ -14,6 +15,7 @@ import type { PushService } from '../push/push-service.js';
 export class SessionController {
   private _status: SessionStatus = 'idle';
   private buffer: OutputBuffer;
+  private altScreenFilter: AlternateScreenFilter;
   private pushService: PushService | null = null;
 
   constructor(
@@ -23,6 +25,7 @@ export class SessionController {
     maxBufferLines: number,
   ) {
     this.buffer = new OutputBuffer(maxBufferLines);
+    this.altScreenFilter = new AlternateScreenFilter();
     this.setupPtyHandlers();
     this.setupWsHandlers();
     this.setupHookHandlers();
@@ -48,18 +51,25 @@ export class SessionController {
    */
   private setupPtyHandlers(): void {
     this.ptyManager.on('data', (data: string) => {
-      // Buffer for reconnection
-      this.buffer.append(data);
-
-      // Write to PC terminal
+      // Write to PC terminal (original, unfiltered)
       process.stdout.write(data);
 
-      // Broadcast to mobile clients
-      this.wsServer.broadcast({
-        type: 'terminal_output',
-        data,
-        seq: this.buffer.sequenceNumber,
-      });
+      // Filter alternate screen content for web clients
+      const filteredData = this.altScreenFilter.process(data);
+
+      // Buffer filtered data for reconnection (avoid showing alt-screen content on reconnect)
+      if (filteredData) {
+        this.buffer.append(filteredData);
+      }
+
+      // Broadcast filtered data to mobile clients
+      if (filteredData) {
+        this.wsServer.broadcast({
+          type: 'terminal_output',
+          data: filteredData,
+          seq: this.buffer.sequenceNumber,
+        });
+      }
     });
 
     this.ptyManager.on('exit', (exitCode: number) => {
@@ -78,6 +88,16 @@ export class SessionController {
         type: 'error',
         code: 'pty_error',
         message: err.message,
+      });
+    });
+
+    // Broadcast PTY resize to web clients
+    this.ptyManager.on('resize', (cols: number, rows: number) => {
+      logger.debug({ cols, rows }, 'PTY resize event, broadcasting to web clients');
+      this.wsServer.broadcast({
+        type: 'terminal_resize',
+        cols,
+        rows,
       });
     });
   }
@@ -106,6 +126,8 @@ export class SessionController {
         data: this.buffer.getFullContent(),
         seq: this.buffer.sequenceNumber,
         status: this._status,
+        cols: this.ptyManager.cols,
+        rows: this.ptyManager.rows,
       });
     });
   }

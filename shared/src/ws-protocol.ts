@@ -21,6 +21,8 @@ export interface HistorySyncMessage {
   data: string;
   seq: number;
   status: SessionStatus;
+  cols?: number;
+  rows?: number;
 }
 
 export interface HeartbeatMessage {
@@ -40,13 +42,20 @@ export interface SessionEndedMessage {
   reason: string;
 }
 
+export interface TerminalResizeMessage {
+  type: 'terminal_resize';
+  cols: number;
+  rows: number;
+}
+
 export type ServerMessage =
   | TerminalOutputMessage
   | StatusUpdateMessage
   | HistorySyncMessage
   | HeartbeatMessage
   | ErrorMessage
-  | SessionEndedMessage;
+  | SessionEndedMessage
+  | TerminalResizeMessage;
 
 // ==============================
 // Client → Server Messages
