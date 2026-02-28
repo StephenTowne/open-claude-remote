@@ -57,13 +57,13 @@ if [ -f "$SETTINGS_FILE" ]; then
 
   echo "Merging hook configuration into existing settings..."
   MERGED=$(jq -n \
-    --argfile existing "$SETTINGS_FILE" \
+    --slurpfile existing "$SETTINGS_FILE" \
     --argjson incoming "$HOOK_CONFIG" '
       def merge_hook_array(existing; incoming):
         ((existing // []) + (incoming // []))
         | unique_by(.matcher + "|" + ((.hooks // [])[0].command // ""));
 
-      ($existing // {}) as $e
+      ($existing[0] // {}) as $e
       | ($incoming // {}) as $i
       | {
           hooks: {
