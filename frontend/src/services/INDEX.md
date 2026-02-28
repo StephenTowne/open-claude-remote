@@ -3,3 +3,4 @@
 
 - api-client.ts: authenticate() / getStatus() / healthCheck()，fetch 封装，credentials: include 携带 Session Cookie，429 状态抛异常
 - instance-api.ts: fetchInstances() 获取实例列表 + authenticateToInstance() 跨实例认证 + buildInstanceWsUrl() 构建目标实例 WS URL
+- token-storage.ts: Token 持久化存储（sessionStorage），saveToken/loadToken/clearToken，用于跨实例认证场景

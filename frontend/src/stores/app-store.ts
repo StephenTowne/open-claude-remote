@@ -6,7 +6,9 @@ type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 interface AppState {
   // Auth
   isAuthenticated: boolean;
+  isCheckingAuth: boolean;
   setAuthenticated: (value: boolean) => void;
+  setCheckingAuth: (value: boolean) => void;
 
   // Connection
   connectionStatus: ConnectionStatus;
@@ -31,7 +33,9 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   isAuthenticated: false,
-  setAuthenticated: (value) => set({ isAuthenticated: value }),
+  isCheckingAuth: true, // Start with checking state
+  setAuthenticated: (value) => set({ isAuthenticated: value, isCheckingAuth: false }),
+  setCheckingAuth: (value) => set({ isCheckingAuth: value }),
 
   connectionStatus: 'disconnected',
   instanceConnectionStatus: {},

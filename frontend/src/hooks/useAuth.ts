@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { authenticate } from '../services/api-client.js';
 import { useAppStore } from '../stores/app-store.js';
+import { saveToken, clearToken } from '../services/token-storage.js';
 
 export function useAuth() {
   const [error, setError] = useState<string | null>(null);
@@ -16,6 +17,7 @@ export function useAuth() {
       if (ok) {
         setAuthenticated(true);
         setCachedToken(token);
+        saveToken(token);
       } else {
         setError('Invalid token');
       }
@@ -26,5 +28,11 @@ export function useAuth() {
     }
   }, [setAuthenticated, setCachedToken]);
 
-  return { login, error, loading };
+  const logout = useCallback(() => {
+    setAuthenticated(false);
+    setCachedToken(null);
+    clearToken();
+  }, [setAuthenticated, setCachedToken]);
+
+  return { login, logout, error, loading };
 }

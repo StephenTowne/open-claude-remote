@@ -123,7 +123,7 @@ sequenceDiagram
 ### 认证
 - backend: `auth/token-generator.ts`, `auth/auth-middleware.ts`, `auth/rate-limiter.ts`
 - backend: `api/auth-routes.ts`
-- frontend: `pages/AuthPage.tsx`, `hooks/useAuth.ts`, `services/api-client.ts`
+- frontend: `pages/AuthPage.tsx`, `hooks/useAuth.ts`, `services/api-client.ts`, `services/token-storage.ts`
 
 ### 实时终端
 - backend: `ws/ws-server.ts`, `ws/ws-handler.ts`
