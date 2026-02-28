@@ -89,7 +89,12 @@ export function useWebSocket(onMessage: (msg: ServerMessage) => void) {
   }, []);
 
   useEffect(() => {
+    const handleOffline = () => {
+      wsRef.current?.close();
+    };
+    window.addEventListener('offline', handleOffline);
     return () => {
+      window.removeEventListener('offline', handleOffline);
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
       }

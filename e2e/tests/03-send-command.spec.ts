@@ -2,8 +2,16 @@ import { test, expect } from '../fixtures/server-fixture.js';
 import { SELECTORS } from '../helpers/selectors.js';
 import { waitForConnected, waitForTerminal, waitForTerminalContent, getTerminalSeq, waitForTerminalUpdate } from '../helpers/wait-helpers.js';
 import { takeTerminalScreenshot } from '../helpers/screenshot-helper.js';
+import { serverManager } from '../helpers/server-manager.js';
 
 test.describe('Send Command', () => {
+  test.beforeAll(async () => {
+    await serverManager.start();
+  });
+  test.afterAll(async () => {
+    await serverManager.stop();
+  });
+
   test.beforeEach(async ({ page, authenticate }) => {
     await authenticate(page);
     await waitForConnected(page);

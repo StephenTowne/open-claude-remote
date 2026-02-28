@@ -5,8 +5,16 @@ import {
   waitForTerminal,
   waitForDisconnected,
 } from '../helpers/wait-helpers.js';
+import { serverManager } from '../helpers/server-manager.js';
 
 test.describe('Reconnection', () => {
+  test.beforeAll(async () => {
+    await serverManager.start();
+  });
+  test.afterAll(async () => {
+    await serverManager.stop();
+  });
+
   test.beforeEach(async ({ page, authenticate }) => {
     await authenticate(page);
     await waitForConnected(page);

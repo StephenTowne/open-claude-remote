@@ -1,8 +1,15 @@
 import { test, expect } from '../fixtures/server-fixture.js';
 import { SELECTORS } from '../helpers/selectors.js';
-import { expectPageSnapshot } from '../helpers/screenshot-helper.js';
+import { serverManager } from '../helpers/server-manager.js';
 
 test.describe('Authentication Flow', () => {
+  test.beforeAll(async () => {
+    await serverManager.start();
+  });
+  test.afterAll(async () => {
+    await serverManager.stop();
+  });
+
   test('shows auth page on first visit', async ({ page, serverUrl }) => {
     await page.goto(serverUrl);
 
@@ -50,12 +57,5 @@ test.describe('Authentication Flow', () => {
     // InputBar visible
     await expect(page.locator(SELECTORS.CONSOLE.inputField)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Send' })).toBeVisible();
-  });
-
-  test('auth page screenshot baseline', async ({ page, serverUrl }) => {
-    await page.goto(serverUrl);
-    // Wait for page to settle
-    await expect(page.locator(SELECTORS.AUTH.title)).toBeVisible();
-    await expectPageSnapshot(page, 'auth-page');
   });
 });

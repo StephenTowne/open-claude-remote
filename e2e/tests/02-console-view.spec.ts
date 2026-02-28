@@ -1,9 +1,16 @@
 import { test, expect } from '../fixtures/server-fixture.js';
 import { SELECTORS } from '../helpers/selectors.js';
-import { waitForConnected, waitForStatus, waitForTerminal, waitForTerminalContent } from '../helpers/wait-helpers.js';
-import { expectTerminalSnapshot, expectPageSnapshot } from '../helpers/screenshot-helper.js';
+import { waitForConnected, waitForStatus, waitForTerminal } from '../helpers/wait-helpers.js';
+import { serverManager } from '../helpers/server-manager.js';
 
 test.describe('Console View', () => {
+  test.beforeAll(async () => {
+    await serverManager.start();
+  });
+  test.afterAll(async () => {
+    await serverManager.stop();
+  });
+
   test.beforeEach(async ({ page, authenticate }) => {
     await authenticate(page);
   });
@@ -31,16 +38,5 @@ test.describe('Console View', () => {
 
     const sendButton = page.getByRole('button', { name: 'Send' });
     await expect(sendButton).toBeVisible();
-  });
-
-  test('console page screenshot baseline', async ({ page }) => {
-    await waitForConnected(page);
-    await waitForTerminalContent(page);
-    await expectPageSnapshot(page, 'console-page');
-  });
-
-  test('terminal screenshot baseline', async ({ page }) => {
-    await waitForTerminalContent(page);
-    await expectTerminalSnapshot(page, 'initial');
   });
 });

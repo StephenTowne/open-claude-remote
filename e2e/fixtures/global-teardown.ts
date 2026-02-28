@@ -1,95 +1,50 @@
-import { readFileSync, existsSync, unlinkSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { execSync } from 'node:child_process';
+import { createConnection } from 'node:net';
+import { restoreE2eHooks } from '../helpers/hooks-setup.js';
 
-const STATE_FILE = resolve(import.meta.dirname, '../.server-state.json');
+const PORT = 3000;
+const HOST = '127.0.0.1';
 
-interface ServerState {
-  pid: number;
-  url: string;
-  token: string;
+function isPortInUse(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ port: PORT, host: HOST }, () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('error', () => resolve(false));
+  });
 }
 
-async function killProcessTree(pid: number): Promise<void> {
-  // Check if process exists
-  try {
-    process.kill(pid, 0);
-  } catch {
-    console.log(`[e2e-teardown] Process ${pid} already exited.`);
-    return;
-  }
-
-  // Try to kill the whole process group first (negative PID)
-  try {
-    process.kill(-pid, 'SIGTERM');
-    console.log(`[e2e-teardown] Sent SIGTERM to process tree ${pid}`);
-  } catch {
-    // Process group might not exist, fallback to single process
-    try {
-      process.kill(pid, 'SIGTERM');
-      console.log(`[e2e-teardown] Sent SIGTERM to PID ${pid}`);
-    } catch {
-      console.log(`[e2e-teardown] Process ${pid} already exited.`);
-      return;
-    }
-  }
-
-  // Wait for process to terminate (poll every 100ms, max 5s)
-  const maxWait = 5000;
-  const interval = 100;
-  let waited = 0;
-
-  while (waited < maxWait) {
-    try {
-      process.kill(pid, 0);
-      // Process still exists, wait more
-      await new Promise((r) => setTimeout(r, interval));
-      waited += interval;
-    } catch {
-      // Process has terminated
-      console.log(`[e2e-teardown] Process ${pid} terminated after ${waited}ms`);
-      return;
-    }
-  }
-
-  // Process still running after 5s, force kill the whole tree
-  try {
-    process.kill(-pid, 'SIGKILL');
-    console.log(`[e2e-teardown] Sent SIGKILL to process tree ${pid}`);
-  } catch {
-    try {
-      process.kill(pid, 'SIGKILL');
-      console.log(`[e2e-teardown] Sent SIGKILL to PID ${pid}`);
-    } catch {
-      // Already dead
-    }
-  }
-  // Wait a bit for SIGKILL to take effect
-  await new Promise((r) => setTimeout(r, 500));
-}
-
+/**
+ * Safety-net teardown: restore hooks and kill any leftover server process on PORT.
+ */
 export default async function globalTeardown() {
-  // 1. Read state
-  if (!existsSync(STATE_FILE)) {
-    console.log('[e2e-teardown] No server state file found, skipping.');
+  // Restore original Claude Code settings
+  restoreE2eHooks();
+
+  if (!(await isPortInUse())) {
+    console.log('[e2e-teardown] Port is free, nothing to clean up.');
     return;
   }
 
-  let state: ServerState;
+  console.log(`[e2e-teardown] Port ${PORT} still in use, cleaning up...`);
   try {
-    state = JSON.parse(readFileSync(STATE_FILE, 'utf-8'));
+    const output = execSync(`lsof -t -i :${PORT}`, { encoding: 'utf-8' }).trim();
+    if (output) {
+      const pid = parseInt(output.split('\n')[0], 10);
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          /* already dead */
+        }
+      }
+      console.log(`[e2e-teardown] Killed leftover process ${pid}`);
+    }
   } catch {
-    console.warn('[e2e-teardown] Failed to parse server state file.');
-    return;
-  }
-
-  // 2. Kill server process tree and wait for termination
-  await killProcessTree(state.pid);
-
-  // 3. Clean up state file
-  try {
-    unlinkSync(STATE_FILE);
-  } catch {
-    // ignore
+    /* lsof not available */
   }
 
   console.log('[e2e-teardown] Teardown complete.');

@@ -7,12 +7,26 @@ import {
   waitForApprovalDismissed,
   waitForStatus,
 } from '../helpers/wait-helpers.js';
+import { serverManager } from '../helpers/server-manager.js';
 
 test.describe('Approval Flow', () => {
+  test.beforeAll(async () => {
+    await serverManager.start();
+  });
+  test.afterAll(async () => {
+    await serverManager.stop();
+  });
+
   test.beforeEach(async ({ page, authenticate }) => {
     await authenticate(page);
     await waitForConnected(page);
     await waitForTerminal(page);
+    // Dismiss any pending approval left by a previous test
+    const rejectBtn = page.getByRole('button', { name: 'Reject' });
+    if (await rejectBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await rejectBtn.click();
+      await waitForApprovalDismissed(page);
+    }
   });
 
   test('trigger approval and verify card content', async ({ page }) => {
