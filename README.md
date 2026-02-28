@@ -126,7 +126,15 @@ cd ~/projects/api && claude-remote --name api
 
 ### 停止服务
 
-PC 终端处于 raw mode，单次 Ctrl+C 会直接发给 Claude Code（用于取消当前任务）。**连按两次 Ctrl+C（间隔 < 500ms）停止整个代理服务**。
+PC 终端处于 raw mode，单次 Ctrl+C 会直接发给 Claude Code（用于取消当前任务）。**连按两次 Ctrl+C（间隔 < 500ms）停止当前代理实例**。
+
+如需一键停止本机所有已注册实例，执行：
+
+```bash
+pnpm stop
+```
+
+`pnpm stop` 会读取多实例注册表（`~/.claude-remote/instances.json`），按实例逐个发送 `SIGTERM`，超时后自动兜底强制终止；当所有实例停止成功时返回码为 `0`，存在失败实例时返回非 `0` 并输出失败列表。
 
 ## 配置
 

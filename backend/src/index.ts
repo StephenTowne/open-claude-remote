@@ -17,7 +17,6 @@ import { TerminalRelay } from './terminal/terminal-relay.js';
 import { createApiRouter } from './api/router.js';
 import { PushService } from './push/push-service.js';
 import { logger } from './logger/logger.js';
-import { writePidFile, removePidFile } from './utils/pid-file.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { findAvailablePort } from './registry/port-finder.js';
 import { InstanceRegistryManager } from './registry/instance-registry.js';
@@ -26,11 +25,7 @@ async function main() {
   // 1. Load configuration
   const config = loadConfig();
 
-  // Write PID file for `pnpm stop`
-  // Use project root (backend/../) so the path is consistent regardless of CWD
   const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-  const pidFilePath = resolve(projectRoot, 'logs', 'app.pid');
-  writePidFile(pidFilePath);
 
   // 2. Shared config directory and token
   const sharedConfigDir = resolve(homedir(), CLAUDE_REMOTE_DIR);
@@ -170,7 +165,6 @@ async function main() {
     logger.info({ exitCode }, 'Shutting down...');
     // Unregister from shared registry
     registry.unregister(instanceId);
-    removePidFile(pidFilePath);
     relay.stop();
     // Pause stdin to remove it as an active event loop handle
     if (!process.stdin.isTTY) {

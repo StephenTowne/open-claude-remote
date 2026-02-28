@@ -7,6 +7,7 @@
 
 ## input/
 - InputBar.tsx: 底部固定输入栏，支持空输入直接发送 Enter，也支持文本输入发送
+- PromptSelector.tsx: 检测到 Claude Code 交互式选项提示时渲染可点击选项卡片，替换 InputBar+VirtualKeyBar，点击后发送方向键序列+Enter
 - VirtualKeyBar.tsx: 移动端虚拟按键条，提供 Esc/Tab/方向键/Ctrl+C 快捷输入
 
 ## status/

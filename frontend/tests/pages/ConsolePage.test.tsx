@@ -21,18 +21,31 @@ vi.mock('../../src/hooks/useInstances.js', () => ({
   useInstances: () => ({ activeInstanceId: 'inst-1' }),
 }));
 
+const mockReadLastLines = vi.fn(() => [] as string[]);
+const mockWrite = vi.fn((_data: string, callback?: () => void) => {
+  // 同步调用 callback，模拟 xterm 处理完成后触发扫描
+  callback?.();
+});
+
 vi.mock('../../src/hooks/useTerminal.js', () => ({
   useTerminal: () => ({
-    write: vi.fn(),
+    write: mockWrite,
     scrollToBottom: vi.fn(),
+    readLastLines: mockReadLastLines,
   }),
 }));
 
+let capturedHandleMessage: ((msg: unknown) => void) | null = null;
+const mockSend = vi.fn();
+
 vi.mock('../../src/hooks/useWebSocket.js', () => ({
-  useWebSocket: () => ({
-    connect: vi.fn(),
-    send: vi.fn(),
-  }),
+  useWebSocket: (handleMessage: (msg: unknown) => void) => {
+    capturedHandleMessage = handleMessage;
+    return {
+      connect: vi.fn(),
+      send: mockSend,
+    };
+  },
 }));
 
 vi.mock('../../src/components/status/StatusBar.js', () => ({
@@ -65,6 +78,8 @@ describe('ConsolePage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    capturedHandleMessage = null;
+    mockReadLastLines.mockReturnValue([]);
     viewportState.keyboardHeight = 0;
 
     useAppStore.setState({
@@ -294,5 +309,108 @@ describe('ConsolePage', () => {
     act(() => { vi.advanceTimersByTime(3000); });
 
     expect(screen.queryByText('测试提示消息')).toBeNull();
+  });
+
+  it('should show PromptSelector when terminal output contains selection prompt', async () => {
+    const promptLines = [
+      '  1. Option A',
+      '❯ 2. Option B',
+      '  3. Option C',
+      'Enter to select · Tab/Arrow keys to navigate · Esc to cancel',
+    ];
+    mockReadLastLines.mockReturnValue(promptLines);
+
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({ type: 'terminal_output', data: 'some data', seq: 1 });
+    });
+
+    expect(screen.getByTestId('prompt-selector')).toBeDefined();
+    expect(screen.getByText('Option A')).toBeDefined();
+    expect(screen.getByText('Option B')).toBeDefined();
+    expect(screen.getByText('Option C')).toBeDefined();
+    // InputBar 和 VirtualKeyBar 应被隐藏
+    expect(screen.queryByTestId('virtual-key-bar')).toBeNull();
+  });
+
+  it('should hide PromptSelector and restore InputBar after selecting an option', async () => {
+    const promptLines = [
+      '❯ 1. Yes',
+      '  2. No',
+      'Enter to select · Tab/Arrow keys to navigate · Esc to cancel',
+    ];
+    mockReadLastLines.mockReturnValue(promptLines);
+
+    render(<ConsolePage />);
+
+    // 触发提示出现
+    await act(async () => {
+      capturedHandleMessage?.({ type: 'terminal_output', data: 'some data', seq: 1 });
+    });
+
+    expect(screen.getByTestId('prompt-selector')).toBeDefined();
+
+    // 点击第二个选项（No），当前选中 0，目标为 1，需要发送 1 次 ↓
+    mockReadLastLines.mockReturnValue([]);
+    await act(async () => {
+      screen.getByText('No').click();
+    });
+
+    // PromptSelector 应消失，InputBar 应恢复
+    expect(screen.queryByTestId('prompt-selector')).toBeNull();
+    // 应发送一次 ↓ 箭头和 Enter
+    expect(mockSend).toHaveBeenCalledWith({ type: 'user_input', data: '\x1b[B' });
+    expect(mockSend).toHaveBeenCalledWith({ type: 'user_input', data: '\r' });
+  });
+
+  it('should update PromptSelector when options text changes with same length and selected index', async () => {
+    mockReadLastLines.mockReturnValue([
+      '❯ 1. Alpha',
+      '  2. Beta',
+      'Enter to select · Tab/Arrow keys to navigate · Esc to cancel',
+    ]);
+
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({ type: 'terminal_output', data: 'first output', seq: 1 });
+    });
+
+    expect(screen.getByText('Alpha')).toBeDefined();
+    expect(screen.getByText('Beta')).toBeDefined();
+
+    // 长度和 selectedIndex 保持不变，仅文本变化
+    mockReadLastLines.mockReturnValue([
+      '❯ 1. Gamma',
+      '  2. Delta',
+      'Enter to select · Tab/Arrow keys to navigate · Esc to cancel',
+    ]);
+
+    await act(async () => {
+      capturedHandleMessage?.({ type: 'terminal_output', data: 'second output', seq: 2 });
+    });
+
+    expect(screen.queryByText('Alpha')).toBeNull();
+    expect(screen.queryByText('Beta')).toBeNull();
+    expect(screen.getByText('Gamma')).toBeDefined();
+    expect(screen.getByText('Delta')).toBeDefined();
+  });
+
+  it('should not show PromptSelector when terminal output has no prompt marker', async () => {
+    mockReadLastLines.mockReturnValue([
+      '  1. Some text',
+      '  2. Other text',
+      // 无 "Tab/Arrow keys to navigate"
+    ]);
+
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({ type: 'terminal_output', data: 'normal output', seq: 1 });
+    });
+
+    expect(screen.queryByTestId('prompt-selector')).toBeNull();
+    expect(screen.getByTestId('virtual-key-bar')).toBeDefined();
   });
 });

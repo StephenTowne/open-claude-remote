@@ -131,7 +131,7 @@ sequenceDiagram
 - frontend: `components/input/InputBar.tsx`, `components/status/StatusBar.tsx`
 
 ### 多实例管理
-- backend: `registry/shared-token.ts`, `registry/port-finder.ts`, `registry/instance-registry.ts`
+- backend: `registry/shared-token.ts`, `registry/port-finder.ts`, `registry/instance-registry.ts`, `registry/stop-instances.ts`
 - backend: `api/instance-routes.ts`
 - frontend: `components/instances/InstanceTabs.tsx`, `hooks/useInstances.ts`, `stores/instance-store.ts`, `services/instance-api.ts`
 - shared: `instance.ts` (类型定义 + 常量)
@@ -165,6 +165,7 @@ node backend/dist/index.js  # 启动单一服务
 ### Development
 ```bash
 pnpm dev                    # concurrently 启动前后端 dev server
+pnpm stop                   # 按注册表停止本机所有实例（失败返回非 0）
 ```
 
 ### ENV vars

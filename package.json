@@ -8,7 +8,7 @@
     "build": "pnpm --filter shared build && pnpm --filter frontend build && pnpm --filter backend build",
     "start": "node backend/dist/index.js",
     "test": "pnpm --filter backend test",
-    "stop": "bash scripts/stop.sh",
+    "stop": "pnpm --filter backend exec tsx src/registry/stop-instances.ts",
     "clean": "pnpm -r exec rm -rf dist"
   },
   "devDependencies": {

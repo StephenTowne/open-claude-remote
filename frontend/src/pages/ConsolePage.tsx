@@ -1,9 +1,10 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useState } from 'react';
 import type { ServerMessage, InstanceListItem } from '@claude-remote/shared';
 import { StatusBar } from '../components/status/StatusBar.js';
 import { TerminalView } from '../components/terminal/TerminalView.js';
 import { InputBar } from '../components/input/InputBar.js';
 import { VirtualKeyBar } from '../components/input/VirtualKeyBar.js';
+import { PromptSelector } from '../components/input/PromptSelector.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
 import { InstanceTabs } from '../components/instances/InstanceTabs.js';
 import { useWebSocket } from '../hooks/useWebSocket.js';
@@ -15,10 +16,38 @@ import { useAppStore } from '../stores/app-store.js';
 import { useInstanceStore } from '../stores/instance-store.js';
 import { authenticateToInstance, buildInstanceWsUrl } from '../services/instance-api.js';
 
-/**
- * 终端内容子组件。用 key={instanceId} 强制重建以实现 Tab 切换时
- * 旧 WS 关闭 + 新 WS 建连 + history_sync 恢复。
- */
+// 检测 Claude Code 选项提示的标记文本（底部提示栏固定内容）
+const PROMPT_MARKER = 'Tab/Arrow keys to navigate';
+
+// 选项行格式：捕获组 1 = 前缀（空格或 ❯），捕获组 2 = 序号，捕获组 3 = 标签文本
+// 不包含 > 避免误匹配 shell prompt、git 输出等普通 > 开头的行
+const OPTION_LINE_RE = /^([\s❯]*)(\d+)\.\s+(.+)/;
+
+interface PromptState {
+  options: string[];
+  selectedIndex: number;
+}
+
+function detectPromptFromLines(lines: string[]): PromptState | null {
+  if (!lines.some((l) => l.includes(PROMPT_MARKER))) return null;
+
+  const options: string[] = [];
+  let selectedIndex = 0;
+
+  for (const line of lines) {
+    const match = line.match(OPTION_LINE_RE);
+    if (!match) continue;
+
+    // 直接用捕获组 1（前缀部分）判断是否含 ❯
+    const isSelected = match[1].includes('❯');
+    if (isSelected) selectedIndex = options.length;
+
+    options.push(match[3].trim());
+  }
+
+  return options.length > 0 ? { options, selectedIndex } : null;
+}
+
 function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: string; instanceId?: string; showVirtualKeyBar: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
@@ -26,13 +55,34 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: stri
   // 用 ref 打破循环依赖：handleMessage ↔ write，send ↔ onResize
   const sendRef = useRef<ReturnType<typeof useWebSocket>['send'] | null>(null);
   // 初始值为 no-op，在 useTerminal 返回真实函数后立即更新
-  const writeRef = useRef((_data: string) => {});
+  const writeRef = useRef((_data: string, _cb?: () => void) => {});
   const scrollToBottomRef = useRef(() => {});
+  const readLastLinesRef = useRef((_n?: number): string[] => []);
+
+  // 当前检测到的交互式选项提示状态（null 表示无提示）
+  const [promptState, setPromptState] = useState<PromptState | null>(null);
+  const promptStateRef = useRef<PromptState | null>(null);
 
   const handleMessage = useCallback((msg: ServerMessage) => {
     switch (msg.type) {
       case 'terminal_output':
-        writeRef.current(msg.data);
+        // 写入 xterm 后，通过 callback 扫描 buffer 检测选项提示
+        writeRef.current(msg.data, () => {
+          const lines = readLastLinesRef.current(60);
+          const detected = detectPromptFromLines(lines);
+          // 仅在状态实际变化时更新，避免无效重渲染
+          const prev = promptStateRef.current;
+          const changed = detected === null
+            ? prev !== null
+            : prev === null ||
+              prev.options.length !== detected.options.length ||
+              prev.selectedIndex !== detected.selectedIndex ||
+              prev.options.some((option, idx) => option !== detected.options[idx]);
+          if (changed) {
+            promptStateRef.current = detected;
+            setPromptState(detected);
+          }
+        });
         scrollToBottomRef.current();
         break;
       case 'history_sync':
@@ -59,7 +109,7 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: stri
   const { connect, send } = useWebSocket(handleMessage, wsUrl, instanceId);
   sendRef.current = send;
 
-  const { write, scrollToBottom } = useTerminal(
+  const { write, scrollToBottom, readLastLines } = useTerminal(
     containerRef,
     useCallback((cols: number, rows: number) => {
       // 移动端窄视口（< 80 cols）不发送 resize，避免覆盖 PC 端 PTY 尺寸
@@ -72,6 +122,7 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: stri
   // 每次渲染后同步 ref，确保 handleMessage 中调用的是最新版本
   writeRef.current = write;
   scrollToBottomRef.current = scrollToBottom;
+  readLastLinesRef.current = readLastLines;
 
   // Connect only once on mount
   const connectCalledRef = useRef(false);
@@ -97,12 +148,39 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: stri
     send({ type: 'user_input', data });
   }, [send]);
 
+  // 点击选项：发送方向键导航到目标选项，然后发送 Enter 确认
+  const handlePromptSelect = useCallback((targetIndex: number) => {
+    const current = promptStateRef.current;
+    if (!current) return;
+
+    const diff = targetIndex - current.selectedIndex;
+    const arrowKey = diff > 0 ? '\x1b[B' : '\x1b[A';
+    for (let i = 0; i < Math.abs(diff); i++) {
+      send({ type: 'user_input', data: arrowKey });
+    }
+    send({ type: 'user_input', data: '\r' });
+
+    // 立即收起 UI，下一次 terminal_output 会重新扫描确认状态
+    promptStateRef.current = null;
+    setPromptState(null);
+  }, [send]);
+
   return (
     <>
       <ConnectionBanner />
       <TerminalView containerRef={containerRef} />
-      <VirtualKeyBar onKeyPress={handleKeyPress} visible={showVirtualKeyBar} />
-      <InputBar onSend={handleSend} />
+      {promptState ? (
+        <PromptSelector
+          options={promptState.options}
+          selectedIndex={promptState.selectedIndex}
+          onSelect={handlePromptSelect}
+        />
+      ) : (
+        <>
+          <VirtualKeyBar onKeyPress={handleKeyPress} visible={showVirtualKeyBar} />
+          <InputBar onSend={handleSend} />
+        </>
+      )}
     </>
   );
 }

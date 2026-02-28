@@ -12,6 +12,17 @@ const mockTermOpen = vi.fn();
 const mockTermDispose = vi.fn();
 const mockTermLoadAddon = vi.fn();
 
+// buffer mock：通过 mockBufferLines 控制 readLastLines 的返回内容
+const mockBufferLines: string[] = [];
+const mockBuffer = {
+  get length() { return mockBufferLines.length; },
+  getLine: vi.fn((y: number) => {
+    const text = mockBufferLines[y];
+    if (text === undefined) return null;
+    return { translateToString: (_trimRight?: boolean) => text };
+  }),
+};
+
 vi.mock('@xterm/xterm', () => ({
   Terminal: vi.fn(() => ({
     get cols() { return mockTermState.cols; },
@@ -23,6 +34,7 @@ vi.mock('@xterm/xterm', () => ({
     open: mockTermOpen,
     dispose: mockTermDispose,
     loadAddon: mockTermLoadAddon,
+    buffer: { active: mockBuffer },
   })),
 }));
 
@@ -65,6 +77,13 @@ describe('useTerminal', () => {
     resizeObserverCallback = null;
     mockTermState.cols = 80;
     mockTermState.rows = 24;
+    mockBufferLines.length = 0; // 清空 buffer mock 内容
+    // 每次重置 getLine 到默认实现，避免 mockImplementation 跨测试污染
+    mockBuffer.getLine.mockImplementation((y: number) => {
+      const text = mockBufferLines[y];
+      if (text === undefined) return null;
+      return { translateToString: () => text };
+    });
   });
 
   afterEach(() => {
@@ -130,11 +149,53 @@ describe('useTerminal', () => {
     expect(onResize).toHaveBeenCalledWith(60, 22);
   });
 
-  it('should return write, clear, scrollToBottom functions', () => {
+  it('should return write, clear, scrollToBottom, readLastLines functions', () => {
     const { result } = renderUseTerminal();
 
     expect(typeof result.current.write).toBe('function');
     expect(typeof result.current.clear).toBe('function');
     expect(typeof result.current.scrollToBottom).toBe('function');
+    expect(typeof result.current.readLastLines).toBe('function');
+  });
+
+  it('readLastLines should return empty array when buffer has no lines', () => {
+    const { result } = renderUseTerminal();
+
+    const lines = result.current.readLastLines(10);
+    expect(lines).toEqual([]);
+  });
+
+  it('readLastLines should return all lines when buffer has fewer lines than requested', () => {
+    mockBufferLines.push('line 1', 'line 2', 'line 3');
+    const { result } = renderUseTerminal();
+
+    const lines = result.current.readLastLines(10);
+    expect(lines).toEqual(['line 1', 'line 2', 'line 3']);
+  });
+
+  it('readLastLines should return only the last n lines when buffer exceeds n', () => {
+    for (let i = 1; i <= 20; i++) {
+      mockBufferLines.push(`line ${i}`);
+    }
+    const { result } = renderUseTerminal();
+
+    const lines = result.current.readLastLines(5);
+    expect(lines).toEqual(['line 16', 'line 17', 'line 18', 'line 19', 'line 20']);
+  });
+
+  it('readLastLines should skip null buffer lines without throwing', () => {
+    // getLine 返回 null 模拟空行槽
+    mockBuffer.getLine.mockImplementation((y: number) => {
+      if (y === 1) return null;
+      const text = mockBufferLines[y];
+      if (text === undefined) return null;
+      return { translateToString: () => text };
+    });
+    mockBufferLines.push('line 0', 'line 1 (will be null)', 'line 2');
+
+    const { result } = renderUseTerminal();
+    const lines = result.current.readLastLines(10);
+    // null 行被跳过
+    expect(lines).toEqual(['line 0', 'line 2']);
   });
 });
