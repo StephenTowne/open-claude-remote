@@ -22,6 +22,7 @@ export interface AppConfig {
   maxBufferLines: number;
   instanceName: string;
   logDir: string;
+  sessionCookieName: string;
 }
 
 function parseJsonArray(value: string | undefined): string[] {
@@ -35,11 +36,16 @@ function parseJsonArray(value: string | undefined): string[] {
   return [];
 }
 
+function createSessionCookieName(port: number): string {
+  return `session_id_p${port}`;
+}
+
 export function loadConfig(): AppConfig {
   // Detect IP for display (try private IP first, then any non-loopback)
   const displayIp = process.env.DISPLAY_IP ?? detectLanIp() ?? detectNonLoopbackIp() ?? '127.0.0.1';
+  const port = parseInt(process.env.PORT ?? String(DEFAULT_PORT), 10);
   const config: AppConfig = {
-    port: parseInt(process.env.PORT ?? String(DEFAULT_PORT), 10),
+    port,
     host: process.env.HOST ?? '0.0.0.0', // Default: bind to all interfaces for remote access
     displayIp,
     claudeCommand: process.env.CLAUDE_COMMAND ?? 'claude',
@@ -51,8 +57,15 @@ export function loadConfig(): AppConfig {
     maxBufferLines: parseInt(process.env.MAX_BUFFER_LINES ?? String(DEFAULT_MAX_BUFFER_LINES), 10),
     instanceName: process.env.INSTANCE_NAME ?? basename(process.env.CLAUDE_CWD ?? process.cwd()),
     logDir: process.env.LOG_DIR ?? resolve(dirname(fileURLToPath(import.meta.url)), '../..', 'logs'),
+    sessionCookieName: process.env.SESSION_COOKIE_NAME ?? createSessionCookieName(port),
   };
 
-  logger.info({ port: config.port, host: config.host, displayIp: config.displayIp, claudeCommand: config.claudeCommand }, 'Configuration loaded');
+  logger.info({
+    port: config.port,
+    host: config.host,
+    displayIp: config.displayIp,
+    claudeCommand: config.claudeCommand,
+    sessionCookieName: config.sessionCookieName,
+  }, 'Configuration loaded');
   return config;
 }

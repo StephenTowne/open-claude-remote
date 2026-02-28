@@ -33,6 +33,7 @@ describe('AuthModule', () => {
       token: TEST_TOKEN,
       sessionTtlMs: 60_000, // 1 minute for testing
       rateLimitPerMinute: 5,
+      cookieName: 'session_id_test_default',
     });
   });
 
@@ -89,7 +90,7 @@ describe('AuthModule', () => {
 
   describe('getSessionFromRequest', () => {
     it('should extract session_id from cookie header', () => {
-      const req = createMockReq({ headers: { cookie: 'session_id=abc123' } });
+      const req = createMockReq({ headers: { cookie: 'session_id_test_default=abc123' } });
       expect(authModule.getSessionFromRequest(req)).toBe('abc123');
     });
 
@@ -106,7 +107,7 @@ describe('AuthModule', () => {
 
   describe('getSessionFromCookieHeader', () => {
     it('should extract session_id from raw cookie string', () => {
-      expect(authModule.getSessionFromCookieHeader('session_id=xyz789')).toBe('xyz789');
+      expect(authModule.getSessionFromCookieHeader('session_id_test_default=xyz789')).toBe('xyz789');
     });
 
     it('should return null for empty string', () => {
@@ -117,7 +118,7 @@ describe('AuthModule', () => {
   describe('requireAuth middleware', () => {
     it('should call next() for valid session', () => {
       const sessionId = authModule.createSession('1.2.3.4');
-      const req = createMockReq({ headers: { cookie: `session_id=${sessionId}` } });
+      const req = createMockReq({ headers: { cookie: `session_id_test_default=${sessionId}` } });
       const res = createMockRes();
       const next = vi.fn();
 
@@ -136,7 +137,7 @@ describe('AuthModule', () => {
     });
 
     it('should return 401 for invalid session', () => {
-      const req = createMockReq({ headers: { cookie: 'session_id=invalid' } });
+      const req = createMockReq({ headers: { cookie: 'session_id_test_default=invalid' } });
       const res = createMockRes();
       const next = vi.fn();
 
@@ -154,8 +155,39 @@ describe('AuthModule', () => {
       authModule.handleAuth(req, res);
       expect(res.body).toEqual({ ok: true });
       expect(res.headers['Set-Cookie']).toBeDefined();
-      expect(res.headers['Set-Cookie']).toContain('session_id=');
+      expect(res.headers['Set-Cookie']).toContain('session_id_test_default=');
       expect(res.headers['Set-Cookie']).toContain('HttpOnly');
+    });
+
+    it('should isolate cookie names across instances', () => {
+      const authModuleA = new AuthModule({
+        token: TEST_TOKEN,
+        sessionTtlMs: 60_000,
+        rateLimitPerMinute: 5,
+        cookieName: 'session_id_p3000',
+      });
+      const authModuleB = new AuthModule({
+        token: TEST_TOKEN,
+        sessionTtlMs: 60_000,
+        rateLimitPerMinute: 5,
+        cookieName: 'session_id_p3001',
+      });
+
+      const reqA = createMockReq({ body: { token: TEST_TOKEN } });
+      const resA = createMockRes();
+      const reqB = createMockReq({ body: { token: TEST_TOKEN } });
+      const resB = createMockRes();
+
+      authModuleA.handleAuth(reqA, resA);
+      authModuleB.handleAuth(reqB, resB);
+
+      expect(resA.headers['Set-Cookie']).toContain('session_id_p3000=');
+      expect(resB.headers['Set-Cookie']).toContain('session_id_p3001=');
+      expect(resA.headers['Set-Cookie']).not.toContain('session_id_p3001=');
+      expect(resB.headers['Set-Cookie']).not.toContain('session_id_p3000=');
+
+      authModuleA.destroy();
+      authModuleB.destroy();
     });
 
     it('should return 401 for wrong token', () => {

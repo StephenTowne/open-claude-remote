@@ -12,6 +12,12 @@
 * ❌ 不要引入 package.json 中未声明的依赖
 * ❌ 不要跳过日志直接处理错误
 
+# 🔒 安全红线（绝对不可违反）
+* ❌ **禁止向外部网络发送数据**：不得引入任何遥测(telemetry)、analytics、外部上报、webhook 回调等将数据发往外部服务器的逻辑
+* ❌ **禁止引入外部网络调用**：不得添加对外部 API/服务的 HTTP 请求（fetch/axios/got 等），除非用户明确要求且确认目标地址
+* ❌ **禁止降低现有认证/鉴权机制**：不得移除、绕过或弱化 Auth 层的 Token 验证、Session Cookie、速率限制等安全措施
+* ❌ **禁止开放文件系统访问**：不得添加任意文件读写接口（如 `express.static('/')` 或未限制路径的文件操作 API）
+
 # 运行环境（Environment）
 * **pnpm workspace monorepo**，三个包：`shared/`、`backend/`、`frontend/`
 * 所有命令从**项目根目录**执行，通过 `pnpm --filter` 指定包：

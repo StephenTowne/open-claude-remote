@@ -59,8 +59,14 @@ export class WsServer {
       const cookieHeader = req.headers.cookie ?? '';
       const sessionId = this.authModule.getSessionFromCookieHeader(cookieHeader);
 
-      if (!sessionId || !this.authModule.validateSession(sessionId)) {
-        logger.warn({ url: req.url }, 'WS upgrade rejected: invalid session');
+      const isValid = sessionId ? this.authModule.validateSession(sessionId) : false;
+      if (!isValid) {
+        logger.warn({
+          url: req.url,
+          cookieHeaderPresent: cookieHeader.length > 0,
+          sessionCookieName: this.authModule.getCookieName(),
+          hasSessionCookie: Boolean(sessionId),
+        }, 'WS upgrade rejected: invalid session');
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;

@@ -58,6 +58,7 @@ export async function startTestServer(options?: TestServerOptions): Promise<Test
     token: TEST_TOKEN,
     sessionTtlMs: options?.sessionTtlMs ?? 60_000, // 1 minute default for tests
     rateLimitPerMinute: options?.rateLimitPerMinute ?? 100, // High limit default; rate-limit tests pass lower values
+    cookieName: 'session_id_test',
   });
 
   const hookReceiver = new HookReceiver();

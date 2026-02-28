@@ -36,7 +36,7 @@ describe('Authentication Flow', () => {
       // Step 2: Extract session cookie
       const setCookie = authRes.headers.get('set-cookie')!;
       const cookie = setCookie.split(';')[0];
-      expect(cookie).toContain('session_id=');
+      expect(cookie).toContain('session_id_test=');
 
       // Step 3: Use cookie to access protected endpoint
       const statusRes = await fetch(`${ctx.baseUrl}/api/status`, {
@@ -62,7 +62,7 @@ describe('Authentication Flow', () => {
 
     it('should reject access with a tampered cookie', async () => {
       const res = await fetch(`${ctx.baseUrl}/api/status`, {
-        headers: { cookie: 'session_id=tampered-value-that-does-not-exist' },
+        headers: { cookie: 'session_id_test=tampered-value-that-does-not-exist' },
       });
       expect(res.status).toBe(401);
     });

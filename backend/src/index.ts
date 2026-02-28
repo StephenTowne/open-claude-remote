@@ -77,6 +77,7 @@ async function main() {
     token,
     sessionTtlMs: config.sessionTtlMs,
     rateLimitPerMinute: config.authRateLimit,
+    cookieName: config.sessionCookieName,
   });
 
   // 8. Setup Hook receiver

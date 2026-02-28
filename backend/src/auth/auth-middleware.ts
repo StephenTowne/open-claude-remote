@@ -9,6 +9,7 @@ export interface AuthModuleOptions {
   token: string;
   sessionTtlMs: number;
   rateLimitPerMinute: number;
+  cookieName: string;
 }
 
 interface SessionEntry {
@@ -22,12 +23,14 @@ interface SessionEntry {
 export class AuthModule {
   private readonly token: string;
   private readonly sessionTtlMs: number;
+  private readonly cookieName: string;
   private readonly sessions: Map<string, SessionEntry> = new Map();
   private readonly rateLimiter: RateLimiter;
 
   constructor(options: AuthModuleOptions) {
     this.token = options.token;
     this.sessionTtlMs = options.sessionTtlMs;
+    this.cookieName = options.cookieName;
     this.rateLimiter = new RateLimiter(options.rateLimitPerMinute);
   }
 
@@ -69,7 +72,7 @@ export class AuthModule {
    */
   getSessionFromRequest(req: Request): string | null {
     const cookies = cookie.parse(req.headers.cookie ?? '');
-    return cookies.session_id ?? null;
+    return cookies[this.cookieName] ?? null;
   }
 
   /**
@@ -77,7 +80,11 @@ export class AuthModule {
    */
   getSessionFromCookieHeader(cookieHeader: string): string | null {
     const cookies = cookie.parse(cookieHeader);
-    return cookies.session_id ?? null;
+    return cookies[this.cookieName] ?? null;
+  }
+
+  getCookieName(): string {
+    return this.cookieName;
   }
 
   /**
@@ -85,7 +92,14 @@ export class AuthModule {
    */
   requireAuth = (req: Request, res: Response, next: NextFunction): void => {
     const sessionId = this.getSessionFromRequest(req);
-    if (!sessionId || !this.validateSession(sessionId)) {
+    const isValid = sessionId ? this.validateSession(sessionId) : false;
+    if (!isValid) {
+      logger.warn({
+        path: req.path,
+        instanceCookieName: this.cookieName,
+        hasSessionCookie: Boolean(sessionId),
+        sessionFound: Boolean(sessionId && this.sessions.has(sessionId)),
+      }, 'Auth rejected: invalid session');
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
@@ -112,15 +126,15 @@ export class AuthModule {
     }
 
     const sessionId = this.createSession(ip);
-    res.setHeader('Set-Cookie', cookie.serialize('session_id', sessionId, {
+    res.setHeader('Set-Cookie', cookie.serialize(this.cookieName, sessionId, {
       httpOnly: true,
       secure: req.protocol === 'https',
-      sameSite: 'lax', // Lax (not Strict) to allow cross-port cookie sharing between instances
+      sameSite: 'lax',
       path: '/',
       maxAge: Math.floor(this.sessionTtlMs / 1000),
     }));
 
-    logger.info({ ip }, 'Auth successful');
+    logger.info({ ip, instanceCookieName: this.cookieName }, 'Auth successful');
     res.json({ ok: true });
   };
 

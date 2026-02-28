@@ -57,7 +57,7 @@ describe('REST API Endpoints', () => {
 
       const setCookie = res.headers.get('set-cookie');
       expect(setCookie).toBeTruthy();
-      expect(setCookie).toContain('session_id=');
+      expect(setCookie).toContain('session_id_test=');
       expect(setCookie).toContain('HttpOnly');
       expect(setCookie).toContain('SameSite=Lax');
     });
@@ -140,7 +140,7 @@ describe('REST API Endpoints', () => {
 
     it('should return 401 with invalid session cookie', async () => {
       const res = await fetch(`${ctx.baseUrl}/api/status`, {
-        headers: { cookie: 'session_id=invalid-session-id' },
+        headers: { cookie: 'session_id_test=invalid-session-id' },
       });
       expect(res.status).toBe(401);
     });

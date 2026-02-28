@@ -45,6 +45,7 @@ describe('instance-routes', () => {
       token: TEST_TOKEN,
       sessionTtlMs: 86400000,
       rateLimitPerMinute: 10,
+      cookieName: 'session_id_test_instances',
     });
 
     listFn = vi.fn().mockReturnValue([]);

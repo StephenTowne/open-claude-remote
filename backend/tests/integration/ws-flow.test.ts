@@ -63,7 +63,23 @@ describe('WebSocket Flow', () => {
     it('should reject WS upgrade with invalid session cookie', async () => {
       const wsUrl = ctx.baseUrl.replace('http://', 'ws://') + '/ws';
       const ws = new WebSocket(wsUrl, {
-        headers: { cookie: 'session_id=invalid-session-id' },
+        headers: { cookie: 'session_id_test=invalid-session-id' },
+      });
+      trackWs(ws);
+
+      await new Promise<void>((resolve, reject) => {
+        ws.on('error', () => resolve());
+        ws.on('open', () => reject(new Error('Should not have opened')));
+        setTimeout(() => resolve(), 2000);
+      });
+
+      expect(ws.readyState).not.toBe(WebSocket.OPEN);
+    });
+
+    it('should reject WS upgrade when only another-instance cookie key is provided', async () => {
+      const wsUrl = ctx.baseUrl.replace('http://', 'ws://') + '/ws';
+      const ws = new WebSocket(wsUrl, {
+        headers: { cookie: 'session_id_other_instance=some-session' },
       });
       trackWs(ws);
 
