@@ -16,6 +16,9 @@
 | Hook | Claude Code 内置的 Notification hook，审批时触发 HTTP POST |
 | Approval | 工具调用审批请求/响应，手机端决策后通过 PTY 写入按键 |
 | Terminal Relay | PC 终端 stdin/stdout 与 PTY 的 raw mode 透传 |
+| Instance | 一个 claude-remote 进程，管理一个 PTY + Express + WS |
+| Registry | ~/.claude-remote/instances.json 共享注册表，多实例发现 |
+| Shared Token | ~/.claude-remote/token 共享认证令牌，多实例共用 |
 
 ## 2. Stack
 - **Backend**: Node.js >= 20, TypeScript 5.7, Express 4, ws 8, node-pty 1, pino 9
@@ -29,6 +32,7 @@
 ```
 ┌─ Frontend (React SPA) ──────────────────────────────┐
 │  Pages → Components → Hooks → Stores → WS Client    │
+│  InstanceTabs → useInstances → instance-store        │
 └──────────────────────────────────────────────────────┘
                         ↕ WebSocket + REST
 ┌─ Backend (Node.js) ─────────────────────────────────┐
@@ -37,6 +41,7 @@
 │              WS Server    Hook Receiver              │
 │                    ↕                                 │
 │            Output Buffer + Terminal Relay             │
+│  Registry (shared-token + port-finder + instances)   │
 └──────────────────────────────────────────────────────┘
                         ↕ PTY stdin/stdout
                   Claude Code CLI
@@ -49,6 +54,7 @@
 - **Hook Receiver**: 接收 Claude Code Notification hook POST，生成 ApprovalRequest
 - **Output Buffer**: 10K 行环形缓冲区，支持重连全量恢复
 - **Terminal Relay**: PC 终端 raw mode stdin/stdout 直通 PTY
+- **Registry**: 多实例管理基础设施——共享 Token、端口自动分配、实例注册表 (JSON 文件)
 
 ## 4. Data Flow
 
@@ -75,11 +81,12 @@ sequenceDiagram
 ```
 
 ### 认证流程
-1. 启动时生成随机 Token（`crypto.randomBytes(32)`）
-2. Token 仅在 PC 终端显示一次
+1. 启动时获取共享 Token（优先级：AUTH_TOKEN 环境变量 > ~/.claude-remote/token > 自动生成）
+2. 首次启动在 PC 终端完整显示 Token，后续实例提示 "(shared)"
 3. 手机 POST `/api/auth` 提交 Token → `timingSafeEqual` 验证
-4. 成功后签发 HttpOnly Session Cookie
+4. 成功后签发 HttpOnly SameSite=Lax Session Cookie
 5. WS 升级时验证 Cookie
+6. 跨实例切换时前端用缓存 Token 对目标实例 POST /api/auth 重新认证
 
 ## 5. Routes
 
@@ -90,6 +97,7 @@ sequenceDiagram
 | GET | `/api/status` | Session | status-routes.ts → SessionController 状态 |
 | GET | `/api/health` | No | health-routes.ts → 健康检查 |
 | POST | `/api/hook` | Localhost only | hook-routes.ts → HookReceiver.processHook |
+| GET | `/api/instances` | Session | instance-routes.ts → 注册表实例列表 + isCurrent 标记 |
 
 ### Backend WebSocket
 | Direction | Path | Auth |
@@ -122,8 +130,14 @@ sequenceDiagram
 - frontend: `components/terminal/TerminalView.tsx`, `hooks/useTerminal.ts`, `hooks/useWebSocket.ts`
 - frontend: `components/input/InputBar.tsx`, `components/status/StatusBar.tsx`
 
+### 多实例管理
+- backend: `registry/shared-token.ts`, `registry/port-finder.ts`, `registry/instance-registry.ts`
+- backend: `api/instance-routes.ts`
+- frontend: `components/instances/InstanceTabs.tsx`, `hooks/useInstances.ts`, `stores/instance-store.ts`, `services/instance-api.ts`
+- shared: `instance.ts` (类型定义 + 常量)
+
 ### 共享协议
-- shared: `ws-protocol.ts`, `constants.ts`
+- shared: `ws-protocol.ts`, `constants.ts`, `instance.ts`
 
 ## 7. Key Decisions
 
@@ -135,6 +149,8 @@ sequenceDiagram
 | 认证 | Token + Session Cookie | 简单安全，适合局域网 | 需 timingSafeEqual 防时序攻击 |
 | 网络绑定 | 仅局域网 IP | 安全隔离 | 无 LAN IP 时 fallback 127.0.0.1 |
 | TLS | MVP 不启用 | 局域网风险可控 | post-MVP 需补充 HTTPS |
+| 多实例 | 多进程 + 共享注册表 | 每个项目独立进程，简单可靠 | 需 JSON 文件注册表 + 僵尸清理 |
+| 跨实例认证 | 前端缓存 Token + 自动 POST | Cookie 不区分端口但 Session 独立 | 切换时有一次认证延迟 |
 
 详细 ADR: `docs/adrs/001-pty-plus-hooks.md`
 
@@ -159,7 +175,8 @@ pnpm dev                    # concurrently 启动前后端 dev server
 | CLAUDE_COMMAND | claude | CLI 命令 |
 | CLAUDE_ARGS | [] | CLI 额外参数 (JSON array) |
 | CLAUDE_CWD | process.cwd() | Claude 工作目录 |
-| AUTH_TOKEN | 自动生成 | 固定 Token（可选） |
+| AUTH_TOKEN | 共享 Token | 覆盖共享 Token（可选） |
+| INSTANCE_NAME | CWD basename | 实例名称 |
 | SESSION_TTL | 86400000 | Session 有效期 (ms) |
 | AUTH_RATE_LIMIT | 5 | 认证限流（次/分钟/IP）|
 | MAX_BUFFER_LINES | 10000 | 输出缓冲区最大行数 |

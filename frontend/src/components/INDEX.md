@@ -12,5 +12,8 @@
 ## status/
 - StatusBar.tsx: 顶部状态栏，左侧 Logo，右侧双指示灯（session idle/running/waiting + WS connected/disconnected）
 
+## instances/
+- InstanceTabs.tsx: 多实例 Tab 切换栏，单实例时自动隐藏，显示实例名称+端口，活跃 Tab 高亮底部边框
+
 ## terminal/
 - TerminalView.tsx: xterm.js 挂载容器，disableStdin 只读模式，外部通过 containerRef 注入
