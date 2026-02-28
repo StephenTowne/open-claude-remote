@@ -34,6 +34,16 @@
   --min-touch-target: 44px;
   --keybar-height: 48px;
 
+  /* Breakpoints (mobile-first) */
+  --breakpoint-tablet: 768px;
+  --breakpoint-desktop: 1024px;
+
+  /* Layout tokens */
+  --app-height: 100dvh;
+  --content-inline-padding: 12px;
+  --content-inline-padding-tablet: 16px;
+  --bottom-interactive-inset: var(--safe-bottom);
+
   /* Font */
   --font-mono: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

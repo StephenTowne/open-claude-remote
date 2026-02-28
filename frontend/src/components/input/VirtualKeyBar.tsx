@@ -1,5 +1,6 @@
 interface VirtualKeyBarProps {
   onKeyPress: (data: string) => void;
+  visible?: boolean;
 }
 
 const KEYS = [
@@ -12,9 +13,13 @@ const KEYS = [
   { label: '^C', data: '\x03' },
 ] as const;
 
-export function VirtualKeyBar({ onKeyPress }: VirtualKeyBarProps) {
+export function VirtualKeyBar({ onKeyPress, visible = true }: VirtualKeyBarProps) {
+  if (!visible) {
+    return null;
+  }
+
   return (
-    <div style={{
+    <div data-testid="virtual-key-bar" style={{
       height: 'var(--keybar-height)',
       background: 'var(--bg-secondary)',
       borderTop: '1px solid var(--border-color)',

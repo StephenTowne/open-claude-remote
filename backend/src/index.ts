@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import { CLAUDE_REMOTE_DIR } from '@claude-remote/shared';
-import { loadConfig } from './config.js';
+import { loadConfig, createSessionCookieName } from './config.js';
 import { AuthModule } from './auth/auth-middleware.js';
 import { PtyManager } from './pty/pty-manager.js';
 import { WsServer } from './ws/ws-server.js';
@@ -42,6 +42,17 @@ async function main() {
 
   // 4. Find available port (auto-increment if preferred port is occupied)
   const actualPort = await findAvailablePort(config.port, config.host);
+
+  // Update config to reflect the actual port (cookie name must match actual port
+  // to prevent cross-instance cookie collision when port auto-increments)
+  if (actualPort !== config.port) {
+    config.sessionCookieName = createSessionCookieName(actualPort);
+    config.port = actualPort;
+    logger.info({
+      actualPort,
+      sessionCookieName: config.sessionCookieName,
+    }, 'Config updated for actual port');
+  }
 
   // 5. Create Express app
   const app = express();

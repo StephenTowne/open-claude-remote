@@ -7,7 +7,7 @@
 }
 
 html, body, #root {
-  height: 100%;
+  height: var(--app-height);
   width: 100%;
   overflow: hidden;
   background: var(--bg-primary);
@@ -17,6 +17,23 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
   /* Prevent pull-to-refresh on mobile */
   overscroll-behavior: none;
+}
+
+@supports not (height: 100dvh) {
+  :root {
+    --app-height: 100vh;
+  }
+}
+
+body {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --content-inline-padding: var(--content-inline-padding-tablet);
+  }
 }
 
 /* Disable text selection on UI elements (keep terminal selectable) */
@@ -37,4 +54,19 @@ button {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
+}
+
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 2000;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
 }

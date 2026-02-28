@@ -36,7 +36,7 @@ function parseJsonArray(value: string | undefined): string[] {
   return [];
 }
 
-function createSessionCookieName(port: number): string {
+export function createSessionCookieName(port: number): string {
   return `session_id_p${port}`;
 }
 

@@ -70,4 +70,11 @@ describe('VirtualKeyBar', () => {
     fireEvent.click(screen.getByText('^C'));
     expect(onKeyPress).toHaveBeenCalledWith('\x03');
   });
+
+  it('should not render when visible is false', () => {
+    render(<VirtualKeyBar onKeyPress={() => {}} visible={false} />);
+
+    expect(screen.queryByTestId('virtual-key-bar')).toBeNull();
+    expect(screen.queryByText('Esc')).toBeNull();
+  });
 });

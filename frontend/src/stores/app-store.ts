@@ -22,6 +22,11 @@ interface AppState {
   // Cached token for cross-instance auth
   cachedToken: string | null;
   setCachedToken: (token: string | null) => void;
+
+  // Toast
+  toastMessage: string | null;
+  showToast: (message: string) => void;
+  hideToast: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -47,4 +52,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   cachedToken: null,
   setCachedToken: (token) => set({ cachedToken: token }),
+
+  toastMessage: null,
+  showToast: (message) => set({ toastMessage: message }),
+  hideToast: () => set({ toastMessage: null }),
 }));

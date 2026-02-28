@@ -3,9 +3,15 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 
-export function useTerminal(containerRef: React.RefObject<HTMLDivElement | null>) {
+export function useTerminal(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  onResize?: (cols: number, rows: number) => void,
+) {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+
+  const onResizeRef = useRef(onResize);
+  onResizeRef.current = onResize;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -57,11 +63,20 @@ export function useTerminal(containerRef: React.RefObject<HTMLDivElement | null>
     }
 
     fitAddon.fit();
+    // 初始尺寸通知：等布局稳定后上报
+    requestAnimationFrame(() => {
+      if (onResizeRef.current && termRef.current) {
+        onResizeRef.current(termRef.current.cols, termRef.current.rows);
+      }
+    });
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
+      if (onResizeRef.current) {
+        onResizeRef.current(term.cols, term.rows);
+      }
     });
     resizeObserver.observe(containerRef.current);
 
@@ -85,9 +100,5 @@ export function useTerminal(containerRef: React.RefObject<HTMLDivElement | null>
     termRef.current?.scrollToBottom();
   }, []);
 
-  const resize = useCallback((cols: number, rows: number) => {
-    termRef.current?.resize(cols, rows);
-  }, []);
-
-  return { write, clear, scrollToBottom, resize, terminal: termRef };
+  return { write, clear, scrollToBottom, terminal: termRef };
 }

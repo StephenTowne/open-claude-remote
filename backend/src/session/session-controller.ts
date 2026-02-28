@@ -112,9 +112,9 @@ export class SessionController {
           logger.debug({ length: input.length }, 'User input from mobile');
           this.ptyManager.write(input);
         },
-        onResize: (_cols: number, _rows: number) => {
-          // PTY size follows PC terminal, ignore mobile resize
-          logger.debug('Mobile resize ignored (PTY follows PC terminal)');
+        onResize: (cols: number, rows: number) => {
+          logger.info({ cols, rows }, 'Resize request from web client, applying to PTY');
+          this.ptyManager.resize(cols, rows);
         },
       });
     });
