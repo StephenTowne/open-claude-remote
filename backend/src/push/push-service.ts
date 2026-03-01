@@ -46,7 +46,7 @@ export class PushService {
 
   private async generateVapidKeys(): Promise<void> {
     try {
-      const webpush = await import('web-push');
+      const webpush = (await import('web-push')).default;
       const keys = webpush.generateVAPIDKeys();
       this.vapidPublicKey = keys.publicKey;
       this.vapidPrivateKey = keys.privateKey;
@@ -113,7 +113,7 @@ export class PushService {
 
     let webpush;
     try {
-      webpush = await import('web-push');
+      webpush = (await import('web-push')).default;
     } catch {
       logger.warn('web-push not available, skipping notification');
       return;

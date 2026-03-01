@@ -19,7 +19,8 @@ export function useTerminal(
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const ptyColsRef = useRef<number | null>(null);
-  const adaptFnRef = useRef<((ptyCols: number) => void) | null>(null);
+  const ptyRowsRef = useRef<number | null>(null);
+  const adaptFnRef = useRef<((ptyCols: number, ptyRows?: number) => void) | null>(null);
 
   const onResizeRef = useRef(onResize);
   onResizeRef.current = onResize;
@@ -144,9 +145,10 @@ export function useTerminal(
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // 字体适配函数：缩小字体让 xterm 列数尽量匹配 PTY 宽度
-    const adaptToPtyColsInner = (ptyCols: number) => {
+    // 字体适配函数：缩小字体让 xterm 列数尽量匹配 PTY 宽度，并强制行数匹配
+    const adaptToPtySizeInner = (ptyCols: number, ptyRows?: number) => {
       ptyColsRef.current = ptyCols;
+      ptyRowsRef.current = ptyRows ?? null;
 
       // 重置到默认字体以获取基准列数
       term.options.fontSize = DEFAULT_FONT_SIZE;
@@ -155,27 +157,31 @@ export function useTerminal(
 
       if (baseCols >= ptyCols) {
         fitAddon.fit();
-        return;
+      } else {
+        // 按比例缩小字体
+        const targetFontSize = DEFAULT_FONT_SIZE * (baseCols / ptyCols);
+        const nextFontSize = Math.max(MIN_FONT_SIZE, Math.round(targetFontSize));
+        term.options.fontSize = nextFontSize;
+        fitAddon.fit();
+
+        // 行数过低时尝试回退 1 级字体，避免可视高度过低
+        if (term.rows < MIN_USABLE_ROWS && nextFontSize < DEFAULT_FONT_SIZE) {
+          term.options.fontSize = Math.min(DEFAULT_FONT_SIZE, nextFontSize + 1);
+          fitAddon.fit();
+        }
       }
 
-      // 按比例缩小字体
-      const targetFontSize = DEFAULT_FONT_SIZE * (baseCols / ptyCols);
-      const nextFontSize = Math.max(MIN_FONT_SIZE, Math.round(targetFontSize));
-      term.options.fontSize = nextFontSize;
-      fitAddon.fit();
-
-      // 行数过低时尝试回退 1 级字体，避免可视高度过低
-      if (term.rows < MIN_USABLE_ROWS && nextFontSize < DEFAULT_FONT_SIZE) {
-        term.options.fontSize = Math.min(DEFAULT_FONT_SIZE, nextFontSize + 1);
-        fitAddon.fit();
+      // 强制 xterm rows 与 PTY rows 一致，确保 ANSI 光标定位正确
+      if (ptyRows !== undefined && term.rows !== ptyRows) {
+        term.resize(term.cols, ptyRows);
       }
     };
-    adaptFnRef.current = adaptToPtyColsInner;
+    adaptFnRef.current = adaptToPtySizeInner;
 
     const resizeObserver = new ResizeObserver(() => {
       if (ptyColsRef.current !== null) {
-        // 移动端模式：重新适配字体，不触发 onResize（PC terminal-relay 是唯一 resize 来源）
-        adaptFnRef.current?.(ptyColsRef.current);
+        // 移动端模式：重新适配字体+行数，不触发 onResize（PC terminal-relay 是唯一 resize 来源）
+        adaptFnRef.current?.(ptyColsRef.current, ptyRowsRef.current ?? undefined);
       } else {
         fitAddon.fit();
         emitResize(term.cols, term.rows);
@@ -249,8 +255,8 @@ export function useTerminal(
     termRef.current?.scrollToBottom();
   }, []);
 
-  const adaptToPtyCols = useCallback((ptyCols: number) => {
-    adaptFnRef.current?.(ptyCols);
+  const adaptToPtyCols = useCallback((ptyCols: number, ptyRows?: number) => {
+    adaptFnRef.current?.(ptyCols, ptyRows);
   }, []);
 
   return { write, clear, scrollToBottom, adaptToPtyCols, terminal: termRef };

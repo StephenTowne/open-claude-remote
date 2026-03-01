@@ -128,4 +128,68 @@ describe('App', () => {
       expect(useAppStore.getState().cachedToken).toBeNull();
     });
   });
+
+  it('should auto-reconnect with cachedToken when session is invalid but token is still valid', async () => {
+    // Simulate: backend restarted, session cookie invalid but token still works
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, 'valid-token-abc');
+    mockedGetStatus.mockRejectedValueOnce(new Error('Unauthorized'));
+    mockedAuthenticate.mockResolvedValueOnce(true);
+
+    render(<App />);
+
+    // Should attempt re-authentication with cached token
+    await waitFor(() => {
+      expect(mockedAuthenticate).toHaveBeenCalledWith('valid-token-abc');
+    });
+
+    // Should be authenticated after successful re-auth
+    await waitFor(() => {
+      expect(useAppStore.getState().isAuthenticated).toBe(true);
+      expect(useAppStore.getState().cachedToken).toBe('valid-token-abc');
+    });
+
+    expect(screen.getByTestId('console-page')).toBeDefined();
+    // Token should remain in sessionStorage
+    expect(sessionStorage.getItem(TOKEN_STORAGE_KEY)).toBe('valid-token-abc');
+  });
+
+  it('should show auth page when session is invalid and re-authentication with cachedToken fails', async () => {
+    // Simulate: backend restarted, session cookie invalid, token also invalid (changed)
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, 'expired-token-xyz');
+    mockedGetStatus.mockRejectedValueOnce(new Error('Unauthorized'));
+    mockedAuthenticate.mockResolvedValueOnce(false);
+
+    render(<App />);
+
+    // Should attempt re-authentication with cached token
+    await waitFor(() => {
+      expect(mockedAuthenticate).toHaveBeenCalledWith('expired-token-xyz');
+    });
+
+    // Should show auth page when re-authentication fails
+    await waitFor(() => {
+      expect(useAppStore.getState().isAuthenticated).toBe(false);
+      expect(useAppStore.getState().cachedToken).toBeNull();
+    });
+
+    expect(screen.getByTestId('auth-page')).toBeDefined();
+    // Token should be cleared from sessionStorage
+    expect(sessionStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
+  });
+
+  it('should show auth page when session is invalid and no cachedToken exists', async () => {
+    // No token in sessionStorage
+    mockedGetStatus.mockRejectedValue(new Error('Unauthorized'));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(useAppStore.getState().isAuthenticated).toBe(false);
+      expect(useAppStore.getState().isCheckingAuth).toBe(false);
+    });
+
+    // Should not attempt authentication without cached token
+    expect(mockedAuthenticate).not.toHaveBeenCalled();
+    expect(screen.getByTestId('auth-page')).toBeDefined();
+  });
 });

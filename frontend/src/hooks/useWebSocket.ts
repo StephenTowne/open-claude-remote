@@ -1,6 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
 import type { ServerMessage, ClientMessage } from '@claude-remote/shared';
 import { useAppStore } from '../stores/app-store.js';
+import { authenticate } from '../services/api-client.js';
+import { authenticateToInstance } from '../services/instance-api.js';
+import { loadToken } from '../services/token-storage.js';
 
 const DEFAULT_INSTANCE_ID = '__default__';
 
@@ -103,12 +106,33 @@ export function useWebSocket(
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = async () => {
       if (isDisposedRef.current || token !== connectionTokenRef.current || wsRef.current !== ws) {
         return;
       }
       wsRef.current = null;
       setStatus('disconnected');
+
+      // Try to re-authenticate before reconnecting (handles backend restart)
+      const cachedToken = loadToken();
+      console.log('[useWebSocket] onclose: cachedToken =', cachedToken ? 'exists' : 'null');
+      if (cachedToken) {
+        try {
+          console.log('[useWebSocket] attempting re-authentication...');
+          let ok = false;
+          if (wsUrl) {
+            const target = new URL(wsUrl);
+            const port = Number(target.port || (target.protocol === 'wss:' ? '443' : '80'));
+            ok = await authenticateToInstance(target.hostname, port, cachedToken);
+          } else {
+            ok = await authenticate(cachedToken);
+          }
+          console.log('[useWebSocket] re-auth result:', ok);
+        } catch (err) {
+          console.log('[useWebSocket] re-auth error:', err);
+        }
+      }
+
       scheduleReconnect(token);
     };
 

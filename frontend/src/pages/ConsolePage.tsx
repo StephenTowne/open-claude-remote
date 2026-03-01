@@ -16,6 +16,7 @@ import { usePushNotification } from '../hooks/usePushNotification.js';
 import { useInstances } from '../hooks/useInstances.js';
 import { useAppStore } from '../stores/app-store.js';
 import { useInstanceStore } from '../stores/instance-store.js';
+import { authenticate } from '../services/api-client.js';
 import { authenticateToInstance, buildInstanceWsUrl } from '../services/instance-api.js';
 
 interface AskState {
@@ -37,7 +38,7 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
   // 初始值为 no-op，在 useTerminal 返回真实函数后立即更新
   const writeRef = useRef((_data: string, _cb?: () => void) => {});
   const scrollToBottomRef = useRef(() => {});
-  const adaptToPtyColsRef = useRef((_cols: number) => {});
+  const adaptToPtyColsRef = useRef((_cols: number, _rows?: number) => {});
 
   // 当前 ask_question 交互状态
   const [askState, setAskState] = useState<AskState | null>(null);
@@ -51,7 +52,7 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
         break;
       case 'history_sync':
         if (msg.cols && msg.cols > 0) {
-          adaptToPtyColsRef.current(msg.cols);
+          adaptToPtyColsRef.current(msg.cols, msg.rows);
         }
         writeRef.current(msg.data);
         setSessionStatus(msg.status);
@@ -59,7 +60,7 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
         break;
       case 'terminal_resize':
         if (msg.cols && msg.cols > 0) {
-          adaptToPtyColsRef.current(msg.cols);
+          adaptToPtyColsRef.current(msg.cols, msg.rows);
         }
         break;
       case 'status_update':
@@ -342,11 +343,15 @@ export function ConsolePage() {
 
     const run = async () => {
       for (const candidate of candidates) {
-        if (!candidate.isCurrent && cachedToken) {
+        if (cachedToken) {
           try {
-            const authenticated = await authenticateToInstance(candidate.host, candidate.port, cachedToken);
-            if (!authenticated) {
-              continue;
+            if (candidate.isCurrent) {
+              await authenticate(cachedToken);
+            } else {
+              const authenticated = await authenticateToInstance(candidate.host, candidate.port, cachedToken);
+              if (!authenticated) {
+                continue;
+              }
             }
           } catch {
             continue;
@@ -383,10 +388,14 @@ export function ConsolePage() {
     const target = instances.find(i => i.instanceId === targetId);
     if (!target) return;
 
-    // 如果目标不是当前实例，需要先认证
-    if (!target.isCurrent && cachedToken) {
+    // 所有实例都需要认证：isCurrent 用同源 authenticate，非 isCurrent 用跨实例认证
+    if (cachedToken) {
       try {
-        await authenticateToInstance(target.host, target.port, cachedToken);
+        if (target.isCurrent) {
+          await authenticate(cachedToken);
+        } else {
+          await authenticateToInstance(target.host, target.port, cachedToken);
+        }
       } catch {
         // 认证失败时仍然切换，WS 连接会失败并显示 Disconnected
       }

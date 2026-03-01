@@ -2,6 +2,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWebSocket } from '../../src/hooks/useWebSocket.js';
 import { useAppStore } from '../../src/stores/app-store.js';
+import { authenticate } from '../../src/services/api-client.js';
+import { authenticateToInstance } from '../../src/services/instance-api.js';
+import { loadToken } from '../../src/services/token-storage.js';
+
+vi.mock('../../src/services/api-client.js', () => ({
+  authenticate: vi.fn(),
+}));
+
+vi.mock('../../src/services/instance-api.js', () => ({
+  authenticateToInstance: vi.fn(),
+}));
+
+vi.mock('../../src/services/token-storage.js', () => ({
+  loadToken: vi.fn(),
+  saveToken: vi.fn(),
+  clearToken: vi.fn(),
+}));
+
+const mockedAuthenticate = vi.mocked(authenticate);
+const mockedAuthenticateToInstance = vi.mocked(authenticateToInstance);
+const mockedLoadToken = vi.mocked(loadToken);
 
 type MockSocket = {
   url: string;
@@ -208,5 +229,62 @@ describe('useWebSocket connection isolation', () => {
     });
 
     expect(useAppStore.getState().connectionStatus).toBe('connected');
+  });
+
+  it('should re-authenticate against wsUrl target instance on socket close', async () => {
+    mockedLoadToken.mockReturnValue('cached-token-123');
+    mockedAuthenticateToInstance.mockResolvedValue(true);
+
+    const { result } = renderHook(() =>
+      useWebSocket(vi.fn(), 'ws://10.0.0.8:3000/ws', 'instance-test'),
+    );
+
+    act(() => {
+      result.current.connect();
+    });
+
+    const socket = sockets[0];
+    act(() => {
+      socket.readyState = 1;
+      socket.onopen?.();
+    });
+
+    expect(useAppStore.getState().instanceConnectionStatus['instance-test']).toBe('connected');
+
+    await act(async () => {
+      socket.onclose?.();
+    });
+
+    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('10.0.0.8', 3000, 'cached-token-123');
+    expect(mockedAuthenticate).not.toHaveBeenCalled();
+    expect(useAppStore.getState().instanceConnectionStatus['instance-test']).toBe('disconnected');
+  });
+
+  it('should still reconnect even when target-instance re-authentication fails', async () => {
+    mockedLoadToken.mockReturnValue('invalid-token');
+    mockedAuthenticateToInstance.mockResolvedValue(false);
+
+    const { result } = renderHook(() =>
+      useWebSocket(vi.fn(), 'ws://example:3000/ws', 'instance-test'),
+    );
+
+    act(() => {
+      result.current.connect();
+    });
+
+    const socket = sockets[0];
+    await act(async () => {
+      socket.onclose?.();
+    });
+
+    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('example', 3000, 'invalid-token');
+    expect(useAppStore.getState().instanceConnectionStatus['instance-test']).toBe('disconnected');
+
+    // Should still schedule reconnect
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(sockets.length).toBe(2);
   });
 });

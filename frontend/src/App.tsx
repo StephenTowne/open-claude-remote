@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useAppStore } from './stores/app-store.js';
 import { AuthPage } from './pages/AuthPage.js';
 import { ConsolePage } from './pages/ConsolePage.js';
-import { getStatus } from './services/api-client.js';
+import { getStatus, authenticate } from './services/api-client.js';
 import { loadToken, clearToken } from './services/token-storage.js';
 
 export function App() {
@@ -24,10 +24,24 @@ export function App() {
           setCachedToken(storedToken);
         }
       })
-      .catch(() => {
-        // Session invalid or expired, show login page
+      .catch(async () => {
+        // Session invalid or expired (e.g., backend restarted)
+        // Try to re-authenticate with cached token if available
+        const cachedToken = loadToken();
+        if (cachedToken) {
+          try {
+            const ok = await authenticate(cachedToken);
+            if (ok) {
+              setAuthenticated(true);
+              setCachedToken(cachedToken);
+              return;
+            }
+          } catch {
+            // Re-authentication failed, fall through to login
+          }
+        }
+        // No cached token or re-authentication failed, show login page
         setCheckingAuth(false);
-        // Clear stale token from sessionStorage
         clearToken();
         setCachedToken(null);
       });

@@ -4,6 +4,7 @@ import { ConsolePage } from '../../src/pages/ConsolePage.js';
 import { useAppStore } from '../../src/stores/app-store.js';
 import { useInstanceStore } from '../../src/stores/instance-store.js';
 import { authenticateToInstance } from '../../src/services/instance-api.js';
+import { authenticate } from '../../src/services/api-client.js';
 
 const viewportState = {
   keyboardHeight: 0,
@@ -52,8 +53,12 @@ vi.mock('../../src/components/status/StatusBar.js', () => ({
   StatusBar: () => <div>StatusBar</div>,
 }));
 
+let capturedOnSwitch: ((targetId: string) => void) | null = null;
 vi.mock('../../src/components/instances/InstanceTabs.js', () => ({
-  InstanceTabs: () => <div>InstanceTabs</div>,
+  InstanceTabs: ({ onSwitch }: { onSwitch: (id: string) => void }) => {
+    capturedOnSwitch = onSwitch;
+    return <div>InstanceTabs</div>;
+  },
 }));
 
 vi.mock('../../src/components/common/ConnectionBanner.js', () => ({
@@ -69,7 +74,12 @@ vi.mock('../../src/services/instance-api.js', () => ({
   buildInstanceWsUrl: vi.fn(() => 'ws://mock-instance/ws'),
 }));
 
+vi.mock('../../src/services/api-client.js', () => ({
+  authenticate: vi.fn(),
+}));
+
 const mockedAuthenticateToInstance = vi.mocked(authenticateToInstance);
+const mockedAuthenticate = vi.mocked(authenticate);
 
 describe('ConsolePage', () => {
   afterEach(() => {
@@ -79,6 +89,7 @@ describe('ConsolePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedHandleMessage = null;
+    capturedOnSwitch = null;
     viewportState.keyboardHeight = 0;
     mockScrollToBottom.mockClear();
 
@@ -296,6 +307,130 @@ describe('ConsolePage', () => {
 
     expect(mockedAuthenticateToInstance).toHaveBeenNthCalledWith(1, '127.0.0.1', 3000, 'cached-token');
     expect(screen.getByText('已切换到 3000')).toBeDefined();
+  });
+
+  it('should call authenticate() for isCurrent candidate during auto switch', async () => {
+    mockedAuthenticate.mockResolvedValue(true);
+
+    useAppStore.setState({ instanceConnectionStatus: { 'inst-2': 'disconnected' } });
+    useInstanceStore.setState({
+      instances: [
+        {
+          instanceId: 'inst-1',
+          name: 'Current',
+          host: '127.0.0.1',
+          port: 3000,
+          pid: 12345,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: true,
+        },
+        {
+          instanceId: 'inst-2',
+          name: 'B',
+          host: '127.0.0.1',
+          port: 3001,
+          pid: 22345,
+          cwd: '/tmp/b',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: false,
+        },
+      ],
+      activeInstanceId: 'inst-2',
+    });
+
+    render(<ConsolePage />);
+
+    await waitFor(() => {
+      expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
+    });
+
+    // isCurrent 候选应使用同源 authenticate() 而非 authenticateToInstance()
+    expect(mockedAuthenticate).toHaveBeenCalledWith('cached-token');
+    expect(mockedAuthenticateToInstance).not.toHaveBeenCalled();
+    expect(screen.getByText('已切换到 3000')).toBeDefined();
+  });
+
+  it('should call authenticate() for isCurrent instance during manual switch', async () => {
+    mockedAuthenticate.mockResolvedValue(true);
+
+    useInstanceStore.setState({
+      instances: [
+        {
+          instanceId: 'inst-1',
+          name: 'Current',
+          host: '127.0.0.1',
+          port: 3000,
+          pid: 12345,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: true,
+        },
+        {
+          instanceId: 'inst-2',
+          name: 'B',
+          host: '127.0.0.1',
+          port: 3001,
+          pid: 22345,
+          cwd: '/tmp/b',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: false,
+        },
+      ],
+      activeInstanceId: 'inst-2',
+    });
+
+    render(<ConsolePage />);
+
+    // 通过 capturedOnSwitch 模拟手动切换到 isCurrent 实例
+    await act(async () => {
+      capturedOnSwitch?.('inst-1');
+    });
+
+    expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
+    // isCurrent 实例应使用同源 authenticate()
+    expect(mockedAuthenticate).toHaveBeenCalledWith('cached-token');
+    expect(mockedAuthenticateToInstance).not.toHaveBeenCalled();
+  });
+
+  it('should call authenticateToInstance() for non-isCurrent instance during manual switch', async () => {
+    mockedAuthenticateToInstance.mockResolvedValue(true);
+
+    useInstanceStore.setState({
+      instances: [
+        {
+          instanceId: 'inst-1',
+          name: 'Current',
+          host: '127.0.0.1',
+          port: 3000,
+          pid: 12345,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: true,
+        },
+        {
+          instanceId: 'inst-2',
+          name: 'B',
+          host: '127.0.0.1',
+          port: 3001,
+          pid: 22345,
+          cwd: '/tmp/b',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: false,
+        },
+      ],
+      activeInstanceId: 'inst-1',
+    });
+
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedOnSwitch?.('inst-2');
+    });
+
+    expect(useInstanceStore.getState().activeInstanceId).toBe('inst-2');
+    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('127.0.0.1', 3001, 'cached-token');
+    expect(mockedAuthenticate).not.toHaveBeenCalled();
   });
 
   it('should auto dismiss toast after 3 seconds', () => {
@@ -676,7 +811,7 @@ describe('ConsolePage', () => {
       });
     });
 
-    expect(mockAdaptToPtyCols).toHaveBeenCalledWith(208);
+    expect(mockAdaptToPtyCols).toHaveBeenCalledWith(208, 50);
     expect(mockWrite).toHaveBeenCalledWith('hello');
     expect(mockScrollToBottom).toHaveBeenCalled();
   });
@@ -698,7 +833,7 @@ describe('ConsolePage', () => {
     expect(mockScrollToBottom).toHaveBeenCalled();
   });
 
-  it('should call adaptToPtyCols when terminal_resize message is received', async () => {
+  it('should call adaptToPtyCols with cols and rows when terminal_resize message is received', async () => {
     render(<ConsolePage />);
 
     await act(async () => {
@@ -709,7 +844,7 @@ describe('ConsolePage', () => {
       });
     });
 
-    expect(mockAdaptToPtyCols).toHaveBeenCalledWith(120);
+    expect(mockAdaptToPtyCols).toHaveBeenCalledWith(120, 40);
   });
 
   it('should write terminal_output without forcing scroll to bottom', async () => {
