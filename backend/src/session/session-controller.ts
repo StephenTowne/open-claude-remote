@@ -9,6 +9,10 @@ import { AlternateScreenFilter } from '../utils/ansi-filter.js';
 import { logger } from '../logger/logger.js';
 import type { PushService } from '../push/push-service.js';
 
+const WS_FLUSH_INTERVAL_MS = 16;
+const WS_MAX_CHUNK_BYTES = 32 * 1024;
+const WS_HIGH_WATERMARK_BYTES = 256 * 1024;
+
 /**
  * Core coordinator: wires PTY ↔ WebSocket ↔ Terminal ↔ Hooks.
  */
@@ -17,6 +21,16 @@ export class SessionController {
   private buffer: OutputBuffer;
   private altScreenFilter: AlternateScreenFilter;
   private pushService: PushService | null = null;
+
+  private wsPendingChunks: string[] = [];
+  private wsPendingBytes = 0;
+  private wsFlushTimer: NodeJS.Timeout | null = null;
+
+  private ptyInputBytesTotal = 0;
+  private wsFlushCount = 0;
+  private wsFlushBytesTotal = 0;
+  private wsMaxPendingBytes = 0;
+  private wsBackpressureEvents = 0;
 
   constructor(
     private ptyManager: PtyManager,
@@ -54,6 +68,8 @@ export class SessionController {
       // Write to PC terminal (original, unfiltered)
       process.stdout.write(data);
 
+      this.ptyInputBytesTotal += Buffer.byteLength(data, 'utf8');
+
       // Filter alternate screen content for web clients
       const filteredData = this.altScreenFilter.process(data);
 
@@ -62,24 +78,28 @@ export class SessionController {
         this.buffer.append(filteredData);
       }
 
-      // Broadcast filtered data to mobile clients
+      // Broadcast filtered data to mobile clients (batched)
       if (filteredData) {
-        this.wsServer.broadcast({
-          type: 'terminal_output',
-          data: filteredData,
-          seq: this.buffer.sequenceNumber,
-        });
+        this.enqueueWsOutput(filteredData);
       }
     });
 
     this.ptyManager.on('exit', (exitCode: number) => {
+      this.flushPendingWsOutput();
       this._status = 'idle';
       this.wsServer.broadcast({
         type: 'session_ended',
         exitCode,
         reason: exitCode === 0 ? 'Process exited normally' : `Process exited with code ${exitCode}`,
       });
-      logger.info({ exitCode }, 'Claude Code session ended');
+      logger.info({
+        exitCode,
+        ptyInputBytesTotal: this.ptyInputBytesTotal,
+        wsFlushCount: this.wsFlushCount,
+        wsFlushBytesTotal: this.wsFlushBytesTotal,
+        wsMaxPendingBytes: this.wsMaxPendingBytes,
+        wsBackpressureEvents: this.wsBackpressureEvents,
+      }, 'Claude Code session ended');
     });
 
     this.ptyManager.on('error', (err: Error) => {
@@ -100,6 +120,63 @@ export class SessionController {
         rows,
       });
     });
+  }
+
+  private enqueueWsOutput(data: string): void {
+    this.wsPendingChunks.push(data);
+    this.wsPendingBytes += Buffer.byteLength(data, 'utf8');
+    this.wsMaxPendingBytes = Math.max(this.wsMaxPendingBytes, this.wsPendingBytes);
+
+    if (this.wsPendingBytes >= WS_HIGH_WATERMARK_BYTES) {
+      this.wsBackpressureEvents += 1;
+      this.flushPendingWsOutput();
+      return;
+    }
+
+    if (this.wsPendingBytes >= WS_MAX_CHUNK_BYTES) {
+      this.flushPendingWsOutput();
+      return;
+    }
+
+    if (!this.wsFlushTimer) {
+      this.wsFlushTimer = setTimeout(() => {
+        this.wsFlushTimer = null;
+        this.flushPendingWsOutput();
+      }, WS_FLUSH_INTERVAL_MS);
+    }
+  }
+
+  private flushPendingWsOutput(): void {
+    if (this.wsFlushTimer) {
+      clearTimeout(this.wsFlushTimer);
+      this.wsFlushTimer = null;
+    }
+
+    if (this.wsPendingChunks.length === 0) {
+      return;
+    }
+
+    const output = this.wsPendingChunks.join('');
+    const flushBytes = this.wsPendingBytes;
+    this.wsPendingChunks = [];
+    this.wsPendingBytes = 0;
+
+    this.wsFlushCount += 1;
+    this.wsFlushBytesTotal += flushBytes;
+
+    this.wsServer.broadcast({
+      type: 'terminal_output',
+      data: output,
+      seq: this.buffer.sequenceNumber,
+    });
+
+    logger.debug({
+      flushBytes,
+      wsFlushCount: this.wsFlushCount,
+      wsPendingBytes: this.wsPendingBytes,
+      wsMaxPendingBytes: this.wsMaxPendingBytes,
+      wsBackpressureEvents: this.wsBackpressureEvents,
+    }, 'Flushed batched terminal output');
   }
 
   /**

@@ -11,16 +11,19 @@ const mockFitAddonFit = vi.fn();
 const mockProposeDimensions = vi.fn(() => ({ cols: 80, rows: 24 }));
 const mockTermState = { cols: 80, rows: 24 };
 const mockTermOptions = { fontSize: 14 };
+const mockUnicodeState = { activeVersion: '6' };
 const mockTermOpen = vi.fn();
 const mockTermDispose = vi.fn();
 const mockTermLoadAddon = vi.fn();
+const mockTermWrite = vi.fn();
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: vi.fn(() => ({
     get cols() { return mockTermState.cols; },
     get rows() { return mockTermState.rows; },
     options: mockTermOptions,
-    write: vi.fn(),
+    unicode: mockUnicodeState,
+    write: mockTermWrite,
     clear: vi.fn(),
     scrollToBottom: vi.fn(),
     resize: vi.fn(),
@@ -42,6 +45,11 @@ vi.mock('@xterm/addon-webgl', () => ({
     onContextLoss: vi.fn(),
     dispose: vi.fn(),
   })),
+}));
+
+const mockUnicodeAddon = { unicodeVersion: '6' };
+vi.mock('@xterm/addon-unicode11', () => ({
+  Unicode11Addon: vi.fn(() => mockUnicodeAddon),
 }));
 
 // Mock ResizeObserver
@@ -79,6 +87,8 @@ describe('useTerminal', () => {
     mockTermState.cols = 80;
     mockTermState.rows = 24;
     mockTermOptions.fontSize = 14;
+    mockUnicodeState.activeVersion = '6';
+    mockTermWrite.mockReset();
   });
 
   afterEach(() => {
@@ -171,6 +181,44 @@ describe('useTerminal', () => {
     expect(mockTermDispose).toHaveBeenCalledOnce();
   });
 
+  it('should batch write calls and flush once in animation frame', () => {
+    const { result } = renderUseTerminal();
+
+    act(() => {
+      result.current.write('A');
+      result.current.write('B');
+    });
+
+    expect(mockTermWrite).not.toHaveBeenCalled();
+
+    act(() => {
+      rafCallback?.(0);
+    });
+
+    expect(mockTermWrite).toHaveBeenCalledWith('AB');
+  });
+
+  it('should flush pending write queue on unmount', () => {
+    const { result, unmount } = renderUseTerminal();
+
+    act(() => {
+      result.current.write('tail');
+    });
+
+    expect(mockTermWrite).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(mockTermWrite).toHaveBeenCalledWith('tail');
+  });
+
+  it('should load Unicode11 addon and set unicodeVersion to 11', () => {
+    renderUseTerminal();
+
+    expect(mockTermLoadAddon.mock.calls.some((call) => call[0] === mockUnicodeAddon)).toBe(true);
+    expect(mockUnicodeState.activeVersion).toBe('11');
+  });
+
   // ---- adaptToPtyCols tests ----
 
   it('adaptToPtyCols should shrink font when container cols < ptyCols', () => {
@@ -237,7 +285,7 @@ describe('useTerminal', () => {
     });
 
     expect(mockTermOptions.fontSize).toBe(9);
-    expect(mockFitAddonFit).toHaveBeenCalledTimes(2);
+    expect(mockFitAddonFit).toHaveBeenCalledTimes(3);
   });
 
   it('should not trigger onResize from ResizeObserver after ptyCols is set', () => {

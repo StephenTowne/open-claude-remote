@@ -2,11 +2,15 @@ import { useRef, useEffect, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 
 const DEFAULT_FONT_SIZE = 14;
 // 7 是移动端可读性的最小字号下限，继续降低会明显影响可读性
 const MIN_FONT_SIZE = 7;
 const MIN_USABLE_ROWS = 12;
+const WRITE_FLUSH_INTERVAL_MS = 16;
+const WRITE_MAX_QUEUED_BYTES = 256 * 1024;
+const RESIZE_THROTTLE_MS = 50;
 
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
@@ -20,8 +24,91 @@ export function useTerminal(
   const onResizeRef = useRef(onResize);
   onResizeRef.current = onResize;
 
+  const writeQueueRef = useRef<string[]>([]);
+  const queuedWriteBytesRef = useRef(0);
+  const writeFlushRafIdRef = useRef<number | null>(null);
+  const writeFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const lastResizeSentAtRef = useRef(0);
+  const pendingResizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingResizeValueRef = useRef<{ cols: number; rows: number } | null>(null);
+  const lastReportedResizeRef = useRef<{ cols: number; rows: number } | null>(null);
+
   useEffect(() => {
     if (!containerRef.current) return;
+
+    const flushWriteQueue = () => {
+      if (!termRef.current || writeQueueRef.current.length === 0) return;
+      const output = writeQueueRef.current.join('');
+      writeQueueRef.current = [];
+      queuedWriteBytesRef.current = 0;
+      termRef.current.write(output);
+    };
+
+    const scheduleWriteFlush = () => {
+      if (writeFlushRafIdRef.current === null) {
+        writeFlushRafIdRef.current = requestAnimationFrame(() => {
+          writeFlushRafIdRef.current = null;
+          if (writeFlushTimeoutRef.current) {
+            clearTimeout(writeFlushTimeoutRef.current);
+            writeFlushTimeoutRef.current = null;
+          }
+          flushWriteQueue();
+        });
+      }
+
+      if (!writeFlushTimeoutRef.current) {
+        writeFlushTimeoutRef.current = setTimeout(() => {
+          writeFlushTimeoutRef.current = null;
+          flushWriteQueue();
+        }, WRITE_FLUSH_INTERVAL_MS);
+      }
+    };
+
+    const enqueueWrite = (data: string, callback?: () => void) => {
+      writeQueueRef.current.push(data);
+      queuedWriteBytesRef.current += data.length;
+      if (queuedWriteBytesRef.current >= WRITE_MAX_QUEUED_BYTES) {
+        flushWriteQueue();
+      } else {
+        scheduleWriteFlush();
+      }
+      callback?.();
+    };
+
+    const emitResize = (cols: number, rows: number) => {
+      const last = lastReportedResizeRef.current;
+      if (last && last.cols === cols && last.rows === rows) {
+        return;
+      }
+
+      const now = Date.now();
+      const elapsed = now - lastResizeSentAtRef.current;
+      const run = () => {
+        lastResizeSentAtRef.current = Date.now();
+        lastReportedResizeRef.current = { cols, rows };
+        onResizeRef.current?.(cols, rows);
+      };
+
+      if (elapsed >= RESIZE_THROTTLE_MS) {
+        run();
+        return;
+      }
+
+      pendingResizeValueRef.current = { cols, rows };
+      if (!pendingResizeTimeoutRef.current) {
+        pendingResizeTimeoutRef.current = setTimeout(() => {
+          pendingResizeTimeoutRef.current = null;
+          const pending = pendingResizeValueRef.current;
+          pendingResizeValueRef.current = null;
+          if (pending) {
+            lastResizeSentAtRef.current = Date.now();
+            lastReportedResizeRef.current = { cols: pending.cols, rows: pending.rows };
+            onResizeRef.current?.(pending.cols, pending.rows);
+          }
+        }, RESIZE_THROTTLE_MS - elapsed);
+      }
+    };
 
     const term = new Terminal({
       disableStdin: true,
@@ -56,6 +143,14 @@ export function useTerminal(
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
 
+    try {
+      const unicode11Addon = new Unicode11Addon();
+      term.loadAddon(unicode11Addon);
+      term.unicode.activeVersion = '11';
+    } catch {
+      // fallback to default unicode width behavior
+    }
+
     term.open(containerRef.current);
 
     // Try WebGL renderer, fallback to canvas
@@ -72,8 +167,8 @@ export function useTerminal(
     fitAddon.fit();
     // 初始尺寸通知：等布局稳定后上报
     requestAnimationFrame(() => {
-      if (onResizeRef.current && termRef.current) {
-        onResizeRef.current(termRef.current.cols, termRef.current.rows);
+      if (termRef.current) {
+        emitResize(termRef.current.cols, termRef.current.rows);
       }
     });
     termRef.current = term;
@@ -113,15 +208,22 @@ export function useTerminal(
         adaptFnRef.current?.(ptyColsRef.current);
       } else {
         fitAddon.fit();
-        if (onResizeRef.current) {
-          onResizeRef.current(term.cols, term.rows);
-        }
+        emitResize(term.cols, term.rows);
       }
     });
     resizeObserver.observe(containerRef.current);
 
     return () => {
       resizeObserver.disconnect();
+      if (pendingResizeTimeoutRef.current) {
+        clearTimeout(pendingResizeTimeoutRef.current);
+        pendingResizeTimeoutRef.current = null;
+      }
+      if (writeFlushTimeoutRef.current) {
+        clearTimeout(writeFlushTimeoutRef.current);
+        writeFlushTimeoutRef.current = null;
+      }
+      flushWriteQueue();
       term.dispose();
       termRef.current = null;
       fitAddonRef.current = null;
@@ -130,7 +232,52 @@ export function useTerminal(
   }, [containerRef]);
 
   const write = useCallback((data: string, callback?: () => void) => {
-    termRef.current?.write(data, callback);
+    if (!data) {
+      callback?.();
+      return;
+    }
+    writeQueueRef.current.push(data);
+    queuedWriteBytesRef.current += data.length;
+    if (queuedWriteBytesRef.current >= WRITE_MAX_QUEUED_BYTES) {
+      if (termRef.current) {
+        const output = writeQueueRef.current.join('');
+        writeQueueRef.current = [];
+        queuedWriteBytesRef.current = 0;
+        termRef.current.write(output);
+      }
+      callback?.();
+      return;
+    }
+
+    if (writeFlushRafIdRef.current === null) {
+      writeFlushRafIdRef.current = requestAnimationFrame(() => {
+        writeFlushRafIdRef.current = null;
+        if (writeFlushTimeoutRef.current) {
+          clearTimeout(writeFlushTimeoutRef.current);
+          writeFlushTimeoutRef.current = null;
+        }
+        if (termRef.current && writeQueueRef.current.length > 0) {
+          const output = writeQueueRef.current.join('');
+          writeQueueRef.current = [];
+          queuedWriteBytesRef.current = 0;
+          termRef.current.write(output);
+        }
+      });
+    }
+
+    if (!writeFlushTimeoutRef.current) {
+      writeFlushTimeoutRef.current = setTimeout(() => {
+        writeFlushTimeoutRef.current = null;
+        if (termRef.current && writeQueueRef.current.length > 0) {
+          const output = writeQueueRef.current.join('');
+          writeQueueRef.current = [];
+          queuedWriteBytesRef.current = 0;
+          termRef.current.write(output);
+        }
+      }, WRITE_FLUSH_INTERVAL_MS);
+    }
+
+    callback?.();
   }, []);
 
   const clear = useCallback(() => {

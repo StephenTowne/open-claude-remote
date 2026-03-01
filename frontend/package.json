@@ -13,6 +13,7 @@
   "dependencies": {
     "@claude-remote/shared": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-unicode11": "^0.8.0",
     "@xterm/addon-webgl": "^0.18.0",
     "@xterm/xterm": "^5.5.0",
     "react": "^19.0.0",

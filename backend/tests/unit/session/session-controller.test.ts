@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 
 // ---- Minimal mocks ----
@@ -55,13 +55,21 @@ describe('SessionController', () => {
   let wsServer: ReturnType<typeof createMockWsServer>;
   let hookReceiver: ReturnType<typeof createMockHookReceiver>;
   let SessionController: typeof import('../../../src/session/session-controller.js').SessionController;
+  let stdoutSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     ptyManager = createMockPtyManager();
     wsServer = createMockWsServer();
     hookReceiver = createMockHookReceiver();
     ({ SessionController } = await import('../../../src/session/session-controller.js'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    stdoutSpy.mockRestore();
   });
 
   describe('onResize', () => {
@@ -100,6 +108,67 @@ describe('SessionController', () => {
           type: 'history_sync',
           cols: 80,
           rows: 24,
+        }),
+      );
+    });
+  });
+
+  describe('pty output batching', () => {
+    it('should batch multiple PTY chunks and flush once by timer', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      ptyManager.emit('data', 'A');
+      ptyManager.emit('data', 'B');
+
+      expect(wsServer.broadcast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'terminal_output' }),
+      );
+
+      vi.advanceTimersByTime(16);
+
+      expect(wsServer.broadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'terminal_output',
+          data: 'AB',
+        }),
+      );
+      expect(stdoutSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('should flush immediately when max chunk bytes threshold is reached', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      const large = 'x'.repeat(40 * 1024);
+      ptyManager.emit('data', large);
+
+      expect(wsServer.broadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'terminal_output',
+          data: large,
+        }),
+      );
+    });
+
+    it('should force flush pending data on process exit event', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      ptyManager.emit('data', 'tail-data');
+      expect(wsServer.broadcast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'terminal_output' }),
+      );
+
+      ptyManager.emit('exit', 0);
+
+      expect(wsServer.broadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'terminal_output',
+          data: 'tail-data',
+        }),
+      );
+      expect(wsServer.broadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'session_ended',
+          exitCode: 0,
         }),
       );
     });
