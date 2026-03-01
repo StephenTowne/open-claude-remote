@@ -18,6 +18,11 @@ vi.mock('../../src/hooks/usePushNotification.js', () => ({
   usePushNotification: () => undefined,
 }));
 
+const mockShowNotification = vi.fn();
+vi.mock('../../src/hooks/useLocalNotification.js', () => ({
+  useLocalNotification: () => ({ showNotification: mockShowNotification }),
+}));
+
 vi.mock('../../src/hooks/useInstances.js', () => ({
   useInstances: () => ({ activeInstanceId: 'inst-1' }),
 }));
@@ -92,6 +97,7 @@ describe('ConsolePage', () => {
     capturedOnSwitch = null;
     viewportState.keyboardHeight = 0;
     mockScrollToBottom.mockClear();
+    mockShowNotification.mockClear();
 
     useAppStore.setState({
       isAuthenticated: true,
@@ -447,6 +453,48 @@ describe('ConsolePage', () => {
   });
 
   // ---- ask_question WS message tests ----
+
+  it('should show local notification when ask_question is received', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [
+          {
+            question: 'Which library?',
+            options: [{ label: 'React' }],
+          },
+        ],
+      });
+    });
+
+    expect(mockShowNotification).toHaveBeenCalledWith({
+      title: 'Claude Code 需要回答',
+      body: 'Which library?',
+      tag: 'claude-ask-question',
+      renotify: false,
+    });
+  });
+
+  it('should show local notification when status_update waiting_input is received', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'status_update',
+        status: 'waiting_input',
+        detail: 'Waiting for input: Bash',
+      });
+    });
+
+    expect(mockShowNotification).toHaveBeenCalledWith({
+      title: 'Claude Code 需要输入',
+      body: 'Waiting for input: Bash',
+      tag: 'claude-waiting-input',
+      renotify: false,
+    });
+  });
 
   it('should show QuestionPanel when ask_question WS message is received', async () => {
     render(<ConsolePage />);
@@ -889,5 +937,243 @@ describe('ConsolePage', () => {
     });
 
     expect(useInstanceStore.getState().currentHostOverride).toBe('192.168.1.20');
+  });
+
+  // ---- permission_request WS message tests ----
+
+  it('should show PermissionPanel when permission_request is received', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'permission_request',
+        requestId: 'req-123',
+        toolName: 'Bash',
+        toolInput: { command: 'ls -la' },
+        permissionSuggestions: [{ type: 'allow', tool: 'Bash' }],
+      });
+    });
+
+    expect(screen.getByTestId('permission-panel')).toBeDefined();
+    expect(screen.getByText(/Claude 请求使用/)).toBeDefined();
+    expect(screen.getByText('Bash')).toBeDefined();
+    expect(screen.getByText('允许')).toBeDefined();
+    expect(screen.getByText('始终允许')).toBeDefined();
+    expect(screen.getByText('拒绝')).toBeDefined();
+  });
+
+  it('should show local notification when permission_request is received', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'permission_request',
+        requestId: 'req-123',
+        toolName: 'Bash',
+        toolInput: { command: 'ls' },
+      });
+    });
+
+    expect(mockShowNotification).toHaveBeenCalledWith({
+      title: 'Claude Code 权限请求',
+      body: '请求使用 Bash',
+      tag: 'claude-permission',
+      renotify: false,
+    });
+  });
+
+  it('should send permission_decision with allow when Allow button is clicked', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'permission_request',
+        requestId: 'req-123',
+        toolName: 'Bash',
+        toolInput: { command: 'ls' },
+      });
+    });
+
+    expect(screen.getByTestId('permission-panel')).toBeDefined();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('允许'));
+    });
+
+    expect(mockSend).toHaveBeenCalledWith({
+      type: 'permission_decision',
+      requestId: 'req-123',
+      behavior: 'allow',
+      updatedPermissions: undefined,
+    });
+
+    // Panel should be dismissed
+    expect(screen.queryByTestId('permission-panel')).toBeNull();
+  });
+
+  it('should send permission_decision with deny when Deny button is clicked', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'permission_request',
+        requestId: 'req-456',
+        toolName: 'Write',
+        toolInput: { file_path: '/test.txt' },
+      });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('拒绝'));
+    });
+
+    expect(mockSend).toHaveBeenCalledWith({
+      type: 'permission_decision',
+      requestId: 'req-456',
+      behavior: 'deny',
+    });
+    expect(screen.queryByTestId('permission-panel')).toBeNull();
+  });
+
+  it('should send updatedPermissions when Always Allow is clicked', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'permission_request',
+        requestId: 'req-789',
+        toolName: 'Bash',
+        toolInput: { command: 'ls' },
+        permissionSuggestions: [{ type: 'allow', tool: 'Bash' }],
+      });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('始终允许'));
+    });
+
+    expect(mockSend).toHaveBeenCalledWith({
+      type: 'permission_decision',
+      requestId: 'req-789',
+      behavior: 'allow',
+      updatedPermissions: [{ type: 'allow', tool: 'Bash' }],
+    });
+    expect(screen.queryByTestId('permission-panel')).toBeNull();
+  });
+
+  it('should not show Always Allow button when permissionSuggestions is empty', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'permission_request',
+        requestId: 'req-123',
+        toolName: 'Bash',
+        toolInput: { command: 'ls' },
+      });
+    });
+
+    expect(screen.getByText('允许')).toBeDefined();
+    expect(screen.getByText('拒绝')).toBeDefined();
+    expect(screen.queryByText('始终允许')).toBeNull();
+  });
+
+  it('should clear permissionState when status_update with non-waiting_input is received', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'permission_request',
+        requestId: 'req-123',
+        toolName: 'Bash',
+        toolInput: { command: 'ls' },
+      });
+    });
+
+    expect(screen.getByTestId('permission-panel')).toBeDefined();
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'status_update',
+        status: 'running',
+      });
+    });
+
+    expect(screen.queryByTestId('permission-panel')).toBeNull();
+  });
+
+  it('should show tool input preview in PermissionPanel', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'permission_request',
+        requestId: 'req-123',
+        toolName: 'Bash',
+        toolInput: { command: 'rm -rf /tmp/test' },
+      });
+    });
+
+    expect(screen.getByText('rm -rf /tmp/test')).toBeDefined();
+  });
+
+  it('should prioritize PermissionPanel over QuestionPanel when both states are set', async () => {
+    render(<ConsolePage />);
+
+    // First show question panel
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [{ question: 'Q?', options: [{ label: 'A' }] }],
+      });
+    });
+
+    expect(screen.getByTestId('question-panel')).toBeDefined();
+
+    // Then show permission panel
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'permission_request',
+        requestId: 'req-123',
+        toolName: 'Bash',
+        toolInput: { command: 'ls' },
+      });
+    });
+
+    // PermissionPanel should take priority
+    expect(screen.getByTestId('permission-panel')).toBeDefined();
+    expect(screen.queryByTestId('question-panel')).toBeNull();
+  });
+
+  it('should not show stale QuestionPanel after permission_request clears askState', async () => {
+    render(<ConsolePage />);
+
+    // First show question panel
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [{ question: 'Q?', options: [{ label: 'A' }] }],
+      });
+    });
+    expect(screen.getByTestId('question-panel')).toBeDefined();
+
+    // Permission request arrives — should clear askState
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'permission_request',
+        requestId: 'req-123',
+        toolName: 'Bash',
+        toolInput: { command: 'ls' },
+      });
+    });
+
+    // Allow the permission
+    await act(async () => {
+      fireEvent.click(screen.getByText('允许'));
+    });
+
+    // After permission resolved, stale QuestionPanel should NOT reappear
+    expect(screen.queryByTestId('permission-panel')).toBeNull();
+    expect(screen.queryByTestId('question-panel')).toBeNull();
   });
 });

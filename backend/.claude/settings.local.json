@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm test:*)",
+      "WebSearch",
+      "WebFetch(domain:www.anthropic.com)"
     ]
   }
 }

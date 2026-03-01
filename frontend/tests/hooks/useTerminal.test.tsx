@@ -498,5 +498,47 @@ describe('useTerminal', () => {
 
       expect(mockTermResize).toHaveBeenCalledWith(80, 50);
     });
+
+    it('should NOT force rows when container fits more rows than PTY (utilize full screen)', () => {
+      mockProposeDimensions.mockReturnValue({ cols: 120, rows: 40 });
+      mockFitAddonFit.mockImplementation(() => {
+        mockTermState.cols = 80;
+        mockTermState.rows = 40; // container naturally fits 40 rows
+      });
+
+      const { result } = renderUseTerminal();
+      mockTermResize.mockClear();
+
+      act(() => {
+        result.current.adaptToPtyCols(80, 24); // PTY only has 24 rows
+      });
+
+      // Should NOT shrink to 24 rows — keep 40 to fill the screen
+      expect(mockTermResize).not.toHaveBeenCalled();
+    });
+
+    it('should NOT re-apply PTY rows on ResizeObserver when container fits more rows', () => {
+      mockProposeDimensions.mockReturnValue({ cols: 120, rows: 40 });
+      mockFitAddonFit.mockImplementation(() => {
+        mockTermState.cols = 80;
+        mockTermState.rows = 40;
+      });
+
+      const { result } = renderUseTerminal();
+
+      // Set PTY dimensions (ptyRows=24, container fits 40)
+      act(() => {
+        result.current.adaptToPtyCols(80, 24);
+      });
+      mockTermResize.mockClear();
+
+      // ResizeObserver triggers (e.g., orientation change)
+      act(() => {
+        resizeObserverCallback?.();
+      });
+
+      // Should NOT force rows down to 24
+      expect(mockTermResize).not.toHaveBeenCalled();
+    });
   });
 });

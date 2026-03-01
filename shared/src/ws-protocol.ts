@@ -59,6 +59,24 @@ export interface AskQuestionMessage {
   questions: Question[];
 }
 
+export interface PermissionSuggestion {
+  type: string;
+  tool?: string;
+}
+
+export interface PermissionDecision {
+  behavior: 'allow' | 'deny';
+  updatedPermissions?: PermissionSuggestion[];
+}
+
+export interface PermissionRequestMessage {
+  type: 'permission_request';
+  requestId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  permissionSuggestions?: PermissionSuggestion[];
+}
+
 export interface TerminalResizeMessage {
   type: 'terminal_resize';
   cols: number;
@@ -81,6 +99,7 @@ export type ServerMessage =
   | SessionEndedMessage
   | TerminalResizeMessage
   | AskQuestionMessage
+  | PermissionRequestMessage
   | IpChangedMessage;
 
 // ==============================
@@ -103,7 +122,15 @@ export interface ClientHeartbeatMessage {
   timestamp: number;
 }
 
+export interface PermissionDecisionMessage {
+  type: 'permission_decision';
+  requestId: string;
+  behavior: 'allow' | 'deny';
+  updatedPermissions?: PermissionSuggestion[];
+}
+
 export type ClientMessage =
   | UserInputMessage
   | ResizeMessage
-  | ClientHeartbeatMessage;
+  | ClientHeartbeatMessage
+  | PermissionDecisionMessage;

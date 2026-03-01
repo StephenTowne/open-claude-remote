@@ -1,11 +1,12 @@
 import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
-import type { ServerMessage, InstanceListItem, Question } from '@claude-remote/shared';
+import type { ServerMessage, InstanceListItem, Question, PermissionSuggestion } from '@claude-remote/shared';
 import { isFreeTextLabel } from '@claude-remote/shared';
 import { StatusBar } from '../components/status/StatusBar.js';
 import { TerminalView } from '../components/terminal/TerminalView.js';
 import { InputBar } from '../components/input/InputBar.js';
 import { VirtualKeyBar } from '../components/input/VirtualKeyBar.js';
 import { QuestionPanel } from '../components/input/QuestionPanel.js';
+import { PermissionPanel } from '../components/input/PermissionPanel.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
 import { IpChangeToast } from '../components/common/IpChangeToast.js';
 import { InstanceTabs } from '../components/instances/InstanceTabs.js';
@@ -13,6 +14,7 @@ import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useTerminal } from '../hooks/useTerminal.js';
 import { useViewport } from '../hooks/useViewport.js';
 import { usePushNotification } from '../hooks/usePushNotification.js';
+import { useLocalNotification } from '../hooks/useLocalNotification.js';
 import { useInstances } from '../hooks/useInstances.js';
 import { useAppStore } from '../stores/app-store.js';
 import { useInstanceStore } from '../stores/instance-store.js';
@@ -28,10 +30,18 @@ interface AskState {
   otherText: string;
 }
 
+interface PermissionState {
+  requestId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  permissionSuggestions?: PermissionSuggestion[];
+}
+
 function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: { wsUrl?: string; instanceId?: string; showVirtualKeyBar: boolean; onIpChanged?: (newIp: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
   const setIpChangeInfo = useAppStore((s) => s.setIpChangeInfo);
+  const { showNotification } = useLocalNotification();
 
   // 用 ref 打破循环依赖：handleMessage ↔ write，send ↔ onResize
   const sendRef = useRef<ReturnType<typeof useWebSocket>['send'] | null>(null);
@@ -44,6 +54,9 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
   const [askState, setAskState] = useState<AskState | null>(null);
   const askStateRef = useRef<AskState | null>(null);
   askStateRef.current = askState;
+
+  // 当前权限请求状态
+  const [permissionState, setPermissionState] = useState<PermissionState | null>(null);
 
   const handleMessage = useCallback((msg: ServerMessage) => {
     switch (msg.type) {
@@ -68,6 +81,15 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
         // 非 waiting_input 时清理问答面板
         if (msg.status !== 'waiting_input') {
           setAskState(null);
+          setPermissionState(null);
+        } else {
+          // 收到 waiting_input 时发送本地通知
+          showNotification({
+            title: 'Claude Code 需要输入',
+            body: msg.detail ?? 'Claude 正在等待你的输入',
+            tag: 'claude-waiting-input',
+            renotify: false,
+          });
         }
         break;
       case 'ask_question':
@@ -78,6 +100,29 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
           selectedOptions: new Set(),
           isOtherInput: false,
           otherText: '',
+        });
+        // 收到提问时发送本地通知
+        showNotification({
+          title: 'Claude Code 需要回答',
+          body: msg.questions[0]?.question ?? 'Claude 提出了问题',
+          tag: 'claude-ask-question',
+          renotify: false,
+        });
+        break;
+      case 'permission_request':
+        // 权限请求到达时清除旧的问答状态，避免权限处理后残留 QuestionPanel
+        setAskState(null);
+        setPermissionState({
+          requestId: msg.requestId,
+          toolName: msg.toolName,
+          toolInput: msg.toolInput,
+          permissionSuggestions: msg.permissionSuggestions,
+        });
+        showNotification({
+          title: 'Claude Code 权限请求',
+          body: `请求使用 ${msg.toolName}`,
+          tag: 'claude-permission',
+          renotify: false,
         });
         break;
       case 'session_ended':
@@ -97,7 +142,7 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
         onIpChanged?.(msg.newIp);
         break;
     }
-  }, [setSessionStatus, setIpChangeInfo, onIpChanged]);
+  }, [setSessionStatus, setIpChangeInfo, onIpChanged, showNotification]);
 
   const { connect, send } = useWebSocket(handleMessage, wsUrl, instanceId);
   sendRef.current = send;
@@ -219,12 +264,41 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
     return () => window.removeEventListener('keydown', handleEscape);
   }, [askState, send]);
 
+  const handlePermissionAllow = useCallback((alwaysAllow: boolean = false) => {
+    if (!permissionState) return;
+    send({
+      type: 'permission_decision',
+      requestId: permissionState.requestId,
+      behavior: 'allow',
+      updatedPermissions: alwaysAllow ? permissionState.permissionSuggestions : undefined,
+    });
+    setPermissionState(null);
+  }, [send, permissionState]);
+
+  const handlePermissionDeny = useCallback(() => {
+    if (!permissionState) return;
+    send({
+      type: 'permission_decision',
+      requestId: permissionState.requestId,
+      behavior: 'deny',
+    });
+    setPermissionState(null);
+  }, [send, permissionState]);
+
   return (
     <>
       <ConnectionBanner />
       <IpChangeToast />
       <TerminalView containerRef={containerRef} />
-      {askState ? (
+      {permissionState ? (
+        <PermissionPanel
+          toolName={permissionState.toolName}
+          toolInput={permissionState.toolInput}
+          permissionSuggestions={permissionState.permissionSuggestions}
+          onAllow={handlePermissionAllow}
+          onDeny={handlePermissionDeny}
+        />
+      ) : askState ? (
         <QuestionPanel
           questions={askState.questions}
           currentQuestionIndex={askState.currentIndex}

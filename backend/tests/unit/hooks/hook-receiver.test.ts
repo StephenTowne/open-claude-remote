@@ -231,4 +231,134 @@ describe('HookReceiver', () => {
     expect(result.type).toBe('ignored');
     expect(askHandler).not.toHaveBeenCalled();
   });
+
+  // ---- PermissionRequest tests ----
+
+  it('should emit permission_request event for PermissionRequest hook', () => {
+    const receiver = new HookReceiver();
+    const handler = vi.fn();
+    receiver.on('permission_request', handler);
+
+    const payload = {
+      hook_event_name: 'PermissionRequest',
+      tool_name: 'Bash',
+      tool_input: { command: 'rm -rf test' },
+      permission_suggestions: [{ type: 'allow', tool: 'Bash' }],
+    };
+
+    const result = receiver.processHook(payload);
+
+    expect(result.type).toBe('permission_request');
+    expect(result.permissionRequest!.toolName).toBe('Bash');
+    expect(result.permissionRequest!.toolInput).toEqual({ command: 'rm -rf test' });
+    expect(result.permissionRequest!.permissionSuggestions).toEqual([{ type: 'allow', tool: 'Bash' }]);
+    expect(result.permissionRequest!.requestId).toBeDefined();
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it('should handle PermissionRequest without permission_suggestions', () => {
+    const receiver = new HookReceiver();
+    const handler = vi.fn();
+    receiver.on('permission_request', handler);
+
+    const payload = {
+      hook_event_name: 'PermissionRequest',
+      tool_name: 'Read',
+      tool_input: { file_path: '/test/file.txt' },
+    };
+
+    const result = receiver.processHook(payload);
+
+    expect(result.type).toBe('permission_request');
+    expect(result.permissionRequest!.toolName).toBe('Read');
+    expect(result.permissionRequest!.permissionSuggestions).toBeUndefined();
+  });
+
+  it('should handle PermissionRequest with missing tool_name', () => {
+    const receiver = new HookReceiver();
+
+    const result = receiver.processHook({
+      hook_event_name: 'PermissionRequest',
+      tool_input: { command: 'test' },
+    });
+
+    expect(result.type).toBe('permission_request');
+    expect(result.permissionRequest!.toolName).toBe('unknown');
+  });
+
+  it('should wait for decision and resolve when submitted', async () => {
+    const receiver = new HookReceiver();
+
+    const payload = {
+      hook_event_name: 'PermissionRequest',
+      tool_name: 'Bash',
+      tool_input: { command: 'ls' },
+    };
+
+    const result = receiver.processHook(payload);
+    const requestId = result.permissionRequest!.requestId;
+
+    // 先开始等待（模拟 hook-routes.ts 的行为）
+    const decisionPromise = receiver.waitForDecision(requestId, 100);
+
+    // 然后提交决策
+    receiver.submitDecision(requestId, { behavior: 'allow' });
+
+    const decision = await decisionPromise;
+    expect(decision).toEqual({ behavior: 'allow' });
+  });
+
+  it('should return null on waitForDecision timeout', async () => {
+    const receiver = new HookReceiver();
+
+    const payload = {
+      hook_event_name: 'PermissionRequest',
+      tool_name: 'Bash',
+      tool_input: { command: 'ls' },
+    };
+
+    const result = receiver.processHook(payload);
+    const requestId = result.permissionRequest!.requestId;
+
+    // 不提交决策，等待超时
+    const decision = await receiver.waitForDecision(requestId, 50);
+    expect(decision).toBeNull();
+  });
+
+  it('should handle submitDecision for unknown requestId', () => {
+    const receiver = new HookReceiver();
+
+    // 不应抛出错误
+    expect(() => {
+      receiver.submitDecision('unknown-request-id', { behavior: 'deny' });
+    }).not.toThrow();
+  });
+
+  it('should allow deny with updatedPermissions', async () => {
+    const receiver = new HookReceiver();
+
+    const payload = {
+      hook_event_name: 'PermissionRequest',
+      tool_name: 'Bash',
+      tool_input: { command: 'ls' },
+      permission_suggestions: [{ type: 'allow', tool: 'Bash' }],
+    };
+
+    const result = receiver.processHook(payload);
+    const requestId = result.permissionRequest!.requestId;
+
+    // 先开始等待
+    const decisionPromise = receiver.waitForDecision(requestId, 100);
+
+    receiver.submitDecision(requestId, {
+      behavior: 'allow',
+      updatedPermissions: [{ type: 'allow', tool: 'Bash' }],
+    });
+
+    const decision = await decisionPromise;
+    expect(decision).toEqual({
+      behavior: 'allow',
+      updatedPermissions: [{ type: 'allow', tool: 'Bash' }],
+    });
+  });
 });

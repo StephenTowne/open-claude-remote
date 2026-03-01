@@ -76,3 +76,16 @@ button {
   outline: none;
   box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px #58a6ff;
 }
+
+/* Permission panel buttons */
+.perm-btn {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.1s, background 0.1s;
+}
+.perm-btn:hover {
+  opacity: 0.85;
+}
+.perm-btn:active {
+  opacity: 0.7;
+}

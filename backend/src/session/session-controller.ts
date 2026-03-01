@@ -3,7 +3,7 @@ import type { SessionStatus, Question } from '@claude-remote/shared';
 import { PtyManager } from '../pty/pty-manager.js';
 import { OutputBuffer } from '../pty/output-buffer.js';
 import { WsServer } from '../ws/ws-server.js';
-import { HookReceiver, type HookNotification } from '../hooks/hook-receiver.js';
+import { HookReceiver, type HookNotification, type PermissionRequestEvent } from '../hooks/hook-receiver.js';
 import { handleWsMessage } from '../ws/ws-handler.js';
 import { logger } from '../logger/logger.js';
 import type { PushService } from '../push/push-service.js';
@@ -184,6 +184,10 @@ export class SessionController {
           logger.info({ cols, rows }, 'Resize request from web client, applying to PTY');
           this.ptyManager.resize(cols, rows);
         },
+        onPermissionDecision: (requestId: string, decision) => {
+          logger.info({ requestId, behavior: decision.behavior }, 'Permission decision received from WS client');
+          this.hookReceiver.submitDecision(requestId, decision);
+        },
       });
     });
 
@@ -248,6 +252,34 @@ export class SessionController {
         questionCount: data.questions.length,
         firstQuestion: data.questions[0]?.question,
       }, 'AskUserQuestion broadcast');
+    });
+
+    this.hookReceiver.on('permission_request', (event: PermissionRequestEvent) => {
+      this._status = 'waiting_input';
+
+      this.wsServer.broadcast({
+        type: 'permission_request',
+        requestId: event.requestId,
+        toolName: event.toolName,
+        toolInput: event.toolInput,
+        permissionSuggestions: event.permissionSuggestions,
+      });
+
+      if (this.pushService) {
+        this.pushService.notifyAll({
+          title: 'Claude Code 权限请求',
+          body: `请求使用 ${event.toolName}`,
+          tag: 'claude-permission',
+          renotify: true,
+        }).catch((err) => {
+          logger.error({ err, requestId: event.requestId }, 'Push notification failed');
+        });
+      }
+
+      logger.info({
+        requestId: event.requestId,
+        toolName: event.toolName,
+      }, 'PermissionRequest broadcast');
     });
   }
 

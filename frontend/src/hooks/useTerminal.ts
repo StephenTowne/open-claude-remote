@@ -171,8 +171,9 @@ export function useTerminal(
         }
       }
 
-      // 强制 xterm rows 与 PTY rows 一致，确保 ANSI 光标定位正确
-      if (ptyRows !== undefined && term.rows !== ptyRows) {
+      // 当容器行数不足时，强制匹配 PTY 行数以确保 ANSI 光标定位正确
+      // 当容器行数 >= PTY 时，保留自然行数以充分利用屏幕空间（多出的行显示 scrollback）
+      if (ptyRows !== undefined && term.rows < ptyRows) {
         term.resize(term.cols, ptyRows);
       }
     };

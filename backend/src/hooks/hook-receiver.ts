@@ -1,9 +1,10 @@
 import { EventEmitter } from 'node:events';
-import type { Question } from '@claude-remote/shared';
+import type { Question, PermissionSuggestion, PermissionDecision } from '@claude-remote/shared';
 import { logger } from '../logger/logger.js';
+import { randomUUID } from 'node:crypto';
 
 /**
- * Raw hook payload from Claude Code hooks (Notification / PreToolUse).
+ * Raw hook payload from Claude Code hooks (Notification / PreToolUse / PermissionRequest).
  */
 export interface HookPayload {
   message?: string;
@@ -12,12 +13,23 @@ export interface HookPayload {
   session_id?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
+  permission_suggestions?: PermissionSuggestion[];
   [key: string]: unknown;
 }
 
 interface AskQuestionEventPayload {
   sessionId?: string;
   questions: Question[];
+}
+
+/**
+ * Permission request event emitted from hook processing.
+ */
+export interface PermissionRequestEvent {
+  requestId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  permissionSuggestions?: PermissionSuggestion[];
 }
 
 /**
@@ -32,24 +44,51 @@ export interface HookNotification {
  * Structured result from processHook.
  */
 export interface HookResult {
-  type: 'notification' | 'ask_question' | 'ignored';
+  type: 'notification' | 'ask_question' | 'permission_request' | 'ignored';
   notification?: HookNotification;
+  permissionRequest?: PermissionRequestEvent;
 }
 
 // Pattern: "Claude needs your permission to use <ToolName>"
 const PERMISSION_TOOL_RE = /permission to use (\S+)$/;
 
+const PERMISSION_REQUEST_TIMEOUT_MS = 60_000;
+
 /**
  * Receives and parses Hook HTTP POST from Claude Code.
  * Emits 'notification' events for permission prompts,
- * and 'ask_question' events for AskUserQuestion tool calls.
+ * 'ask_question' events for AskUserQuestion tool calls,
+ * and 'permission_request' events for PermissionRequest hooks.
  */
 export class HookReceiver extends EventEmitter {
+  private pendingRequests = new Map<string, {
+    resolve: (decision: PermissionDecision | null) => void;
+    timeout: NodeJS.Timeout;
+  }>();
+
   /**
    * Process an incoming hook payload.
    */
   processHook(payload: HookPayload): HookResult {
     logger.info({ payload }, 'Hook received');
+
+    // PermissionRequest: handle permission request with async decision
+    if (payload.hook_event_name === 'PermissionRequest') {
+      const event: PermissionRequestEvent = {
+        requestId: randomUUID(),
+        toolName: String(payload.tool_name ?? 'unknown'),
+        toolInput: (payload.tool_input as Record<string, unknown>) ?? {},
+        permissionSuggestions: payload.permission_suggestions,
+      };
+
+      logger.info({
+        requestId: event.requestId,
+        toolName: event.toolName,
+        hasSuggestions: !!event.permissionSuggestions,
+      }, 'PermissionRequest hook received');
+      this.emit('permission_request', event);
+      return { type: 'permission_request', permissionRequest: event };
+    }
 
     // PreToolUse: intercept AskUserQuestion to get structured question data
     if (payload.hook_event_name === 'PreToolUse') {
@@ -93,6 +132,43 @@ export class HookReceiver extends EventEmitter {
     logger.info({ tool: notification.tool }, 'Hook notification created');
     this.emit('notification', notification);
     return { type: 'notification', notification };
+  }
+
+  /**
+   * Wait for user decision on a permission request.
+   * Returns null on timeout.
+   */
+  async waitForDecision(requestId: string, timeoutMs: number = PERMISSION_REQUEST_TIMEOUT_MS): Promise<PermissionDecision | null> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        logger.warn({ requestId }, 'Permission request timed out');
+        resolve(null);
+      }, timeoutMs);
+
+      this.pendingRequests.set(requestId, {
+        resolve: (decision) => {
+          clearTimeout(timeout);
+          this.pendingRequests.delete(requestId);
+          resolve(decision);
+        },
+        timeout,
+      });
+    });
+  }
+
+  /**
+   * Submit a decision for a pending permission request.
+   * Called from WebSocket handler when user responds.
+   */
+  submitDecision(requestId: string, decision: PermissionDecision): void {
+    const pending = this.pendingRequests.get(requestId);
+    if (pending) {
+      logger.info({ requestId, behavior: decision.behavior }, 'Permission decision submitted');
+      pending.resolve(decision);
+    } else {
+      logger.warn({ requestId }, 'No pending permission request found for decision');
+    }
   }
 
   private extractToolFromMessage(message?: string): string | null {
