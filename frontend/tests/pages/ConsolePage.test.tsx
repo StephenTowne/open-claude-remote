@@ -519,8 +519,8 @@ describe('ConsolePage', () => {
     expect(screen.getByText('Which library?')).toBeDefined();
     expect(screen.getByText('React')).toBeDefined();
     expect(screen.getByText('Vue')).toBeDefined();
-    // InputBar and VirtualKeyBar should be hidden
-    expect(screen.queryByTestId('virtual-key-bar')).toBeNull();
+    // InputBar and CommandPicker should be hidden
+    expect(screen.queryByTestId('command-picker')).toBeNull();
   });
 
   it('should send arrow keys + Enter and dismiss panel when single-select option is clicked', async () => {

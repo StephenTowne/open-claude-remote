@@ -36,35 +36,91 @@ describe('shared-token', () => {
     expect(result.source).toBe('env');
   });
 
-  it('should read existing token file', async () => {
-    const tokenPath = join(testDir, 'token');
-    writeFileSync(tokenPath, 'file-token-456', { mode: 0o600 });
+  it('should read existing token from config.json', async () => {
+    const configPath = join(testDir, 'config.json');
+    const config = { token: 'config-token-456', shortcuts: [], commands: [] };
+    writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
+
     const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
     const result = getOrCreateSharedToken(testDir);
-    expect(result.token).toBe('file-token-456');
+    expect(result.token).toBe('config-token-456');
     expect(result.source).toBe('file');
   });
 
-  it('should trim whitespace from token file', async () => {
-    const tokenPath = join(testDir, 'token');
-    writeFileSync(tokenPath, '  file-token-789  \n', { mode: 0o600 });
-    const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
-    const result = getOrCreateSharedToken(testDir);
-    expect(result.token).toBe('file-token-789');
-    expect(result.source).toBe('file');
-  });
-
-  it('should generate and persist token if none exists', async () => {
+  it('should generate and persist token to config.json if none exists', async () => {
     const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
     const result = getOrCreateSharedToken(testDir);
     expect(result.token).toBeTruthy();
     expect(result.token.length).toBe(64); // 32 bytes hex
     expect(result.source).toBe('generated');
 
-    // Verify token file was written
-    const tokenPath = join(testDir, 'token');
-    expect(existsSync(tokenPath)).toBe(true);
-    expect(readFileSync(tokenPath, 'utf-8')).toBe(result.token);
+    // Verify token was written to config.json
+    const configPath = join(testDir, 'config.json');
+    expect(existsSync(configPath)).toBe(true);
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(config.token).toBe(result.token);
+  });
+
+  it('should migrate old token file to config.json', async () => {
+    // 创建旧的 token 文件
+    const oldTokenPath = join(testDir, 'token');
+    writeFileSync(oldTokenPath, 'migration-token-789', { mode: 0o600 });
+
+    const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
+    const result = getOrCreateSharedToken(testDir);
+    expect(result.token).toBe('migration-token-789');
+    expect(result.source).toBe('file');
+
+    // 验证 token 已迁移到 config.json
+    const configPath = join(testDir, 'config.json');
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(config.token).toBe('migration-token-789');
+
+    // 验证旧 token 文件已被删除
+    expect(existsSync(oldTokenPath)).toBe(false);
+  });
+
+  it('should create config.json if not exists when generating token', async () => {
+    const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
+    const result = getOrCreateSharedToken(testDir);
+
+    const configPath = join(testDir, 'config.json');
+    expect(existsSync(configPath)).toBe(true);
+
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(config.token).toBe(result.token);
+    expect(config.shortcuts).toEqual([]);
+    expect(config.commands).toEqual([]);
+  });
+
+  it('should preserve existing config fields when adding token', async () => {
+    const configPath = join(testDir, 'config.json');
+    const existingConfig = {
+      shortcuts: [{ label: 'Test', data: 'test data', enabled: true }],
+      commands: [{ label: 'Cmd', command: 'echo test', enabled: false }],
+    };
+    writeFileSync(configPath, JSON.stringify(existingConfig), { mode: 0o600 });
+
+    const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
+    const result = getOrCreateSharedToken(testDir);
+
+    // 验证 token 被添加，且原有字段保留
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(config.token).toBe(result.token);
+    expect(config.shortcuts).toEqual(existingConfig.shortcuts);
+    expect(config.commands).toEqual(existingConfig.commands);
+  });
+
+  it('should prioritize AUTH_TOKEN env over config.json', async () => {
+    process.env.AUTH_TOKEN = 'env-wins';
+    const configPath = join(testDir, 'config.json');
+    const config = { token: 'config-loses', shortcuts: [], commands: [] };
+    writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
+
+    const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
+    const result = getOrCreateSharedToken(testDir);
+    expect(result.token).toBe('env-wins');
+    expect(result.source).toBe('env');
   });
 
   it('should create directory with 0o700 if not exists', async () => {
@@ -76,30 +132,41 @@ describe('shared-token', () => {
     expect(stat.mode & 0o777).toBe(0o700);
   });
 
-  it('should set token file permissions to 0o600', async () => {
+  it('should set config.json file permissions to 0o600', async () => {
     const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
     getOrCreateSharedToken(testDir);
-    const tokenPath = join(testDir, 'token');
-    const stat = statSync(tokenPath);
+    const configPath = join(testDir, 'config.json');
+    const stat = statSync(configPath);
     expect(stat.mode & 0o777).toBe(0o600);
   });
 
-  it('should prioritize AUTH_TOKEN env over file', async () => {
-    process.env.AUTH_TOKEN = 'env-wins';
-    const tokenPath = join(testDir, 'token');
-    writeFileSync(tokenPath, 'file-loses', { mode: 0o600 });
-    const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
-    const result = getOrCreateSharedToken(testDir);
-    expect(result.token).toBe('env-wins');
-    expect(result.source).toBe('env');
-  });
+  it('should skip empty token in config.json and generate new one', async () => {
+    const configPath = join(testDir, 'config.json');
+    const config = { token: '  \n', shortcuts: [], commands: [] };
+    writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
 
-  it('should skip empty token file and generate new one', async () => {
-    const tokenPath = join(testDir, 'token');
-    writeFileSync(tokenPath, '  \n', { mode: 0o600 });
     const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
     const result = getOrCreateSharedToken(testDir);
     expect(result.source).toBe('generated');
     expect(result.token.length).toBe(64);
+  });
+
+  it('should prioritize config.json token over old token file', async () => {
+    // 创建 config.json 带有 token
+    const configPath = join(testDir, 'config.json');
+    const config = { token: 'config-token-priority', shortcuts: [], commands: [] };
+    writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
+
+    // 创建旧的 token 文件
+    const oldTokenPath = join(testDir, 'token');
+    writeFileSync(oldTokenPath, 'old-token-ignored', { mode: 0o600 });
+
+    const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
+    const result = getOrCreateSharedToken(testDir);
+    expect(result.token).toBe('config-token-priority');
+    expect(result.source).toBe('file');
+
+    // 旧文件应保留（因为没被读取迁移）
+    expect(existsSync(oldTokenPath)).toBe(true);
   });
 });

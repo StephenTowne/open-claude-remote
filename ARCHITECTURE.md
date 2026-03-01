@@ -94,6 +94,7 @@ sequenceDiagram
 | Method | Path | Auth | Handler |
 |--------|------|------|---------|
 | POST | `/api/auth` | No | auth-routes.ts → AuthModule.handleAuth |
+| GET | `/api/config` | Session | config-routes.ts → 用户配置（快捷键/命令） |
 | GET | `/api/status` | Session | status-routes.ts → SessionController 状态 |
 | GET | `/api/health` | No | health-routes.ts → 健康检查 |
 | POST | `/api/hook` | Localhost only | hook-routes.ts → HookReceiver.processHook |

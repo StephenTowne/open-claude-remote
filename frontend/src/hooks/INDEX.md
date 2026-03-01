@@ -6,5 +6,6 @@
 - useLocalNotification.ts: 浏览器 Notification API 封装，自动请求权限 + tag 去重，用于 waiting_input/ask_question/permission_request 本地提醒
 - usePushNotification.ts: 注册 Service Worker，拉取 VAPID 公钥并订阅 Web Push，自动上报订阅信息到后端
 - useTerminal.ts: xterm.js Terminal 生命周期管理，WebGL 渲染 + FitAddon + ResizeObserver 自适应
+- useUserConfig.ts: 加载 ~/.claude-remote/config.json 用户配置，返回启用的快捷键和命令列表
 - useViewport.ts: Visual Viewport API 检测移动端软键盘高度，返回 keyboardHeight 像素值
 - useWebSocket.ts: WS 连接管理，指数退避自动重连（1s→30s），onMessage 回调分发 ServerMessage

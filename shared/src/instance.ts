@@ -22,6 +22,3 @@ export const CLAUDE_REMOTE_DIR = '.claude-remote';
 
 /** 注册表文件名 */
 export const REGISTRY_FILENAME = 'instances.json';
-
-/** 共享 Token 文件名 */
-export const TOKEN_FILENAME = 'token';

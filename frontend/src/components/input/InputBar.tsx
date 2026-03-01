@@ -1,13 +1,27 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
+
+export interface InputBarRef {
+  setText: (text: string) => void;
+  focus: () => void;
+}
 
 interface InputBarProps {
   onSend: (text: string) => void;
   disabled?: boolean;
 }
 
-export function InputBar({ onSend, disabled }: InputBarProps) {
+export const InputBar = forwardRef<InputBarRef, InputBarProps>(
+  function InputBar({ onSend, disabled }, ref) {
   const [text, setText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    setText: (newText: string) => {
+      setText(newText);
+      inputRef.current?.focus();
+    },
+    focus: () => inputRef.current?.focus(),
+  }), []);
 
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
@@ -77,4 +91,4 @@ export function InputBar({ onSend, disabled }: InputBarProps) {
       </button>
     </div>
   );
-}
+});

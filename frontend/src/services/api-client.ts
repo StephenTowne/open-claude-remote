@@ -1,3 +1,5 @@
+import type { UserConfig } from '../config/commands.js';
+
 const API_BASE = '/api';
 
 export async function authenticate(token: string): Promise<boolean> {
@@ -34,4 +36,20 @@ export async function healthCheck(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function getUserConfig(): Promise<{ config: UserConfig | null; configPath: string }> {
+  const res = await fetch(`${API_BASE}/config`, {
+    credentials: 'include',
+  });
+
+  if (res.status === 401) {
+    throw new Error('Unauthorized');
+  }
+
+  if (!res.ok) {
+    throw new Error(`Config fetch failed: ${res.status}`);
+  }
+
+  return res.json();
 }

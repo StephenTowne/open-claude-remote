@@ -5,6 +5,7 @@ import { createStatusRoutes } from './status-routes.js';
 import { createHookRoutes } from './hook-routes.js';
 import { createPushRoutes } from './push-routes.js';
 import { createInstanceRoutes } from './instance-routes.js';
+import { createConfigRoutes } from './config-routes.js';
 import { AuthModule } from '../auth/auth-middleware.js';
 import { HookReceiver } from '../hooks/hook-receiver.js';
 import { PushService } from '../push/push-service.js';
@@ -51,6 +52,7 @@ export function createApiRouter(
   router.use(createAuthRoutes(opts.authModule));
   router.use(createStatusRoutes(opts.authModule, opts.getController));
   router.use(createHookRoutes(opts.hookReceiver));
+  router.use(createConfigRoutes(opts.authModule));
 
   if (opts.pushService) {
     router.use(createPushRoutes(opts.authModule, opts.pushService));

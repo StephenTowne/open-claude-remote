@@ -3,8 +3,8 @@ import type { ServerMessage, InstanceListItem, Question, PermissionSuggestion } 
 import { isFreeTextLabel } from '@claude-remote/shared';
 import { StatusBar } from '../components/status/StatusBar.js';
 import { TerminalView } from '../components/terminal/TerminalView.js';
-import { InputBar } from '../components/input/InputBar.js';
-import { VirtualKeyBar } from '../components/input/VirtualKeyBar.js';
+import { InputBar, type InputBarRef } from '../components/input/InputBar.js';
+import { CommandPicker } from '../components/input/CommandPicker.js';
 import { QuestionPanel } from '../components/input/QuestionPanel.js';
 import { PermissionPanel } from '../components/input/PermissionPanel.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
@@ -37,8 +37,9 @@ interface PermissionState {
   permissionSuggestions?: PermissionSuggestion[];
 }
 
-function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: { wsUrl?: string; instanceId?: string; showVirtualKeyBar: boolean; onIpChanged?: (newIp: string) => void }) {
+function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: { wsUrl?: string; instanceId?: string; showCommandPicker: boolean; onIpChanged?: (newIp: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputBarRef = useRef<InputBarRef>(null);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
   const setIpChangeInfo = useAppStore((s) => s.setIpChangeInfo);
   const { showNotification } = useLocalNotification();
@@ -184,6 +185,11 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
     send({ type: 'user_input', data });
   }, [send]);
 
+  // 命令选择处理：填入输入框
+  const handleCommandSelect = useCallback((command: string) => {
+    inputBarRef.current?.setText(command);
+  }, []);
+
   // 选项选择处理
   const handleQuestionSelect = useCallback((targetIndex: number) => {
     const state = askStateRef.current;
@@ -311,8 +317,12 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
         />
       ) : (
         <>
-          <VirtualKeyBar onKeyPress={handleKeyPress} visible={showVirtualKeyBar} />
-          <InputBar onSend={handleSend} />
+          <CommandPicker
+            onShortcut={handleKeyPress}
+            onCommandSelect={handleCommandSelect}
+            visible={showCommandPicker}
+          />
+          <InputBar ref={inputBarRef} onSend={handleSend} />
         </>
       )}
     </>
@@ -342,7 +352,7 @@ function getAutoSwitchCandidates(instances: InstanceListItem[], currentInstanceI
 
 export function ConsolePage() {
   const { keyboardHeight } = useViewport();
-  const showVirtualKeyBar = keyboardHeight === 0;
+  const showCommandPicker = keyboardHeight === 0;
 
   usePushNotification();
   useInstances();
@@ -498,7 +508,7 @@ export function ConsolePage() {
         key={`${activeInstanceId ?? 'default'}:${effectiveHost ?? 'none'}`}
         wsUrl={wsUrl}
         instanceId={activeInstanceId ?? undefined}
-        showVirtualKeyBar={showVirtualKeyBar}
+        showCommandPicker={showCommandPicker}
         onIpChanged={activeInstance?.isCurrent ? handleCurrentInstanceIpChanged : undefined}
       />
       {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}
