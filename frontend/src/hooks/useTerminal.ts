@@ -3,12 +3,19 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 
+const DEFAULT_FONT_SIZE = 14;
+// 7 是移动端可读性的最小字号下限，继续降低会明显影响可读性
+const MIN_FONT_SIZE = 7;
+const MIN_USABLE_ROWS = 12;
+
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   onResize?: (cols: number, rows: number) => void,
 ) {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const ptyColsRef = useRef<number | null>(null);
+  const adaptFnRef = useRef<((ptyCols: number) => void) | null>(null);
 
   const onResizeRef = useRef(onResize);
   onResizeRef.current = onResize;
@@ -72,10 +79,43 @@ export function useTerminal(
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    const resizeObserver = new ResizeObserver(() => {
+    // 字体适配函数：缩小字体让 xterm 列数尽量匹配 PTY 宽度
+    const adaptToPtyColsInner = (ptyCols: number) => {
+      ptyColsRef.current = ptyCols;
+
+      // 重置到默认字体以获取基准列数
+      term.options.fontSize = DEFAULT_FONT_SIZE;
+      const dims = fitAddon.proposeDimensions();
+      const baseCols = dims?.cols ?? 0;
+
+      if (baseCols >= ptyCols) {
+        fitAddon.fit();
+        return;
+      }
+
+      // 按比例缩小字体
+      const targetFontSize = DEFAULT_FONT_SIZE * (baseCols / ptyCols);
+      const nextFontSize = Math.max(MIN_FONT_SIZE, Math.round(targetFontSize));
+      term.options.fontSize = nextFontSize;
       fitAddon.fit();
-      if (onResizeRef.current) {
-        onResizeRef.current(term.cols, term.rows);
+
+      // 行数过低时尝试回退 1 级字体，避免可视高度过低
+      if (term.rows < MIN_USABLE_ROWS && nextFontSize < DEFAULT_FONT_SIZE) {
+        term.options.fontSize = Math.min(DEFAULT_FONT_SIZE, nextFontSize + 1);
+        fitAddon.fit();
+      }
+    };
+    adaptFnRef.current = adaptToPtyColsInner;
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (ptyColsRef.current !== null) {
+        // 移动端模式：重新适配字体，不触发 onResize（PC terminal-relay 是唯一 resize 来源）
+        adaptFnRef.current?.(ptyColsRef.current);
+      } else {
+        fitAddon.fit();
+        if (onResizeRef.current) {
+          onResizeRef.current(term.cols, term.rows);
+        }
       }
     });
     resizeObserver.observe(containerRef.current);
@@ -85,6 +125,7 @@ export function useTerminal(
       term.dispose();
       termRef.current = null;
       fitAddonRef.current = null;
+      adaptFnRef.current = null;
     };
   }, [containerRef]);
 
@@ -100,5 +141,9 @@ export function useTerminal(
     termRef.current?.scrollToBottom();
   }, []);
 
-  return { write, clear, scrollToBottom, terminal: termRef };
+  const adaptToPtyCols = useCallback((ptyCols: number) => {
+    adaptFnRef.current?.(ptyCols);
+  }, []);
+
+  return { write, clear, scrollToBottom, adaptToPtyCols, terminal: termRef };
 }

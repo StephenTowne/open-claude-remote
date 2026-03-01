@@ -20,6 +20,7 @@ import { logger } from './logger/logger.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { findAvailablePort } from './registry/port-finder.js';
 import { InstanceRegistryManager } from './registry/instance-registry.js';
+import { IpMonitor } from './utils/ip-monitor.js';
 
 async function main() {
   // 1. Load configuration
@@ -157,6 +158,28 @@ async function main() {
     startedAt: new Date().toISOString(),
   });
 
+  // 18.5. Start IP monitor
+  const ipMonitor = new IpMonitor((newIp, oldIp) => {
+    const newUrl = `http://${newIp}:${actualPort}`;
+    logger.info({ oldIp, newIp, newUrl }, 'IP change detected');
+
+    // Update config
+    config.displayIp = newIp;
+
+    // Update registry
+    registry.updateHost(instanceId, newIp);
+
+    // Broadcast to all connected clients
+    wsServer.broadcast({
+      type: 'ip_changed',
+      oldIp,
+      newIp,
+      newUrl,
+    });
+  }, 30000, 2); // 30s interval, 2 consecutive detections required
+
+  ipMonitor.start(config.displayIp);
+
   // 19. Unified graceful shutdown
   let shuttingDown = false;
   const shutdown = (exitCode: number = 0) => {
@@ -166,6 +189,7 @@ async function main() {
     // Unregister from shared registry
     registry.unregister(instanceId);
     relay.stop();
+    ipMonitor.stop();
     // Pause stdin to remove it as an active event loop handle
     if (!process.stdin.isTTY) {
       process.stdin.pause();

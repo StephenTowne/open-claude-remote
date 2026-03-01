@@ -74,6 +74,19 @@ export class InstanceRegistryManager {
     return alive;
   }
 
+  /**
+   * 更新实例的 host 字段（用于 IP 变化时更新）。
+   */
+  updateHost(instanceId: string, newHost: string): void {
+    const data = this.readRegistry();
+    const instance = data.instances.find(i => i.instanceId === instanceId);
+    if (instance && instance.host !== newHost) {
+      instance.host = newHost;
+      this.writeRegistry(data);
+      logger.info({ instanceId, newHost }, 'Instance host updated');
+    }
+  }
+
   private readRegistry(): InstanceRegistry {
     if (!existsSync(this.registryPath)) {
       return { version: 1, instances: [] };

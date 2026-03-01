@@ -132,6 +132,7 @@ sequenceDiagram
 
 ### 多实例管理
 - backend: `registry/shared-token.ts`, `registry/port-finder.ts`, `registry/instance-registry.ts`, `registry/stop-instances.ts`
+- backend: `utils/ip-monitor.ts` (IP 变化检测 + 注册表更新)
 - backend: `api/instance-routes.ts`
 - frontend: `components/instances/InstanceTabs.tsx`, `hooks/useInstances.ts`, `stores/instance-store.ts`, `services/instance-api.ts`
 - shared: `instance.ts` (类型定义 + 常量)

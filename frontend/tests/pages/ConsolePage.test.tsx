@@ -24,11 +24,13 @@ vi.mock('../../src/hooks/useInstances.js', () => ({
 const mockWrite = vi.fn((_data: string, callback?: () => void) => {
   callback?.();
 });
+const mockAdaptToPtyCols = vi.fn();
 
 vi.mock('../../src/hooks/useTerminal.js', () => ({
   useTerminal: () => ({
     write: mockWrite,
     scrollToBottom: vi.fn(),
+    adaptToPtyCols: mockAdaptToPtyCols,
   }),
 }));
 
@@ -101,6 +103,7 @@ describe('ConsolePage', () => {
         },
       ],
       activeInstanceId: 'inst-1',
+      currentHostOverride: null,
     });
   });
 
@@ -653,5 +656,70 @@ describe('ConsolePage', () => {
     });
 
     expect(mockSend).not.toHaveBeenCalledWith({ type: 'user_input', data: '\x1b' });
+  });
+
+  // ---- PTY cols adaptation tests ----
+
+  it('should call adaptToPtyCols when history_sync has cols', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'history_sync',
+        data: 'hello',
+        seq: 1,
+        status: 'running',
+        cols: 208,
+        rows: 50,
+      });
+    });
+
+    expect(mockAdaptToPtyCols).toHaveBeenCalledWith(208);
+    expect(mockWrite).toHaveBeenCalledWith('hello');
+  });
+
+  it('should not call adaptToPtyCols when history_sync has no cols', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'history_sync',
+        data: 'hello',
+        seq: 1,
+        status: 'running',
+      });
+    });
+
+    expect(mockAdaptToPtyCols).not.toHaveBeenCalled();
+    expect(mockWrite).toHaveBeenCalledWith('hello');
+  });
+
+  it('should call adaptToPtyCols when terminal_resize message is received', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'terminal_resize',
+        cols: 120,
+        rows: 40,
+      });
+    });
+
+    expect(mockAdaptToPtyCols).toHaveBeenCalledWith(120);
+  });
+
+  it('should update currentHostOverride when ip_changed is received for current instance', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ip_changed',
+        oldIp: '192.168.1.10',
+        newIp: '192.168.1.20',
+        newUrl: 'http://192.168.1.20:3000',
+      });
+    });
+
+    expect(useInstanceStore.getState().currentHostOverride).toBe('192.168.1.20');
   });
 });

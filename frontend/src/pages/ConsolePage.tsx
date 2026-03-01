@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState } from 'react';
+import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import type { ServerMessage, InstanceListItem, Question } from '@claude-remote/shared';
 import { isFreeTextLabel } from '@claude-remote/shared';
 import { StatusBar } from '../components/status/StatusBar.js';
@@ -7,6 +7,7 @@ import { InputBar } from '../components/input/InputBar.js';
 import { VirtualKeyBar } from '../components/input/VirtualKeyBar.js';
 import { QuestionPanel } from '../components/input/QuestionPanel.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
+import { IpChangeToast } from '../components/common/IpChangeToast.js';
 import { InstanceTabs } from '../components/instances/InstanceTabs.js';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useTerminal } from '../hooks/useTerminal.js';
@@ -26,15 +27,17 @@ interface AskState {
   otherText: string;
 }
 
-function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: string; instanceId?: string; showVirtualKeyBar: boolean }) {
+function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: { wsUrl?: string; instanceId?: string; showVirtualKeyBar: boolean; onIpChanged?: (newIp: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
+  const setIpChangeInfo = useAppStore((s) => s.setIpChangeInfo);
 
   // 用 ref 打破循环依赖：handleMessage ↔ write，send ↔ onResize
   const sendRef = useRef<ReturnType<typeof useWebSocket>['send'] | null>(null);
   // 初始值为 no-op，在 useTerminal 返回真实函数后立即更新
   const writeRef = useRef((_data: string, _cb?: () => void) => {});
   const scrollToBottomRef = useRef(() => {});
+  const adaptToPtyColsRef = useRef((_cols: number) => {});
 
   // 当前 ask_question 交互状态
   const [askState, setAskState] = useState<AskState | null>(null);
@@ -48,11 +51,17 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: stri
         scrollToBottomRef.current();
         break;
       case 'history_sync':
+        if (msg.cols && msg.cols > 0) {
+          adaptToPtyColsRef.current(msg.cols);
+        }
         writeRef.current(msg.data);
         setSessionStatus(msg.status);
         scrollToBottomRef.current();
         break;
       case 'terminal_resize':
+        if (msg.cols && msg.cols > 0) {
+          adaptToPtyColsRef.current(msg.cols);
+        }
         break;
       case 'status_update':
         setSessionStatus(msg.status);
@@ -79,13 +88,21 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: stri
         break;
       case 'heartbeat':
         break;
+      case 'ip_changed':
+        setIpChangeInfo({
+          oldIp: msg.oldIp,
+          newIp: msg.newIp,
+          newUrl: msg.newUrl,
+        });
+        onIpChanged?.(msg.newIp);
+        break;
     }
-  }, [setSessionStatus]);
+  }, [setSessionStatus, setIpChangeInfo, onIpChanged]);
 
   const { connect, send } = useWebSocket(handleMessage, wsUrl, instanceId);
   sendRef.current = send;
 
-  const { write, scrollToBottom } = useTerminal(
+  const { write, scrollToBottom, adaptToPtyCols } = useTerminal(
     containerRef,
     useCallback((cols: number, rows: number) => {
       if (cols >= 80) {
@@ -96,6 +113,7 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: stri
 
   writeRef.current = write;
   scrollToBottomRef.current = scrollToBottom;
+  adaptToPtyColsRef.current = adaptToPtyCols;
 
   // Connect only once on mount
   const connectCalledRef = useRef(false);
@@ -204,6 +222,7 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: stri
   return (
     <>
       <ConnectionBanner />
+      <IpChangeToast />
       <TerminalView containerRef={containerRef} />
       {askState ? (
         <QuestionPanel
@@ -257,6 +276,8 @@ export function ConsolePage() {
   const instances = useInstanceStore((s) => s.instances);
   const activeInstanceId = useInstanceStore((s) => s.activeInstanceId);
   const setActiveInstanceId = useInstanceStore((s) => s.setActiveInstanceId);
+  const currentHostOverride = useInstanceStore((s) => s.currentHostOverride);
+  const setCurrentHostOverride = useInstanceStore((s) => s.setCurrentHostOverride);
 
   const cachedToken = useAppStore((s) => s.cachedToken);
   const instanceConnectionStatus = useAppStore((s) => s.instanceConnectionStatus);
@@ -271,15 +292,28 @@ export function ConsolePage() {
   // 计算当前活跃实例的 WS URL
   const activeInstance = instances.find(i => i.instanceId === activeInstanceId);
   const isCurrent = activeInstance?.isCurrent ?? true;
-  const wsUrl = activeInstance && !isCurrent
-    ? buildInstanceWsUrl(activeInstance.host, activeInstance.port)
-    : undefined; // undefined = 使用默认（当前实例）
+  const effectiveHost = useMemo(() => {
+    if (!activeInstance) return undefined;
+    return activeInstance.isCurrent
+      ? (currentHostOverride ?? activeInstance.host)
+      : activeInstance.host;
+  }, [activeInstance, currentHostOverride]);
+
+  const wsUrl = activeInstance && effectiveHost
+    ? buildInstanceWsUrl(effectiveHost, activeInstance.port)
+    : undefined;
 
   useEffect(() => {
     if (activeInstance?.port !== undefined) {
       lastKnownActivePortRef.current = activeInstance.port;
     }
   }, [activeInstance]);
+
+  useEffect(() => {
+    if (!activeInstance?.isCurrent) {
+      setCurrentHostOverride(null);
+    }
+  }, [activeInstance, setCurrentHostOverride]);
 
   useEffect(() => {
     if (!activeInstanceId) {
@@ -359,8 +393,13 @@ export function ConsolePage() {
       }
     }
 
+    setCurrentHostOverride(null);
     setActiveInstanceId(targetId);
-  }, [instances, cachedToken, setActiveInstanceId]);
+  }, [instances, cachedToken, setActiveInstanceId, setCurrentHostOverride]);
+
+  const handleCurrentInstanceIpChanged = useCallback((newIp: string) => {
+    setCurrentHostOverride(newIp);
+  }, [setCurrentHostOverride]);
 
   return (
     <div data-testid="console-page" style={{
@@ -374,10 +413,11 @@ export function ConsolePage() {
       <InstanceTabs onSwitch={handleInstanceSwitch} />
       {/* key=activeInstanceId 强制 React 重建整个终端+WS */}
       <ConsoleContent
-        key={activeInstanceId ?? 'default'}
+        key={`${activeInstanceId ?? 'default'}:${effectiveHost ?? 'none'}`}
         wsUrl={wsUrl}
         instanceId={activeInstanceId ?? undefined}
         showVirtualKeyBar={showVirtualKeyBar}
+        onIpChanged={activeInstance?.isCurrent ? handleCurrentInstanceIpChanged : undefined}
       />
       {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}
     </div>

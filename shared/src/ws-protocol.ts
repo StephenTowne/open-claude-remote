@@ -65,6 +65,13 @@ export interface TerminalResizeMessage {
   rows: number;
 }
 
+export interface IpChangedMessage {
+  type: 'ip_changed';
+  oldIp: string;
+  newIp: string;
+  newUrl: string;
+}
+
 export type ServerMessage =
   | TerminalOutputMessage
   | StatusUpdateMessage
@@ -73,7 +80,8 @@ export type ServerMessage =
   | ErrorMessage
   | SessionEndedMessage
   | TerminalResizeMessage
-  | AskQuestionMessage;
+  | AskQuestionMessage
+  | IpChangedMessage;
 
 // ==============================
 // Client → Server Messages

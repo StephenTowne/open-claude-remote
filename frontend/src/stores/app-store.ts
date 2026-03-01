@@ -3,6 +3,12 @@ import type { SessionStatus } from '@claude-remote/shared';
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
+export interface IpChangeInfo {
+  oldIp: string;
+  newIp: string;
+  newUrl: string;
+}
+
 interface AppState {
   // Auth
   isAuthenticated: boolean;
@@ -24,6 +30,10 @@ interface AppState {
   // Cached token for cross-instance auth
   cachedToken: string | null;
   setCachedToken: (token: string | null) => void;
+
+  // IP change notification
+  ipChangeInfo: IpChangeInfo | null;
+  setIpChangeInfo: (info: IpChangeInfo | null) => void;
 
   // Toast
   toastMessage: string | null;
@@ -56,6 +66,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   cachedToken: null,
   setCachedToken: (token) => set({ cachedToken: token }),
+
+  ipChangeInfo: null,
+  setIpChangeInfo: (info) => set({ ipChangeInfo: info }),
 
   toastMessage: null,
   showToast: (message) => set({ toastMessage: message }),
