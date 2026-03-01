@@ -113,6 +113,61 @@ describe('SessionController', () => {
     });
   });
 
+  describe('pty output passthrough (no filtering)', () => {
+    it('should pass alt-screen sequences through to WebSocket unmodified', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      // PTY output containing complete alt-screen enter → content → exit
+      const altScreenData = '\x1b[?1049h\x1b[2J\x1b[HTui content\x1b[?1049l';
+      ptyManager.emit('data', altScreenData);
+
+      vi.advanceTimersByTime(16);
+
+      expect(wsServer.broadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'terminal_output',
+          data: altScreenData,
+        }),
+      );
+    });
+
+    it('should not duplicate ANSI sequences split across chunk boundaries', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      // Simulate chunk boundary splitting a cursor movement sequence
+      ptyManager.emit('data', 'Hello\x1b[5A');
+      ptyManager.emit('data', ' World');
+
+      vi.advanceTimersByTime(16);
+
+      expect(wsServer.broadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'terminal_output',
+          data: 'Hello\x1b[5A World',
+        }),
+      );
+    });
+
+    it('should include alt-screen data in history_sync on reconnect', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      const dataWithAlt = 'Before\x1b[?1049hAlt content\x1b[?1049lAfter';
+      ptyManager.emit('data', dataWithAlt);
+      vi.advanceTimersByTime(16);
+
+      const mockWs = { readyState: 1, send: vi.fn() };
+      wsServer._triggerConnect(mockWs);
+
+      expect(wsServer.sendTo).toHaveBeenCalledWith(
+        mockWs,
+        expect.objectContaining({
+          type: 'history_sync',
+          data: expect.stringContaining('\x1b[?1049h'),
+        }),
+      );
+    });
+  });
+
   describe('pty output batching', () => {
     it('should batch multiple PTY chunks and flush once by timer', () => {
       new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
@@ -145,6 +200,22 @@ describe('SessionController', () => {
         expect.objectContaining({
           type: 'terminal_output',
           data: large,
+        }),
+      );
+    });
+
+    it('should flush via high watermark when a single large chunk exceeds 256KB', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      // 260KB single chunk exceeds WS_HIGH_WATERMARK_BYTES (256KB)
+      // This path increments wsBackpressureEvents
+      const huge = 'x'.repeat(260 * 1024);
+      ptyManager.emit('data', huge);
+
+      expect(wsServer.broadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'terminal_output',
+          data: huge,
         }),
       );
     });

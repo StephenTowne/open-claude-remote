@@ -28,6 +28,7 @@ export function useTerminal(
   const queuedWriteBytesRef = useRef(0);
   const writeFlushRafIdRef = useRef<number | null>(null);
   const writeFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushWriteQueueRef = useRef<(() => void) | null>(null);
 
   const lastResizeSentAtRef = useRef(0);
   const pendingResizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,37 +45,7 @@ export function useTerminal(
       queuedWriteBytesRef.current = 0;
       termRef.current.write(output);
     };
-
-    const scheduleWriteFlush = () => {
-      if (writeFlushRafIdRef.current === null) {
-        writeFlushRafIdRef.current = requestAnimationFrame(() => {
-          writeFlushRafIdRef.current = null;
-          if (writeFlushTimeoutRef.current) {
-            clearTimeout(writeFlushTimeoutRef.current);
-            writeFlushTimeoutRef.current = null;
-          }
-          flushWriteQueue();
-        });
-      }
-
-      if (!writeFlushTimeoutRef.current) {
-        writeFlushTimeoutRef.current = setTimeout(() => {
-          writeFlushTimeoutRef.current = null;
-          flushWriteQueue();
-        }, WRITE_FLUSH_INTERVAL_MS);
-      }
-    };
-
-    const enqueueWrite = (data: string, callback?: () => void) => {
-      writeQueueRef.current.push(data);
-      queuedWriteBytesRef.current += data.length;
-      if (queuedWriteBytesRef.current >= WRITE_MAX_QUEUED_BYTES) {
-        flushWriteQueue();
-      } else {
-        scheduleWriteFlush();
-      }
-      callback?.();
-    };
+    flushWriteQueueRef.current = flushWriteQueue;
 
     const emitResize = (cols: number, rows: number) => {
       const last = lastReportedResizeRef.current;
@@ -137,7 +108,6 @@ export function useTerminal(
         brightWhite: '#f0f6fc',
       },
       scrollback: 10000,
-      convertEol: true,
     });
 
     const fitAddon = new FitAddon();
@@ -219,6 +189,10 @@ export function useTerminal(
         clearTimeout(pendingResizeTimeoutRef.current);
         pendingResizeTimeoutRef.current = null;
       }
+      if (writeFlushRafIdRef.current !== null) {
+        cancelAnimationFrame(writeFlushRafIdRef.current);
+        writeFlushRafIdRef.current = null;
+      }
       if (writeFlushTimeoutRef.current) {
         clearTimeout(writeFlushTimeoutRef.current);
         writeFlushTimeoutRef.current = null;
@@ -228,6 +202,7 @@ export function useTerminal(
       termRef.current = null;
       fitAddonRef.current = null;
       adaptFnRef.current = null;
+      flushWriteQueueRef.current = null;
     };
   }, [containerRef]);
 
@@ -238,13 +213,9 @@ export function useTerminal(
     }
     writeQueueRef.current.push(data);
     queuedWriteBytesRef.current += data.length;
+
     if (queuedWriteBytesRef.current >= WRITE_MAX_QUEUED_BYTES) {
-      if (termRef.current) {
-        const output = writeQueueRef.current.join('');
-        writeQueueRef.current = [];
-        queuedWriteBytesRef.current = 0;
-        termRef.current.write(output);
-      }
+      flushWriteQueueRef.current?.();
       callback?.();
       return;
     }
@@ -256,24 +227,14 @@ export function useTerminal(
           clearTimeout(writeFlushTimeoutRef.current);
           writeFlushTimeoutRef.current = null;
         }
-        if (termRef.current && writeQueueRef.current.length > 0) {
-          const output = writeQueueRef.current.join('');
-          writeQueueRef.current = [];
-          queuedWriteBytesRef.current = 0;
-          termRef.current.write(output);
-        }
+        flushWriteQueueRef.current?.();
       });
     }
 
     if (!writeFlushTimeoutRef.current) {
       writeFlushTimeoutRef.current = setTimeout(() => {
         writeFlushTimeoutRef.current = null;
-        if (termRef.current && writeQueueRef.current.length > 0) {
-          const output = writeQueueRef.current.join('');
-          writeQueueRef.current = [];
-          queuedWriteBytesRef.current = 0;
-          termRef.current.write(output);
-        }
+        flushWriteQueueRef.current?.();
       }, WRITE_FLUSH_INTERVAL_MS);
     }
 

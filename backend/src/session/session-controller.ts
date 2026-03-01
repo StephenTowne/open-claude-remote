@@ -5,7 +5,6 @@ import { OutputBuffer } from '../pty/output-buffer.js';
 import { WsServer } from '../ws/ws-server.js';
 import { HookReceiver, type HookNotification } from '../hooks/hook-receiver.js';
 import { handleWsMessage } from '../ws/ws-handler.js';
-import { AlternateScreenFilter } from '../utils/ansi-filter.js';
 import { logger } from '../logger/logger.js';
 import type { PushService } from '../push/push-service.js';
 
@@ -19,7 +18,6 @@ const WS_HIGH_WATERMARK_BYTES = 256 * 1024;
 export class SessionController {
   private _status: SessionStatus = 'idle';
   private buffer: OutputBuffer;
-  private altScreenFilter: AlternateScreenFilter;
   private pushService: PushService | null = null;
 
   private wsPendingChunks: string[] = [];
@@ -39,7 +37,6 @@ export class SessionController {
     maxBufferLines: number,
   ) {
     this.buffer = new OutputBuffer(maxBufferLines);
-    this.altScreenFilter = new AlternateScreenFilter();
     this.setupPtyHandlers();
     this.setupWsHandlers();
     this.setupHookHandlers();
@@ -65,23 +62,17 @@ export class SessionController {
    */
   private setupPtyHandlers(): void {
     this.ptyManager.on('data', (data: string) => {
-      // Write to PC terminal (original, unfiltered)
+      // Write to PC terminal
       process.stdout.write(data);
 
       this.ptyInputBytesTotal += Buffer.byteLength(data, 'utf8');
 
-      // Filter alternate screen content for web clients
-      const filteredData = this.altScreenFilter.process(data);
+      // Buffer raw data for reconnection history
+      this.buffer.append(data);
 
-      // Buffer filtered data for reconnection (avoid showing alt-screen content on reconnect)
-      if (filteredData) {
-        this.buffer.append(filteredData);
-      }
-
-      // Broadcast filtered data to mobile clients (batched)
-      if (filteredData) {
-        this.enqueueWsOutput(filteredData);
-      }
+      // Broadcast raw PTY output to web clients (batched)
+      // xterm.js handles all ANSI sequences natively including alternate screen
+      this.enqueueWsOutput(data);
     });
 
     this.ptyManager.on('exit', (exitCode: number) => {

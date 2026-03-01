@@ -70,6 +70,7 @@ vi.stubGlobal('requestAnimationFrame', vi.fn((cb: FrameRequestCallback) => {
   rafCallback = cb;
   return 1;
 }));
+vi.stubGlobal('cancelAnimationFrame', vi.fn());
 
 // ---- Import hook after mocks ----
 import { useTerminal } from '../../src/hooks/useTerminal.js';
@@ -217,6 +218,73 @@ describe('useTerminal', () => {
 
     expect(mockTermLoadAddon.mock.calls.some((call) => call[0] === mockUnicodeAddon)).toBe(true);
     expect(mockUnicodeState.activeVersion).toBe('11');
+  });
+
+  // ---- resize throttling tests (emitResize) ----
+
+  describe('resize throttling', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should deduplicate identical resize events', () => {
+      const onResize = vi.fn();
+      renderUseTerminal(onResize);
+
+      // Initial RAF → emitResize(80, 24)
+      act(() => { rafCallback?.(0); });
+      expect(onResize).toHaveBeenCalledTimes(1);
+      expect(onResize).toHaveBeenCalledWith(80, 24);
+
+      // Trigger ResizeObserver with same dimensions (80x24)
+      act(() => { resizeObserverCallback?.(); });
+      expect(onResize).toHaveBeenCalledTimes(1); // deduplicated
+    });
+
+    it('should throttle rapid resize events and emit trailing value', () => {
+      const onResize = vi.fn();
+      renderUseTerminal(onResize);
+
+      // Initial
+      act(() => { rafCallback?.(0); });
+      expect(onResize).toHaveBeenCalledTimes(1);
+
+      // Immediate resize with different dimensions (0ms elapsed < 50ms window)
+      mockTermState.cols = 100;
+      mockTermState.rows = 30;
+      act(() => { resizeObserverCallback?.(); });
+      expect(onResize).toHaveBeenCalledTimes(1); // throttled
+
+      // Advance past throttle window → trailing emit
+      act(() => { vi.advanceTimersByTime(50); });
+      expect(onResize).toHaveBeenCalledTimes(2);
+      expect(onResize).toHaveBeenLastCalledWith(100, 30);
+    });
+
+    it('should emit immediately when outside throttle window', () => {
+      const onResize = vi.fn();
+      renderUseTerminal(onResize);
+
+      // Initial
+      act(() => { rafCallback?.(0); });
+      expect(onResize).toHaveBeenCalledTimes(1);
+
+      // Advance past throttle window (50ms)
+      vi.advanceTimersByTime(50);
+
+      // Change dimensions and trigger
+      mockTermState.cols = 100;
+      mockTermState.rows = 30;
+      act(() => { resizeObserverCallback?.(); });
+
+      // Should fire immediately (elapsed >= 50ms)
+      expect(onResize).toHaveBeenCalledTimes(2);
+      expect(onResize).toHaveBeenLastCalledWith(100, 30);
+    });
   });
 
   // ---- adaptToPtyCols tests ----
