@@ -19,20 +19,30 @@ function createMockWsServer() {
   const emitter = new EventEmitter();
   const messageHandlers: Array<(ws: unknown, data: string) => void> = [];
   const connectHandlers: Array<(ws: unknown) => void> = [];
+  const disconnectHandlers: Array<() => void> = [];
   return Object.assign(emitter, {
     clientCount: 0,
     broadcast: vi.fn(),
     sendTo: vi.fn(),
     onMessage: vi.fn((handler) => { messageHandlers.push(handler); }),
     onConnect: vi.fn((handler) => { connectHandlers.push(handler); }),
+    onDisconnect: vi.fn((handler: () => void) => { disconnectHandlers.push(handler); }),
     _triggerMessage: (ws: unknown, data: string) => messageHandlers.forEach(h => h(ws, data)),
     _triggerConnect: (ws: unknown) => connectHandlers.forEach(h => h(ws)),
+    _triggerDisconnect: () => disconnectHandlers.forEach(h => h()),
   });
 }
 
 function createMockHookReceiver() {
   const emitter = new EventEmitter();
   return emitter;
+}
+
+function createMockTerminalRelay() {
+  return {
+    pauseResize: vi.fn(),
+    resumeResize: vi.fn(),
+  };
 }
 
 // ---- Lazy import after vi.mock setup ----
@@ -165,6 +175,59 @@ describe('SessionController', () => {
           data: expect.stringContaining('\x1b[?1049h'),
         }),
       );
+    });
+  });
+
+  describe('dynamic master switch (pauseResize / resumeResize)', () => {
+    it('should call pauseResize when first client connects (clientCount=1)', () => {
+      const relay = createMockTerminalRelay();
+      wsServer.clientCount = 1;
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000, relay as any);
+
+      const mockWs = { readyState: 1, send: vi.fn() };
+      wsServer._triggerConnect(mockWs);
+
+      expect(relay.pauseResize).toHaveBeenCalledOnce();
+    });
+
+    it('should NOT call pauseResize when second client connects (clientCount=2)', () => {
+      const relay = createMockTerminalRelay();
+      wsServer.clientCount = 2;
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000, relay as any);
+
+      const mockWs = { readyState: 1, send: vi.fn() };
+      wsServer._triggerConnect(mockWs);
+
+      expect(relay.pauseResize).not.toHaveBeenCalled();
+    });
+
+    it('should call resumeResize when last client disconnects (clientCount=0)', () => {
+      const relay = createMockTerminalRelay();
+      wsServer.clientCount = 0;
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000, relay as any);
+
+      wsServer._triggerDisconnect();
+
+      expect(relay.resumeResize).toHaveBeenCalledOnce();
+    });
+
+    it('should NOT call resumeResize when one client remains (clientCount=1)', () => {
+      const relay = createMockTerminalRelay();
+      wsServer.clientCount = 1;
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000, relay as any);
+
+      wsServer._triggerDisconnect();
+
+      expect(relay.resumeResize).not.toHaveBeenCalled();
+    });
+
+    it('should not throw when relay is not provided (backward compatibility)', () => {
+      wsServer.clientCount = 1;
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      const mockWs = { readyState: 1, send: vi.fn() };
+      expect(() => wsServer._triggerConnect(mockWs)).not.toThrow();
+      expect(() => wsServer._triggerDisconnect()).not.toThrow();
     });
   });
 

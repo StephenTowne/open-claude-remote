@@ -4,10 +4,6 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 
-const DEFAULT_FONT_SIZE = 14;
-// 7 是移动端可读性的最小字号下限，继续降低会明显影响可读性
-const MIN_FONT_SIZE = 7;
-const MIN_USABLE_ROWS = 12;
 const WRITE_FLUSH_INTERVAL_MS = 16;
 const WRITE_MAX_QUEUED_BYTES = 256 * 1024;
 const RESIZE_THROTTLE_MS = 50;
@@ -18,8 +14,6 @@ export function useTerminal(
 ) {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const ptyColsRef = useRef<number | null>(null);
-  const ptyRowsRef = useRef<number | null>(null);
   const adaptFnRef = useRef<((ptyCols: number, ptyRows?: number) => void) | null>(null);
 
   const onResizeRef = useRef(onResize);
@@ -145,48 +139,14 @@ export function useTerminal(
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // 字体适配函数：缩小字体让 xterm 列数尽量匹配 PTY 宽度，并强制行数匹配
-    const adaptToPtySizeInner = (ptyCols: number, ptyRows?: number) => {
-      ptyColsRef.current = ptyCols;
-      ptyRowsRef.current = ptyRows ?? null;
-
-      // 重置到默认字体以获取基准列数
-      term.options.fontSize = DEFAULT_FONT_SIZE;
-      const dims = fitAddon.proposeDimensions();
-      const baseCols = dims?.cols ?? 0;
-
-      if (baseCols >= ptyCols) {
-        fitAddon.fit();
-      } else {
-        // 按比例缩小字体
-        const targetFontSize = DEFAULT_FONT_SIZE * (baseCols / ptyCols);
-        const nextFontSize = Math.max(MIN_FONT_SIZE, Math.round(targetFontSize));
-        term.options.fontSize = nextFontSize;
-        fitAddon.fit();
-
-        // 行数过低时尝试回退 1 级字体，避免可视高度过低
-        if (term.rows < MIN_USABLE_ROWS && nextFontSize < DEFAULT_FONT_SIZE) {
-          term.options.fontSize = Math.min(DEFAULT_FONT_SIZE, nextFontSize + 1);
-          fitAddon.fit();
-        }
-      }
-
-      // 当容器行数不足时，强制匹配 PTY 行数以确保 ANSI 光标定位正确
-      // 当容器行数 >= PTY 时，保留自然行数以充分利用屏幕空间（多出的行显示 scrollback）
-      if (ptyRows !== undefined && term.rows < ptyRows) {
-        term.resize(term.cols, ptyRows);
-      }
+    const adaptToPtySizeInner = (_ptyCols: number, _ptyRows?: number) => {
+      fitAddon.fit();
     };
     adaptFnRef.current = adaptToPtySizeInner;
 
     const resizeObserver = new ResizeObserver(() => {
-      if (ptyColsRef.current !== null) {
-        // 移动端模式：重新适配字体+行数，不触发 onResize（PC terminal-relay 是唯一 resize 来源）
-        adaptFnRef.current?.(ptyColsRef.current, ptyRowsRef.current ?? undefined);
-      } else {
-        fitAddon.fit();
-        emitResize(term.cols, term.rows);
-      }
+      fitAddon.fit();
+      emitResize(term.cols, term.rows);
     });
     resizeObserver.observe(containerRef.current);
 

@@ -1,12 +1,13 @@
 import { WebSocket } from 'ws';
-import type { SessionStatus, Question } from '@claude-remote/shared';
+import type { SessionStatus } from '@claude-remote/shared';
 import { PtyManager } from '../pty/pty-manager.js';
 import { OutputBuffer } from '../pty/output-buffer.js';
 import { WsServer } from '../ws/ws-server.js';
-import { HookReceiver, type HookNotification, type PermissionRequestEvent } from '../hooks/hook-receiver.js';
+import { HookReceiver, type HookNotification } from '../hooks/hook-receiver.js';
 import { handleWsMessage } from '../ws/ws-handler.js';
 import { logger } from '../logger/logger.js';
 import type { PushService } from '../push/push-service.js';
+import type { TerminalRelay } from '../terminal/terminal-relay.js';
 
 const WS_FLUSH_INTERVAL_MS = 16;
 const WS_MAX_CHUNK_BYTES = 32 * 1024;
@@ -35,6 +36,7 @@ export class SessionController {
     private wsServer: WsServer,
     private hookReceiver: HookReceiver,
     maxBufferLines: number,
+    private terminalRelay?: TerminalRelay,
   ) {
     this.buffer = new OutputBuffer(maxBufferLines);
     this.setupPtyHandlers();
@@ -184,15 +186,15 @@ export class SessionController {
           logger.info({ cols, rows }, 'Resize request from web client, applying to PTY');
           this.ptyManager.resize(cols, rows);
         },
-        onPermissionDecision: (requestId: string, decision) => {
-          logger.info({ requestId, behavior: decision.behavior }, 'Permission decision received from WS client');
-          this.hookReceiver.submitDecision(requestId, decision);
-        },
       });
     });
 
-    // Send history sync on new connection
+    // Send history sync on new connection + pause PC resize when first mobile client connects
     this.wsServer.onConnect((ws: WebSocket) => {
+      if (this.terminalRelay && this.wsServer.clientCount === 1) {
+        this.terminalRelay.pauseResize();
+        logger.info('First web client connected, PC resize paused');
+      }
       this.wsServer.sendTo(ws, {
         type: 'history_sync',
         data: this.buffer.getFullContent(),
@@ -201,6 +203,14 @@ export class SessionController {
         cols: this.ptyManager.cols,
         rows: this.ptyManager.rows,
       });
+    });
+
+    // Resume PC resize when last mobile client disconnects
+    this.wsServer.onDisconnect(() => {
+      if (this.terminalRelay && this.wsServer.clientCount === 0) {
+        this.terminalRelay.resumeResize();
+        logger.info('All web clients disconnected, PC resize resumed');
+      }
     });
   }
 
@@ -230,56 +240,6 @@ export class SessionController {
       }
 
       logger.info({ tool: notification.tool }, 'Hook notification processed, status set to waiting_input');
-    });
-
-    this.hookReceiver.on('ask_question', (data: { sessionId?: string; questions: Question[] }) => {
-      this._status = 'waiting_input';
-      this.wsServer.broadcast({ type: 'ask_question', questions: data.questions });
-
-      if (this.pushService) {
-        this.pushService.notifyAll({
-          title: 'Claude Code 需要回答',
-          body: data.questions[0]?.question ?? 'Claude 提出了问题',
-          tag: 'claude-question',
-          renotify: true,
-        }).catch((err) => {
-          logger.error({ err, sessionId: data.sessionId }, 'Push notification failed');
-        });
-      }
-
-      logger.info({
-        sessionId: data.sessionId,
-        questionCount: data.questions.length,
-        firstQuestion: data.questions[0]?.question,
-      }, 'AskUserQuestion broadcast');
-    });
-
-    this.hookReceiver.on('permission_request', (event: PermissionRequestEvent) => {
-      this._status = 'waiting_input';
-
-      this.wsServer.broadcast({
-        type: 'permission_request',
-        requestId: event.requestId,
-        toolName: event.toolName,
-        toolInput: event.toolInput,
-        permissionSuggestions: event.permissionSuggestions,
-      });
-
-      if (this.pushService) {
-        this.pushService.notifyAll({
-          title: 'Claude Code 权限请求',
-          body: `请求使用 ${event.toolName}`,
-          tag: 'claude-permission',
-          renotify: true,
-        }).catch((err) => {
-          logger.error({ err, requestId: event.requestId }, 'Push notification failed');
-        });
-      }
-
-      logger.info({
-        requestId: event.requestId,
-        toolName: event.toolName,
-      }, 'PermissionRequest broadcast');
     });
   }
 

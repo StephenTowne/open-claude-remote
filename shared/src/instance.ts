@@ -22,3 +22,6 @@ export const CLAUDE_REMOTE_DIR = '.claude-remote';
 
 /** 注册表文件名 */
 export const REGISTRY_FILENAME = 'instances.json';
+
+/** Claude Code settings 目录名 */
+export const SETTINGS_DIR = 'settings';

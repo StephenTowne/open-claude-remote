@@ -24,34 +24,6 @@ export function createHookRoutes(hookReceiver: HookReceiver): Router {
     const result = hookReceiver.processHook(payload);
 
     switch (result.type) {
-      case 'permission_request': {
-        // Wait for user decision asynchronously
-        const decision = await hookReceiver.waitForDecision(result.permissionRequest!.requestId);
-        if (decision) {
-          res.json({
-            hookSpecificOutput: {
-              hookEventName: 'PermissionRequest',
-              decision: {
-                behavior: decision.behavior,
-                updatedPermissions: decision.updatedPermissions,
-              },
-            },
-          });
-        } else {
-          // Timeout - deny by default
-          res.json({
-            hookSpecificOutput: {
-              hookEventName: 'PermissionRequest',
-              decision: { behavior: 'deny' },
-            },
-          });
-        }
-        break;
-      }
-      case 'ask_question':
-        // Empty JSON response — PreToolUse hook with empty stdout defaults to approve
-        res.json({});
-        break;
       case 'notification':
         res.json({ ok: true, tool: result.notification!.tool });
         break;

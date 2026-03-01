@@ -235,6 +235,66 @@ describe('TerminalRelay', () => {
     });
   });
 
+  describe('pauseResize / resumeResize', () => {
+    it('should not forward PC resize to PTY when paused', () => {
+      const { stdout } = stubProcessIO(true);
+      const pty = makePtyManager();
+      const relay = new TerminalRelay(pty);
+      relay.start();
+      relay.pauseResize();
+
+      // 触发 PC 终端 resize 事件
+      stdout.columns = 120;
+      stdout.rows = 40;
+      (process.stdout as EventEmitter).emit('resize');
+
+      expect(pty.resize).not.toHaveBeenCalled();
+    });
+
+    it('should forward PC resize to PTY after resumeResize', () => {
+      const { stdout } = stubProcessIO(true);
+      const pty = makePtyManager();
+      const relay = new TerminalRelay(pty);
+      relay.start();
+      relay.pauseResize();
+      relay.resumeResize();
+
+      // resume 后 resize 应该正常转发
+      stdout.columns = 120;
+      stdout.rows = 40;
+      (process.stdout as EventEmitter).emit('resize');
+
+      expect(pty.resize).toHaveBeenCalledWith(120, 40);
+    });
+
+    it('should immediately sync PC terminal size to PTY on resumeResize', () => {
+      const { stdout } = stubProcessIO(true);
+      stdout.columns = 150;
+      stdout.rows = 45;
+      const pty = makePtyManager();
+      const relay = new TerminalRelay(pty);
+      relay.start();
+      relay.pauseResize();
+
+      relay.resumeResize();
+
+      // 应立即用当前 PC 终端尺寸 resize PTY
+      expect(pty.resize).toHaveBeenCalledWith(150, 45);
+    });
+
+    it('should not affect stdin forwarding when paused', () => {
+      stubProcessIO(true);
+      const pty = makePtyManager();
+      const relay = new TerminalRelay(pty);
+      relay.start();
+      relay.pauseResize();
+
+      (process.stdin as EventEmitter).emit('data', Buffer.from('hello'));
+
+      expect(pty.write).toHaveBeenCalledWith('hello');
+    });
+  });
+
   describe('stop()', () => {
     it('restores raw mode to original state and pauses stdin', () => {
       const { stdin } = stubProcessIO(true);

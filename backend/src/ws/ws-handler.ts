@@ -1,11 +1,10 @@
 import { WebSocket } from 'ws';
-import type { ClientMessage, PermissionDecision } from '@claude-remote/shared';
+import type { ClientMessage } from '@claude-remote/shared';
 import { logger } from '../logger/logger.js';
 
 export interface WsHandlerCallbacks {
   onUserInput: (data: string) => void;
   onResize: (cols: number, rows: number) => void;
-  onPermissionDecision?: (requestId: string, decision: PermissionDecision) => void;
 }
 
 /**
@@ -37,22 +36,6 @@ export function handleWsMessage(ws: WebSocket, raw: string, callbacks: WsHandler
       // Reply with server heartbeat
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'heartbeat', timestamp: Date.now() }));
-      }
-      break;
-
-    case 'permission_decision':
-      if (
-        typeof msg.requestId === 'string'
-        && (msg.behavior === 'allow' || msg.behavior === 'deny')
-        && callbacks.onPermissionDecision
-      ) {
-        const decision: PermissionDecision = {
-          behavior: msg.behavior,
-          updatedPermissions: msg.updatedPermissions,
-        };
-        callbacks.onPermissionDecision(msg.requestId, decision);
-      } else if (msg.behavior !== 'allow' && msg.behavior !== 'deny') {
-        logger.warn({ behavior: msg.behavior }, 'Invalid permission_decision behavior value');
       }
       break;
 

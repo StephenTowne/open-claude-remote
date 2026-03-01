@@ -116,10 +116,10 @@ sequenceDiagram
 - backend: `pty/pty-manager.ts`, `pty/output-buffer.ts`, `terminal/terminal-relay.ts`
 - backend: `session/session-controller.ts`
 
-### 审批流程
+### Hook 通知
 - backend: `hooks/hook-receiver.ts`, `api/hook-routes.ts`
-- backend: `session/session-controller.ts` (handleApprovalResponse)
-- frontend: `components/approval/ApprovalCard.tsx`, `hooks/useApproval.ts`
+- backend: `session/session-controller.ts` (notification → status broadcast)
+- 权限审批通过 xterm 终端直接交互，无专属前端 UI
 
 ### 认证
 - backend: `auth/token-generator.ts`, `auth/auth-middleware.ts`, `auth/rate-limiter.ts`

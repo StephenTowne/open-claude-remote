@@ -1,13 +1,13 @@
 import { createServer } from 'node:http';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import { CLAUDE_REMOTE_DIR } from '@claude-remote/shared';
-import { loadConfig, createSessionCookieName, createClaudeSettings } from './config.js';
+import { loadConfig, createSessionCookieName, createClaudeSettings, extractSettingsFromArgs, saveClaudeSettings } from './config.js';
 import { AuthModule } from './auth/auth-middleware.js';
 import { PtyManager } from './pty/pty-manager.js';
 import { WsServer } from './ws/ws-server.js';
@@ -129,20 +129,35 @@ async function main() {
   // 14. Spawn PTY with Claude Code CLI
   const ptyManager = new PtyManager();
 
-  // 15. Create Session Controller
-  sessionController = new SessionController(ptyManager, wsServer, hookReceiver, config.maxBufferLines);
-  sessionController.setPushService(pushService);
-
-  // 16. Start Terminal Relay (raw mode)
+  // 15. Start Terminal Relay (raw mode)
   const relay = new TerminalRelay(ptyManager);
 
+  // 16. Create Session Controller (with relay for dynamic master switch)
+  sessionController = new SessionController(ptyManager, wsServer, hookReceiver, config.maxBufferLines, relay);
+  sessionController.setPushService(pushService);
+
   // 17. Spawn Claude Code with instance-specific hook settings
-  const claudeSettings = createClaudeSettings(actualPort);
-  logger.info({ port: actualPort }, 'Generated Claude settings with instance-specific hook URL');
+  // 检查用户是否传了 --settings 参数，如果有则合并 hooks
+  const extracted = extractSettingsFromArgs(config.claudeArgs);
+  let finalArgs: string[];
+
+  // 生成最终的 settings 对象
+  const finalSettings = createClaudeSettings(actualPort, extracted?.settingsValue);
+
+  // 保存到文件并通过文件路径传递给 Claude
+  const settingsPath = saveClaudeSettings(finalSettings, actualPort, sharedConfigDir);
+
+  if (extracted) {
+    finalArgs = [...extracted.otherArgs, '--settings', settingsPath];
+    logger.info({ port: actualPort, originalSettingsPath: extracted.settingsPath, savedSettingsPath: settingsPath }, 'Merged user settings with hooks');
+  } else {
+    finalArgs = [...config.claudeArgs, '--settings', settingsPath];
+    logger.info({ port: actualPort, savedSettingsPath: settingsPath }, 'Generated Claude settings with instance-specific hook URL');
+  }
 
   ptyManager.spawn({
     command: config.claudeCommand,
-    args: [...config.claudeArgs, '--settings', claudeSettings],
+    args: finalArgs,
     cwd: config.claudeCwd,
   });
 

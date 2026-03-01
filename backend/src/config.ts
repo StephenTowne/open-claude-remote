@@ -3,9 +3,12 @@ import {
   DEFAULT_SESSION_TTL_MS,
   DEFAULT_AUTH_RATE_LIMIT,
   DEFAULT_MAX_BUFFER_LINES,
+  SETTINGS_DIR,
 } from '@claude-remote/shared';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { detectLanIp, detectNonLoopbackIp } from './utils/network.js';
 import { logger } from './logger/logger.js';
 
@@ -42,33 +45,71 @@ export function createSessionCookieName(port: number): string {
 
 /**
  * 生成 Claude Code 专属配置（包含 hook URL）
- * 通过 --settings 参数传递给 Claude CLI，实现多实例 Hook 隔离
- * 使用原生 HTTP hooks（Claude Code 原生支持，无需 curl）
+ * @param port 服务端口
+ * @param existingSettings 可选的现有 settings 对象，会与 hooks 合并
  */
-export function createClaudeSettings(port: number): string {
+export function createClaudeSettings(port: number, existingSettings?: Record<string, unknown>): Record<string, unknown> {
   const hookUrl = `http://localhost:${port}/api/hook`;
-  return JSON.stringify({
+  // 使用 -d @- 从 stdin 读取 hook payload，避免 shell 转义问题
+  const hookCommand = `curl -s -X POST ${hookUrl} -H 'Content-Type: application/json' -d @-`;
+
+  const hooksConfig = {
     hooks: {
       Notification: [
         {
           matcher: "permission_prompt",
-          hooks: [{ type: "http", url: hookUrl }]
+          hooks: [{ type: "command", command: hookCommand }]
         }
       ],
       PreToolUse: [
         {
           matcher: "AskUserQuestion",
-          hooks: [{ type: "http", url: hookUrl }]
-        }
-      ],
-      PermissionRequest: [
-        {
-          matcher: ".*",
-          hooks: [{ type: "http", url: hookUrl }]
+          hooks: [{ type: "command", command: hookCommand }]
         }
       ]
     }
-  });
+  };
+
+  // 如果有现有 settings，合并 hooks 配置（保留用户自定义的其他 hook 事件）
+  // 注意：同名 hook 事件（Notification / PreToolUse）会被我们的配置覆盖，
+  // 因为这些事件是 claude-remote 正常工作的必要条件
+  if (existingSettings) {
+    const existingHooks = (existingSettings.hooks ?? {}) as Record<string, unknown[]>;
+    const overriddenKeys = Object.keys(hooksConfig.hooks).filter(k => k in existingHooks);
+    if (overriddenKeys.length > 0) {
+      logger.warn({ overriddenKeys }, 'User hook events overridden by claude-remote hooks');
+    }
+    return {
+      ...existingSettings,
+      hooks: { ...existingHooks, ...hooksConfig.hooks },
+    };
+  }
+
+  return hooksConfig;
+}
+
+/**
+ * 保存 Claude Code settings 到文件，返回文件路径
+ * 文件保存在 ~/.claude-remote/settings/{port}.json
+ * 注意：使用同步写入，仅在启动阶段调用
+ */
+export function saveClaudeSettings(
+  settings: Record<string, unknown>,
+  port: number,
+  sharedConfigDir: string
+): string {
+  const settingsDir = resolve(sharedConfigDir, SETTINGS_DIR);
+
+  // 确保目录存在
+  if (!existsSync(settingsDir)) {
+    mkdirSync(settingsDir, { recursive: true });
+  }
+
+  const settingsPath = resolve(settingsDir, `${port}.json`);
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+
+  logger.info({ settingsPath, port }, 'Claude settings saved to file');
+  return settingsPath;
 }
 
 export function loadConfig(): AppConfig {
@@ -99,4 +140,69 @@ export function loadConfig(): AppConfig {
     sessionCookieName: config.sessionCookieName,
   }, 'Configuration loaded');
   return config;
+}
+
+/**
+ * 从 claudeArgs 中找到 --settings 参数的值
+ * 返回 { settingsPath: string, settingsValue: object, otherArgs: string[] } 或 null
+ */
+export function extractSettingsFromArgs(args: string[]): { settingsPath: string; settingsValue: Record<string, unknown>; otherArgs: string[] } | null {
+  let settingsPath: string | null = null;
+  let settingsValue: Record<string, unknown> | null = null;
+  const otherArgs: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === '--settings' && i + 1 < args.length) {
+      const value = args[i + 1];
+      i++; // 无论解析成功与否，都跳过 value 参数
+      // 检查是文件路径还是 JSON 字符串
+      if (existsSync(value)) {
+        settingsPath = value;
+        try {
+          settingsValue = JSON.parse(readFileSync(value, 'utf-8'));
+          logger.info({ settingsPath }, 'Loaded user settings file for merging');
+        } catch (e) {
+          logger.warn({ settingsPath, err: e }, 'Failed to parse user settings file, ignoring');
+          otherArgs.push(arg, value);
+        }
+      } else {
+        // 可能是 JSON 字符串，尝试解析
+        try {
+          settingsValue = JSON.parse(value);
+          logger.info('Detected inline JSON settings for merging');
+        } catch {
+          // 不是 JSON，保留原样
+          otherArgs.push(arg, value);
+        }
+      }
+    } else if (arg.startsWith('--settings=')) {
+      const value = arg.slice('--settings='.length);
+      if (existsSync(value)) {
+        settingsPath = value;
+        try {
+          settingsValue = JSON.parse(readFileSync(value, 'utf-8'));
+          logger.info({ settingsPath }, 'Loaded user settings file for merging');
+        } catch (e) {
+          logger.warn({ settingsPath, err: e }, 'Failed to parse user settings file, ignoring');
+          otherArgs.push(arg);
+        }
+      } else {
+        try {
+          settingsValue = JSON.parse(value);
+          logger.info('Detected inline JSON settings for merging');
+        } catch {
+          otherArgs.push(arg);
+        }
+      }
+    } else {
+      otherArgs.push(arg);
+    }
+  }
+
+  if (settingsValue) {
+    return { settingsPath: settingsPath || 'inline', settingsValue, otherArgs };
+  }
+  return null;
 }

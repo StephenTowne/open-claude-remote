@@ -17,6 +17,7 @@ export class TerminalRelay {
   private resizeHandler: (() => void) | null = null;
   private wasRaw: boolean = false;
   private lastCtrlCTime: number = 0;
+  private resizePaused: boolean = false;
 
   constructor(private ptyManager: PtyManager) {}
 
@@ -57,6 +58,7 @@ export class TerminalRelay {
 
     // Terminal resize → PTY resize
     this.resizeHandler = () => {
+      if (this.resizePaused) return;
       const cols = process.stdout.columns;
       const rows = process.stdout.rows;
       if (cols && rows) {
@@ -66,6 +68,29 @@ export class TerminalRelay {
     process.stdout.on('resize', this.resizeHandler);
 
     logger.info('Terminal relay started (raw mode)');
+  }
+
+  /**
+   * Pause forwarding PC terminal resize events to PTY.
+   * Used when a mobile client connects and becomes the resize source.
+   */
+  pauseResize(): void {
+    this.resizePaused = true;
+    logger.info('Terminal relay: PC resize paused (mobile client connected)');
+  }
+
+  /**
+   * Resume forwarding PC terminal resize events to PTY.
+   * Immediately syncs current PC terminal size to PTY.
+   */
+  resumeResize(): void {
+    this.resizePaused = false;
+    const cols = process.stdout.columns;
+    const rows = process.stdout.rows;
+    if (cols && rows) {
+      this.ptyManager.resize(cols, rows);
+    }
+    logger.info({ cols, rows }, 'Terminal relay: PC resize resumed, synced PTY size');
   }
 
   /**

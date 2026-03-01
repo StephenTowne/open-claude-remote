@@ -19,6 +19,7 @@ export class WsServer {
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private messageHandler: ((ws: WebSocket, data: string) => void) | null = null;
   private connectHandler: ((ws: WebSocket) => void) | null = null;
+  private disconnectHandler: (() => void) | null = null;
 
   constructor(
     private httpServer: HttpServer,
@@ -42,6 +43,13 @@ export class WsServer {
    */
   onConnect(handler: (ws: WebSocket) => void): void {
     this.connectHandler = handler;
+  }
+
+  /**
+   * Set a handler for client disconnections (after client is removed from set).
+   */
+  onDisconnect(handler: () => void): void {
+    this.disconnectHandler = handler;
   }
 
   /**
@@ -101,11 +109,17 @@ export class WsServer {
       ws.on('close', () => {
         this.clients.delete(clientInfo);
         logger.info({ clientCount: this.clients.size }, 'WebSocket client disconnected');
+        if (this.disconnectHandler) {
+          this.disconnectHandler();
+        }
       });
 
       ws.on('error', (err) => {
         logger.error({ err }, 'WebSocket client error');
         this.clients.delete(clientInfo);
+        if (this.disconnectHandler) {
+          this.disconnectHandler();
+        }
       });
 
       // Notify connect handler

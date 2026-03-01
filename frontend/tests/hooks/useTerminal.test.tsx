@@ -289,256 +289,99 @@ describe('useTerminal', () => {
     });
   });
 
-  // ---- adaptToPtyCols tests ----
+  // ---- adaptToPtyCols tests (read-only mode: no font shrinking, no forced rows) ----
 
-  it('adaptToPtyCols should shrink font when container cols < ptyCols', () => {
-    // 基准 proposeDimensions 返回 46 列（模拟 iPhone 390px / fontSize=14）
+  it('adaptToPtyCols should NOT change font size regardless of ptyCols', () => {
+    // 模拟窄屏手机（46 cols at font 14）
     mockProposeDimensions.mockReturnValue({ cols: 46, rows: 24 });
 
     const { result } = renderUseTerminal();
 
     act(() => {
-      result.current.adaptToPtyCols(80);
+      result.current.adaptToPtyCols(200); // PTY 远宽于手机
     });
 
-    // targetFontSize = 14 * (46 / 80) = 8.05 → round to 8
-    // 最终字体应缩小
-    expect(mockTermOptions.fontSize).toBeLessThan(14);
-    expect(mockTermOptions.fontSize).toBeGreaterThanOrEqual(7);
-    expect(mockFitAddonFit).toHaveBeenCalled();
-  });
-
-  it('adaptToPtyCols should keep default font when container cols >= ptyCols', () => {
-    mockProposeDimensions.mockReturnValue({ cols: 120, rows: 24 });
-
-    const { result } = renderUseTerminal();
-
-    act(() => {
-      result.current.adaptToPtyCols(80);
-    });
-
-    // 容器已足够宽，应保持 14
+    // 字体应保持默认 14，不缩放
     expect(mockTermOptions.fontSize).toBe(14);
     expect(mockFitAddonFit).toHaveBeenCalled();
   });
 
-  it('adaptToPtyCols should clamp font to MIN_FONT_SIZE (7)', () => {
-    // 基准 proposeDimensions 返回 30 列
-    mockProposeDimensions.mockReturnValue({ cols: 30, rows: 24 });
-
-    const { result } = renderUseTerminal();
-
-    act(() => {
-      result.current.adaptToPtyCols(208);
+  it('adaptToPtyCols should call fitAddon.fit() to use natural container size', () => {
+    mockFitAddonFit.mockImplementation(() => {
+      mockTermState.cols = 42;
+      mockTermState.rows = 33;
     });
 
-    // targetFontSize = 14 * (30 / 208) = 2.02 → clamp to 7
-    expect(mockTermOptions.fontSize).toBe(7);
+    const { result } = renderUseTerminal();
+    mockFitAddonFit.mockClear();
+
+    act(() => {
+      result.current.adaptToPtyCols(200, 50);
+    });
+
     expect(mockFitAddonFit).toHaveBeenCalled();
   });
 
-  it('adaptToPtyCols should fallback to larger font when rows become too low', () => {
-    mockProposeDimensions.mockReturnValue({ cols: 46, rows: 24 });
-
+  it('adaptToPtyCols should NOT force terminal rows to match PTY rows', () => {
     mockFitAddonFit.mockImplementation(() => {
-      if (mockTermOptions.fontSize <= 8) {
-        mockTermState.rows = 10;
-      } else {
-        mockTermState.rows = 13;
-      }
+      mockTermState.cols = 42;
+      mockTermState.rows = 33; // container fits 33 rows
     });
 
     const { result } = renderUseTerminal();
+    mockTermResize.mockClear();
 
     act(() => {
-      result.current.adaptToPtyCols(80);
+      result.current.adaptToPtyCols(200, 50); // PTY has 50 rows
     });
 
-    expect(mockTermOptions.fontSize).toBe(9);
-    expect(mockFitAddonFit).toHaveBeenCalledTimes(3);
+    // 不应强制 resize（50 行会溢出容器）
+    expect(mockTermResize).not.toHaveBeenCalled();
   });
 
-  it('should not trigger onResize from ResizeObserver after ptyCols is set', () => {
+  it('should still trigger onResize from ResizeObserver after adaptToPtyCols is called', () => {
     const onResize = vi.fn();
-    mockProposeDimensions.mockReturnValue({ cols: 46, rows: 24 });
 
     mockFitAddonFit.mockImplementation(() => {
-      mockTermState.cols = 46;
-      mockTermState.rows = 20;
+      mockTermState.cols = 42;
+      mockTermState.rows = 33;
     });
 
     const { result } = renderUseTerminal(onResize);
     onResize.mockClear();
 
-    // 设置 ptyCols
+    // adaptToPtyCols（不再进入 mobile mode）
     act(() => {
-      result.current.adaptToPtyCols(80);
+      result.current.adaptToPtyCols(200);
     });
     onResize.mockClear();
+
+    // ResizeObserver 触发 → 应正常上报 resize
+    act(() => {
+      resizeObserverCallback?.();
+    });
+
+    expect(onResize).toHaveBeenCalledWith(42, 33);
+  });
+
+  it('should call fitAddon.fit() from ResizeObserver after adaptToPtyCols', () => {
+    mockFitAddonFit.mockImplementation(() => {
+      mockTermState.cols = 42;
+      mockTermState.rows = 33;
+    });
+
+    const { result } = renderUseTerminal();
+
+    act(() => {
+      result.current.adaptToPtyCols(200);
+    });
+    mockFitAddonFit.mockClear();
 
     // ResizeObserver 触发
     act(() => {
       resizeObserverCallback?.();
     });
 
-    // 不应向后端发送 resize
-    expect(onResize).not.toHaveBeenCalled();
-  });
-
-  it('should trigger onResize from ResizeObserver when ptyCols is not set', () => {
-    const onResize = vi.fn();
-
-    mockFitAddonFit.mockImplementation(() => {
-      mockTermState.cols = 60;
-      mockTermState.rows = 22;
-    });
-
-    renderUseTerminal(onResize);
-    onResize.mockClear();
-
-    act(() => {
-      resizeObserverCallback?.();
-    });
-
-    expect(onResize).toHaveBeenCalledWith(60, 22);
-  });
-
-  // ---- adaptToPtyCols with ptyRows tests ----
-
-  describe('adaptToPtyCols with ptyRows (rows matching)', () => {
-    it('should force terminal rows to match PTY rows when container has fewer rows', () => {
-      mockProposeDimensions.mockReturnValue({ cols: 120, rows: 24 });
-      mockFitAddonFit.mockImplementation(() => {
-        mockTermState.cols = 80;
-        mockTermState.rows = 24; // container only fits 24 rows
-      });
-
-      const { result } = renderUseTerminal();
-      mockTermResize.mockClear();
-
-      act(() => {
-        result.current.adaptToPtyCols(80, 50); // PTY has 50 rows
-      });
-
-      // Should call term.resize to force rows match
-      expect(mockTermResize).toHaveBeenCalledWith(80, 50);
-    });
-
-    it('should not resize when terminal rows already match PTY rows', () => {
-      mockProposeDimensions.mockReturnValue({ cols: 120, rows: 50 });
-      mockFitAddonFit.mockImplementation(() => {
-        mockTermState.cols = 80;
-        mockTermState.rows = 50; // container already has enough rows
-      });
-
-      const { result } = renderUseTerminal();
-      mockTermResize.mockClear();
-
-      act(() => {
-        result.current.adaptToPtyCols(80, 50);
-      });
-
-      expect(mockTermResize).not.toHaveBeenCalled();
-    });
-
-    it('should not force resize when ptyRows is not provided', () => {
-      mockProposeDimensions.mockReturnValue({ cols: 120, rows: 24 });
-      mockFitAddonFit.mockImplementation(() => {
-        mockTermState.cols = 80;
-        mockTermState.rows = 24;
-      });
-
-      const { result } = renderUseTerminal();
-      mockTermResize.mockClear();
-
-      act(() => {
-        result.current.adaptToPtyCols(80); // no ptyRows
-      });
-
-      expect(mockTermResize).not.toHaveBeenCalled();
-    });
-
-    it('should re-apply PTY rows on ResizeObserver trigger', () => {
-      mockProposeDimensions.mockReturnValue({ cols: 120, rows: 24 });
-      mockFitAddonFit.mockImplementation(() => {
-        mockTermState.cols = 80;
-        mockTermState.rows = 24;
-      });
-
-      const { result } = renderUseTerminal();
-
-      // Set PTY dimensions
-      act(() => {
-        result.current.adaptToPtyCols(80, 50);
-      });
-      mockTermResize.mockClear();
-
-      // ResizeObserver triggers (e.g., window resize / orientation change)
-      act(() => {
-        resizeObserverCallback?.();
-      });
-
-      // Should re-apply PTY rows
-      expect(mockTermResize).toHaveBeenCalledWith(80, 50);
-    });
-
-    it('should force rows even when font needs shrinking for cols', () => {
-      mockProposeDimensions.mockReturnValue({ cols: 46, rows: 24 });
-      mockFitAddonFit.mockImplementation(() => {
-        mockTermState.cols = 80;
-        mockTermState.rows = 30; // after font shrink, container gives 30 rows
-      });
-
-      const { result } = renderUseTerminal();
-      mockTermResize.mockClear();
-
-      act(() => {
-        result.current.adaptToPtyCols(80, 50); // PTY has 50 rows
-      });
-
-      expect(mockTermResize).toHaveBeenCalledWith(80, 50);
-    });
-
-    it('should NOT force rows when container fits more rows than PTY (utilize full screen)', () => {
-      mockProposeDimensions.mockReturnValue({ cols: 120, rows: 40 });
-      mockFitAddonFit.mockImplementation(() => {
-        mockTermState.cols = 80;
-        mockTermState.rows = 40; // container naturally fits 40 rows
-      });
-
-      const { result } = renderUseTerminal();
-      mockTermResize.mockClear();
-
-      act(() => {
-        result.current.adaptToPtyCols(80, 24); // PTY only has 24 rows
-      });
-
-      // Should NOT shrink to 24 rows — keep 40 to fill the screen
-      expect(mockTermResize).not.toHaveBeenCalled();
-    });
-
-    it('should NOT re-apply PTY rows on ResizeObserver when container fits more rows', () => {
-      mockProposeDimensions.mockReturnValue({ cols: 120, rows: 40 });
-      mockFitAddonFit.mockImplementation(() => {
-        mockTermState.cols = 80;
-        mockTermState.rows = 40;
-      });
-
-      const { result } = renderUseTerminal();
-
-      // Set PTY dimensions (ptyRows=24, container fits 40)
-      act(() => {
-        result.current.adaptToPtyCols(80, 24);
-      });
-      mockTermResize.mockClear();
-
-      // ResizeObserver triggers (e.g., orientation change)
-      act(() => {
-        resizeObserverCallback?.();
-      });
-
-      // Should NOT force rows down to 24
-      expect(mockTermResize).not.toHaveBeenCalled();
-    });
+    expect(mockFitAddonFit).toHaveBeenCalled();
   });
 });

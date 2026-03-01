@@ -1,12 +1,9 @@
 import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
-import type { ServerMessage, InstanceListItem, Question, PermissionSuggestion } from '@claude-remote/shared';
-import { isFreeTextLabel } from '@claude-remote/shared';
+import type { ServerMessage, InstanceListItem } from '@claude-remote/shared';
 import { StatusBar } from '../components/status/StatusBar.js';
 import { TerminalView } from '../components/terminal/TerminalView.js';
 import { InputBar, type InputBarRef } from '../components/input/InputBar.js';
 import { CommandPicker } from '../components/input/CommandPicker.js';
-import { QuestionPanel } from '../components/input/QuestionPanel.js';
-import { PermissionPanel } from '../components/input/PermissionPanel.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
 import { IpChangeToast } from '../components/common/IpChangeToast.js';
 import { InstanceTabs } from '../components/instances/InstanceTabs.js';
@@ -21,22 +18,6 @@ import { useInstanceStore } from '../stores/instance-store.js';
 import { authenticate } from '../services/api-client.js';
 import { authenticateToInstance, buildInstanceWsUrl } from '../services/instance-api.js';
 
-interface AskState {
-  questions: Question[];
-  currentIndex: number;
-  selectedIndex: number;
-  selectedOptions: Set<number>;
-  isOtherInput: boolean;
-  otherText: string;
-}
-
-interface PermissionState {
-  requestId: string;
-  toolName: string;
-  toolInput: Record<string, unknown>;
-  permissionSuggestions?: PermissionSuggestion[];
-}
-
 function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: { wsUrl?: string; instanceId?: string; showCommandPicker: boolean; onIpChanged?: (newIp: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputBarRef = useRef<InputBarRef>(null);
@@ -50,14 +31,6 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
   const writeRef = useRef((_data: string, _cb?: () => void) => {});
   const scrollToBottomRef = useRef(() => {});
   const adaptToPtyColsRef = useRef((_cols: number, _rows?: number) => {});
-
-  // 当前 ask_question 交互状态
-  const [askState, setAskState] = useState<AskState | null>(null);
-  const askStateRef = useRef<AskState | null>(null);
-  askStateRef.current = askState;
-
-  // 当前权限请求状态
-  const [permissionState, setPermissionState] = useState<PermissionState | null>(null);
 
   const handleMessage = useCallback((msg: ServerMessage) => {
     switch (msg.type) {
@@ -79,12 +52,8 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
         break;
       case 'status_update':
         setSessionStatus(msg.status);
-        // 非 waiting_input 时清理问答面板
-        if (msg.status !== 'waiting_input') {
-          setAskState(null);
-          setPermissionState(null);
-        } else {
-          // 收到 waiting_input 时发送本地通知
+        // 收到 waiting_input 时发送本地通知（用于 permission prompt）
+        if (msg.status === 'waiting_input') {
           showNotification({
             title: 'Claude Code 需要输入',
             body: msg.detail ?? 'Claude 正在等待你的输入',
@@ -92,39 +61,6 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
             renotify: false,
           });
         }
-        break;
-      case 'ask_question':
-        setAskState({
-          questions: msg.questions,
-          currentIndex: 0,
-          selectedIndex: 0,
-          selectedOptions: new Set(),
-          isOtherInput: false,
-          otherText: '',
-        });
-        // 收到提问时发送本地通知
-        showNotification({
-          title: 'Claude Code 需要回答',
-          body: msg.questions[0]?.question ?? 'Claude 提出了问题',
-          tag: 'claude-ask-question',
-          renotify: false,
-        });
-        break;
-      case 'permission_request':
-        // 权限请求到达时清除旧的问答状态，避免权限处理后残留 QuestionPanel
-        setAskState(null);
-        setPermissionState({
-          requestId: msg.requestId,
-          toolName: msg.toolName,
-          toolInput: msg.toolInput,
-          permissionSuggestions: msg.permissionSuggestions,
-        });
-        showNotification({
-          title: 'Claude Code 权限请求',
-          body: `请求使用 ${msg.toolName}`,
-          tag: 'claude-permission',
-          renotify: false,
-        });
         break;
       case 'session_ended':
         setSessionStatus('idle');
@@ -151,9 +87,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
   const { write, scrollToBottom, adaptToPtyCols } = useTerminal(
     containerRef,
     useCallback((cols: number, rows: number) => {
-      if (cols >= 80) {
-        sendRef.current?.({ type: 'resize', cols, rows });
-      }
+      sendRef.current?.({ type: 'resize', cols, rows });
     }, []),
   );
 
@@ -190,141 +124,17 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
     inputBarRef.current?.setText(command);
   }, []);
 
-  // 选项选择处理
-  const handleQuestionSelect = useCallback((targetIndex: number) => {
-    const state = askStateRef.current;
-    if (!state) return;
-    const q = state.questions[state.currentIndex];
-    if (!q || targetIndex < 0 || targetIndex >= q.options.length) return;
-
-    // 导航到目标选项
-    const diff = targetIndex - state.selectedIndex;
-    const arrowKey = diff > 0 ? '\x1b[B' : '\x1b[A';
-    for (let i = 0; i < Math.abs(diff); i++) {
-      send({ type: 'user_input', data: arrowKey });
-    }
-
-    const option = q.options[targetIndex];
-    const isOther = isFreeTextLabel(option.label);
-
-    // 发送 Enter 选择
-    send({ type: 'user_input', data: '\r' });
-
-    if (isOther) {
-      setAskState(prev => prev ? { ...prev, selectedIndex: targetIndex, isOtherInput: true, otherText: '' } : null);
-    } else if (q.multiSelect) {
-      setAskState(prev => {
-        if (!prev) return null;
-        const next = new Set(prev.selectedOptions);
-        if (next.has(targetIndex)) next.delete(targetIndex); else next.add(targetIndex);
-        return { ...prev, selectedIndex: targetIndex, selectedOptions: next };
-      });
-    } else {
-      // 单选：推进到下一个问题或结束
-      const nextIndex = state.currentIndex + 1;
-      if (nextIndex < state.questions.length) {
-        setAskState(prev => prev ? {
-          ...prev, currentIndex: nextIndex, selectedIndex: 0,
-          selectedOptions: new Set(), isOtherInput: false, otherText: '',
-        } : null);
-      } else {
-        setAskState(null);
-      }
-    }
-  }, [send]);
-
-  const handleOtherInputChange = useCallback((text: string) => {
-    setAskState(prev => prev ? { ...prev, otherText: text } : null);
-  }, []);
-
-  const handleOtherSubmit = useCallback(() => {
-    const state = askStateRef.current;
-    if (!state) return;
-
-    const text = state.otherText.trim();
-    if (!text) return;
-    send({ type: 'user_input', data: text });
-    send({ type: 'user_input', data: '\r' });
-
-    const nextIndex = state.currentIndex + 1;
-    if (nextIndex < state.questions.length) {
-      setAskState(prev => prev ? {
-        ...prev, currentIndex: nextIndex, selectedIndex: 0,
-        selectedOptions: new Set(), isOtherInput: false, otherText: '',
-      } : null);
-    } else {
-      setAskState(null);
-    }
-  }, [send]);
-
-  useEffect(() => {
-    if (!askState) return;
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      send({ type: 'user_input', data: '\x1b' });
-      setAskState(null);
-    };
-
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [askState, send]);
-
-  const handlePermissionAllow = useCallback((alwaysAllow: boolean = false) => {
-    if (!permissionState) return;
-    send({
-      type: 'permission_decision',
-      requestId: permissionState.requestId,
-      behavior: 'allow',
-      updatedPermissions: alwaysAllow ? permissionState.permissionSuggestions : undefined,
-    });
-    setPermissionState(null);
-  }, [send, permissionState]);
-
-  const handlePermissionDeny = useCallback(() => {
-    if (!permissionState) return;
-    send({
-      type: 'permission_decision',
-      requestId: permissionState.requestId,
-      behavior: 'deny',
-    });
-    setPermissionState(null);
-  }, [send, permissionState]);
-
   return (
     <>
       <ConnectionBanner />
       <IpChangeToast />
       <TerminalView containerRef={containerRef} />
-      {permissionState ? (
-        <PermissionPanel
-          toolName={permissionState.toolName}
-          toolInput={permissionState.toolInput}
-          permissionSuggestions={permissionState.permissionSuggestions}
-          onAllow={handlePermissionAllow}
-          onDeny={handlePermissionDeny}
-        />
-      ) : askState ? (
-        <QuestionPanel
-          questions={askState.questions}
-          currentQuestionIndex={askState.currentIndex}
-          selectedIndex={askState.selectedIndex}
-          selectedOptions={askState.selectedOptions}
-          otherInput={askState.isOtherInput ? askState.otherText : undefined}
-          onSelect={handleQuestionSelect}
-          onOtherInputChange={handleOtherInputChange}
-          onOtherSubmit={handleOtherSubmit}
-        />
-      ) : (
-        <>
-          <CommandPicker
-            onShortcut={handleKeyPress}
-            onCommandSelect={handleCommandSelect}
-            visible={showCommandPicker}
-          />
-          <InputBar ref={inputBarRef} onSend={handleSend} />
-        </>
-      )}
+      <CommandPicker
+        onShortcut={handleKeyPress}
+        onCommandSelect={handleCommandSelect}
+        visible={showCommandPicker}
+      />
+      <InputBar ref={inputBarRef} onSend={handleSend} />
     </>
   );
 }
