@@ -258,4 +258,63 @@ describe('QuestionPanel', () => {
 
     expect(screen.getByPlaceholderText('输入自定义内容...')).toBeDefined();
   });
+
+  it('should treat "输入文字" as free-text option', () => {
+    const freeTextQuestion: Question[] = [
+      {
+        question: '请选择',
+        options: [{ label: 'A' }, { label: '输入文字' }],
+      },
+    ];
+
+    render(
+      <QuestionPanel
+        questions={freeTextQuestion}
+        currentQuestionIndex={0}
+        selectedIndex={1}
+        otherInput=""
+        onSelect={() => {}}
+        onOtherInputChange={() => {}}
+        onOtherSubmit={() => {}}
+      />,
+    );
+
+    expect(screen.getByPlaceholderText('输入自定义内容...')).toBeDefined();
+  });
+
+  it('should treat "chat about this" as free-text option', () => {
+    const chatQuestion: Question[] = [
+      {
+        question: 'Need more context?',
+        options: [{ label: 'Approve' }, { label: 'chat about this' }],
+      },
+    ];
+
+    render(
+      <QuestionPanel
+        questions={chatQuestion}
+        currentQuestionIndex={0}
+        selectedIndex={1}
+        otherInput=""
+        onSelect={() => {}}
+        onOtherInputChange={() => {}}
+        onOtherSubmit={() => {}}
+      />,
+    );
+
+    expect(screen.getByPlaceholderText('输入自定义内容...')).toBeDefined();
+  });
+
+  it('should keep normal option without free-text input', () => {
+    render(
+      <QuestionPanel
+        questions={singleQuestion}
+        currentQuestionIndex={0}
+        selectedIndex={0}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect(screen.queryByPlaceholderText('输入自定义内容...')).toBeNull();
+  });
 });

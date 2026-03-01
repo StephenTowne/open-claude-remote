@@ -580,4 +580,78 @@ describe('ConsolePage', () => {
     expect(mockSend).toHaveBeenCalledWith({ type: 'user_input', data: 'custom value' });
     expect(mockSend).toHaveBeenCalledWith({ type: 'user_input', data: '\r' });
   });
+
+  it('should treat 输入文字 as free-text option', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [
+          {
+            question: 'Choose?',
+            options: [{ label: 'A' }, { label: '输入文字' }],
+          },
+        ],
+      });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('输入文字'));
+    });
+
+    expect(screen.getByPlaceholderText('输入自定义内容...')).toBeDefined();
+  });
+
+  it('should treat chat about this as free-text option', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [
+          {
+            question: 'Choose?',
+            options: [{ label: 'A' }, { label: 'chat about this' }],
+          },
+        ],
+      });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('chat about this'));
+    });
+
+    expect(screen.getByPlaceholderText('输入自定义内容...')).toBeDefined();
+  });
+
+  it('should send ESC and dismiss ask panel when Escape is pressed during ask state', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'ask_question',
+        questions: [{ question: 'Q?', options: [{ label: 'A' }] }],
+      });
+    });
+
+    expect(screen.getByTestId('question-panel')).toBeDefined();
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+
+    expect(mockSend).toHaveBeenCalledWith({ type: 'user_input', data: '\x1b' });
+    expect(screen.queryByTestId('question-panel')).toBeNull();
+  });
+
+  it('should not send ESC when Escape is pressed outside ask state', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+
+    expect(mockSend).not.toHaveBeenCalledWith({ type: 'user_input', data: '\x1b' });
+  });
 });

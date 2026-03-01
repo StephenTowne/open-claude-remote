@@ -1,5 +1,6 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
 import type { ServerMessage, InstanceListItem, Question } from '@claude-remote/shared';
+import { isFreeTextLabel } from '@claude-remote/shared';
 import { StatusBar } from '../components/status/StatusBar.js';
 import { TerminalView } from '../components/terminal/TerminalView.js';
 import { InputBar } from '../components/input/InputBar.js';
@@ -135,8 +136,7 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: stri
     }
 
     const option = q.options[targetIndex];
-    const normalizedLabel = option.label.trim().toLowerCase();
-    const isOther = normalizedLabel === 'other' || normalizedLabel === '其他';
+    const isOther = isFreeTextLabel(option.label);
 
     // 发送 Enter 选择
     send({ type: 'user_input', data: '\r' });
@@ -187,6 +187,19 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar }: { wsUrl?: stri
       setAskState(null);
     }
   }, [send]);
+
+  useEffect(() => {
+    if (!askState) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      send({ type: 'user_input', data: '\x1b' });
+      setAskState(null);
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [askState, send]);
 
   return (
     <>

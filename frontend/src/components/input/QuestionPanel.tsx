@@ -1,4 +1,5 @@
 import type { Question } from '@claude-remote/shared';
+import { isFreeTextLabel } from '@claude-remote/shared';
 
 export interface QuestionPanelProps {
   questions: Question[];
@@ -9,11 +10,6 @@ export interface QuestionPanelProps {
   onSelect: (index: number) => void;
   onOtherInputChange?: (text: string) => void;
   onOtherSubmit?: () => void;
-}
-
-function isOtherLabel(label: string): boolean {
-  const normalized = label.trim().toLowerCase();
-  return normalized === 'other' || normalized === '其他';
 }
 
 export function QuestionPanel({
@@ -30,7 +26,7 @@ export function QuestionPanel({
   if (!q) return null;
 
   const isMultiSelect = q.multiSelect ?? false;
-  const isOtherActive = isOtherLabel(q.options[selectedIndex]?.label ?? '') && otherInput !== undefined;
+  const isOtherActive = isFreeTextLabel(q.options[selectedIndex]?.label ?? '') && otherInput !== undefined;
   const questionId = `question-text-${currentQuestionIndex}`;
 
   return (
@@ -155,6 +151,7 @@ export function QuestionPanel({
       {isOtherActive && (
         <input
           type="text"
+          className="focus-ring"
           placeholder="输入自定义内容..."
           value={otherInput ?? ''}
           onChange={(e) => onOtherInputChange?.(e.target.value)}
