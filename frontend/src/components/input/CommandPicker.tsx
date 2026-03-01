@@ -41,24 +41,44 @@ const commandButtonStyle: CSSProperties = {
 };
 
 /**
- * 阻止按钮获得焦点并触发回调
+ * 在 touchstart/mousedown 时立即让输入框失焦
  * 用于移动端防止点击按钮时唤起软键盘
  */
+function handleButtonTouchStart() {
+  // 立即 blur 当前焦点元素（移动端输入框）
+  // 这比在 onClick 中 blur 更早，可以避免焦点恢复问题
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+}
+
+/**
+ * 处理按钮点击并确保焦点不会恢复到输入框
+ */
 function handleButtonClick<T>(
-  e: React.MouseEvent<HTMLButtonElement> | React.TouchEvent<HTMLButtonElement>,
+  e: React.MouseEvent<HTMLButtonElement>,
   callback: (data: T) => void,
   data: T
 ) {
   // 阻止默认行为
   e.preventDefault();
 
-  // 让当前页面所有获得焦点的元素失去焦点（特别是输入框）
-  // 这样可以确保移动端软键盘收起
+  // 再次确保失焦
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
   }
 
   callback(data);
+
+  // 多重保险：防止某些移动端浏览器在点击后恢复焦点
+  const ensureBlur = () => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  };
+
+  requestAnimationFrame(ensureBlur);
+  setTimeout(ensureBlur, 0);
 }
 
 /**
@@ -99,8 +119,12 @@ export function CommandPicker({ onShortcut, onCommandSelect, visible = true }: C
             type="button"
             className="cmd-picker-btn"
             onClick={(e) => handleButtonClick(e, onShortcut, key.data)}
+            onTouchStart={handleButtonTouchStart}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              handleButtonTouchStart();
+            }}
             style={shortcutButtonStyle}
-            onMouseDown={(e) => e.preventDefault()}
           >
             {key.label}
           </button>
@@ -125,8 +149,12 @@ export function CommandPicker({ onShortcut, onCommandSelect, visible = true }: C
             type="button"
             className="cmd-picker-btn"
             onClick={(e) => handleButtonClick(e, onCommandSelect, cmd.command + ' ')}
+            onTouchStart={handleButtonTouchStart}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              handleButtonTouchStart();
+            }}
             style={commandButtonStyle}
-            onMouseDown={(e) => e.preventDefault()}
           >
             {cmd.label}
           </button>

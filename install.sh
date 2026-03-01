@@ -55,19 +55,9 @@ else
   ok "Claude Code CLI 已安装"
 fi
 
-# jq（setup-hooks 需要）
+# jq（用于 JSON 处理，可选）
 if ! command -v jq &> /dev/null; then
-  warn "未找到 jq，正在尝试安装..."
-  if command -v brew &> /dev/null; then
-    brew install jq || error "jq 安装失败"
-  elif command -v apt-get &> /dev/null; then
-    sudo apt-get install -y jq || error "jq 安装失败"
-  elif command -v yum &> /dev/null; then
-    sudo yum install -y jq || error "jq 安装失败"
-  else
-    error "请手动安装 jq: https://jqlang.github.io/jq/download/"
-  fi
-  ok "jq 已安装"
+  warn "未找到 jq（可选工具）"
 else
   ok "jq $(jq --version)"
 fi
@@ -98,19 +88,7 @@ ok "claude-remote 命令已注册"
 
 echo ""
 
-# ── 5. 配置 Claude Code Hook ──────────────────────────────
-
-info "配置 Claude Code 通知 Hook..."
-if [ -f scripts/setup-hooks.sh ]; then
-  bash scripts/setup-hooks.sh
-  ok "Hook 配置完成"
-else
-  warn "scripts/setup-hooks.sh 不存在，跳过 Hook 配置"
-fi
-
-echo ""
-
-# ── 6. 验证安装 ───────────────────────────────────────────
+# ── 5. 验证安装 ───────────────────────────────────────────
 
 info "验证安装..."
 if command -v claude-remote &> /dev/null; then

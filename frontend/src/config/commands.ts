@@ -43,6 +43,7 @@ export interface UserConfig {
  */
 export const DEFAULT_SHORTCUTS: ShortcutKey[] = [
   { label: 'Esc', data: '\x1b' },
+  { label: 'Enter', data: '\r' },
   { label: 'Tab', data: '\t' },
   { label: 'S-Tab', data: '\x1b[Z' },
   { label: '↑', data: '\x1b[A' },

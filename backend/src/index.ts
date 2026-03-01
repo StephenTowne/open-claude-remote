@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import { CLAUDE_REMOTE_DIR } from '@claude-remote/shared';
-import { loadConfig, createSessionCookieName } from './config.js';
+import { loadConfig, createSessionCookieName, createClaudeSettings } from './config.js';
 import { AuthModule } from './auth/auth-middleware.js';
 import { PtyManager } from './pty/pty-manager.js';
 import { WsServer } from './ws/ws-server.js';
@@ -136,10 +136,13 @@ async function main() {
   // 16. Start Terminal Relay (raw mode)
   const relay = new TerminalRelay(ptyManager);
 
-  // 17. Spawn Claude Code
+  // 17. Spawn Claude Code with instance-specific hook settings
+  const claudeSettings = createClaudeSettings(actualPort);
+  logger.info({ port: actualPort }, 'Generated Claude settings with instance-specific hook URL');
+
   ptyManager.spawn({
     command: config.claudeCommand,
-    args: config.claudeArgs,
+    args: [...config.claudeArgs, '--settings', claudeSettings],
     cwd: config.claudeCwd,
   });
 

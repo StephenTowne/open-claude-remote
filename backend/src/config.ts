@@ -40,6 +40,37 @@ export function createSessionCookieName(port: number): string {
   return `session_id_p${port}`;
 }
 
+/**
+ * 生成 Claude Code 专属配置（包含 hook URL）
+ * 通过 --settings 参数传递给 Claude CLI，实现多实例 Hook 隔离
+ * 使用原生 HTTP hooks（Claude Code 原生支持，无需 curl）
+ */
+export function createClaudeSettings(port: number): string {
+  const hookUrl = `http://localhost:${port}/api/hook`;
+  return JSON.stringify({
+    hooks: {
+      Notification: [
+        {
+          matcher: "permission_prompt",
+          hooks: [{ type: "http", url: hookUrl }]
+        }
+      ],
+      PreToolUse: [
+        {
+          matcher: "AskUserQuestion",
+          hooks: [{ type: "http", url: hookUrl }]
+        }
+      ],
+      PermissionRequest: [
+        {
+          matcher: ".*",
+          hooks: [{ type: "http", url: hookUrl }]
+        }
+      ]
+    }
+  });
+}
+
 export function loadConfig(): AppConfig {
   // Detect IP for display (try private IP first, then any non-loopback)
   const displayIp = process.env.DISPLAY_IP ?? detectLanIp() ?? detectNonLoopbackIp() ?? '127.0.0.1';

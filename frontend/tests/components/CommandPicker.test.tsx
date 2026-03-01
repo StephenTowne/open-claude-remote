@@ -163,6 +163,62 @@ describe('CommandPicker', () => {
     expect(preventDefaultSpy).toHaveBeenCalled();
   });
 
+  it('点击按钮时调用 blur 移除焦点', async () => {
+    render(
+      <CommandPicker
+        onShortcut={mockOnShortcut}
+        onCommandSelect={mockOnCommandSelect}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Esc')).toBeDefined();
+    });
+
+    // 模拟一个活跃的焦点元素
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    // 点击 Esc 按钮
+    fireEvent.click(screen.getByText('Esc'));
+
+    // 立即 blur 应该已被调用
+    expect(document.activeElement).not.toBe(input);
+
+    // 清理
+    document.body.removeChild(input);
+  });
+
+  it('touchstart 时立即调用 blur', async () => {
+    render(
+      <CommandPicker
+        onShortcut={mockOnShortcut}
+        onCommandSelect={mockOnCommandSelect}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Esc')).toBeDefined();
+    });
+
+    // 模拟一个活跃的焦点元素
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    // 触发 touchstart
+    fireEvent.touchStart(screen.getByText('Esc'));
+
+    // touchstart 后 blur 应该已被调用
+    expect(document.activeElement).not.toBe(input);
+
+    // 清理
+    document.body.removeChild(input);
+  });
+
   it('使用用户配置时只显示启用的项', async () => {
     // Mock 返回自定义配置
     vi.mocked(apiClient.getUserConfig).mockResolvedValue({

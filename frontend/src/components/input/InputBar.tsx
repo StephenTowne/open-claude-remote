@@ -37,8 +37,6 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
     }
   }, [handleSubmit]);
 
-  const hasText = text.trim().length > 0;
-
   return (
     <div style={{
       height: 'var(--inputbar-height)',
@@ -71,24 +69,6 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
           outline: 'none',
         }}
       />
-      <button
-        onClick={handleSubmit}
-        disabled={disabled}
-        style={{
-          minWidth: 'var(--min-touch-target)',
-          height: 'var(--min-touch-target)',
-          borderRadius: 8,
-          background: hasText ? 'var(--status-running)' : 'var(--bg-tertiary)',
-          color: hasText ? '#fff' : 'var(--text-secondary)',
-          fontWeight: 600,
-          fontSize: hasText ? 14 : 20,
-          transition: 'background 0.15s',
-          border: 'none',
-          cursor: 'pointer',
-        }}
-      >
-        {hasText ? 'Send' : '↵'}
-      </button>
     </div>
   );
 });
