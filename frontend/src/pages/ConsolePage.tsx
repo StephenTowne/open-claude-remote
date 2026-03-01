@@ -48,7 +48,6 @@ function ConsoleContent({ wsUrl, instanceId, showVirtualKeyBar, onIpChanged }: {
     switch (msg.type) {
       case 'terminal_output':
         writeRef.current(msg.data);
-        scrollToBottomRef.current();
         break;
       case 'history_sync':
         if (msg.cols && msg.cols > 0) {

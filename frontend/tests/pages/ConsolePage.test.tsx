@@ -24,12 +24,13 @@ vi.mock('../../src/hooks/useInstances.js', () => ({
 const mockWrite = vi.fn((_data: string, callback?: () => void) => {
   callback?.();
 });
+const mockScrollToBottom = vi.fn();
 const mockAdaptToPtyCols = vi.fn();
 
 vi.mock('../../src/hooks/useTerminal.js', () => ({
   useTerminal: () => ({
     write: mockWrite,
-    scrollToBottom: vi.fn(),
+    scrollToBottom: mockScrollToBottom,
     adaptToPtyCols: mockAdaptToPtyCols,
   }),
 }));
@@ -79,6 +80,7 @@ describe('ConsolePage', () => {
     vi.clearAllMocks();
     capturedHandleMessage = null;
     viewportState.keyboardHeight = 0;
+    mockScrollToBottom.mockClear();
 
     useAppStore.setState({
       isAuthenticated: true,
@@ -676,6 +678,7 @@ describe('ConsolePage', () => {
 
     expect(mockAdaptToPtyCols).toHaveBeenCalledWith(208);
     expect(mockWrite).toHaveBeenCalledWith('hello');
+    expect(mockScrollToBottom).toHaveBeenCalled();
   });
 
   it('should not call adaptToPtyCols when history_sync has no cols', async () => {
@@ -692,6 +695,7 @@ describe('ConsolePage', () => {
 
     expect(mockAdaptToPtyCols).not.toHaveBeenCalled();
     expect(mockWrite).toHaveBeenCalledWith('hello');
+    expect(mockScrollToBottom).toHaveBeenCalled();
   });
 
   it('should call adaptToPtyCols when terminal_resize message is received', async () => {
@@ -706,6 +710,35 @@ describe('ConsolePage', () => {
     });
 
     expect(mockAdaptToPtyCols).toHaveBeenCalledWith(120);
+  });
+
+  it('should write terminal_output without forcing scroll to bottom', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'terminal_output',
+        data: '\rRecombobulating...'
+      });
+    });
+
+    expect(mockWrite).toHaveBeenCalledWith('\rRecombobulating...');
+    expect(mockScrollToBottom).not.toHaveBeenCalled();
+  });
+
+  it('should keep status-line updates (\r) without forced scroll during consecutive terminal_output messages', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({ type: 'terminal_output', data: '\rRecombobulating...' });
+      capturedHandleMessage?.({ type: 'terminal_output', data: '\rRecombobulating....' });
+      capturedHandleMessage?.({ type: 'terminal_output', data: '\rRecombobulating.....' });
+    });
+
+    expect(mockWrite).toHaveBeenNthCalledWith(1, '\rRecombobulating...');
+    expect(mockWrite).toHaveBeenNthCalledWith(2, '\rRecombobulating....');
+    expect(mockWrite).toHaveBeenNthCalledWith(3, '\rRecombobulating.....');
+    expect(mockScrollToBottom).not.toHaveBeenCalled();
   });
 
   it('should update currentHostOverride when ip_changed is received for current instance', async () => {
