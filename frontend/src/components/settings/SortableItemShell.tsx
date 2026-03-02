@@ -8,17 +8,20 @@ interface SortableItemShellProps {
   onToggle: () => void;
   onDelete: () => void;
   children: ReactNode;
-  secondaryToggle?: {
-    enabled: boolean;
-    onToggle: () => void;
-    ariaLabel: string;
-    label?: string; // 可选的视觉标签，用于说明开关含义
-  };
+  /** 是否可展开 */
+  isExpandable?: boolean;
+  /** 是否已展开 */
+  isExpanded?: boolean;
+  /** 展开/收起切换回调 */
+  onToggleExpand?: () => void;
+  /** 展开后显示的详情内容 */
+  detailContent?: ReactNode;
 }
 
 /**
  * 可排序列表项的外壳组件
- * 提供：拖拽手柄 | toggle 开关 | {children} | 删除按钮
+ * 提供：拖拽手柄 | toggle 开关 | {children} | 展开按钮 | 删除按钮
+ * 支持展开详情面板
  */
 export function SortableItemShell({
   id,
@@ -26,7 +29,10 @@ export function SortableItemShell({
   onToggle,
   onDelete,
   children,
-  secondaryToggle,
+  isExpandable,
+  isExpanded,
+  onToggleExpand,
+  detailContent,
 }: SortableItemShellProps) {
   const {
     attributes,
@@ -47,127 +53,134 @@ export function SortableItemShell({
       ref={setNodeRef}
       style={{
         ...style,
+        borderRadius: 8,
+        background: 'var(--bg-tertiary)',
+        overflow: 'hidden',
+      }}
+    >
+      {/* 主行：水平布局 */}
+      <div style={{
         display: 'flex',
         alignItems: 'center',
         gap: 12,
         padding: '12px 16px',
-        borderRadius: 8,
-        background: 'var(--bg-tertiary)',
         minHeight: 'var(--min-touch-target, 44px)',
-      }}
-    >
-      {/* 拖拽手柄 */}
-      <div
-        {...attributes}
-        {...listeners}
-        aria-label="拖拽排序"
-        style={{
-          width: 24,
-          color: 'var(--text-muted)',
-          cursor: 'grab',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 14,
-          userSelect: 'none',
-          touchAction: 'none',
-        }}
-      >
-        ⋮⋮
-      </div>
+        overflow: 'hidden',
+      }}>
+        {/* 拖拽手柄 */}
+        <div
+          {...attributes}
+          {...listeners}
+          aria-label="拖拽排序"
+          style={{
+            width: 24,
+            color: 'var(--text-muted)',
+            cursor: 'grab',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 14,
+            userSelect: 'none',
+            touchAction: 'none',
+          }}
+        >
+          ⋮⋮
+        </div>
 
-      {/* 启用开关 */}
-      <button
-        role="switch"
-        aria-checked={enabled}
-        aria-label={enabled ? '已启用，点击禁用' : '已禁用，点击启用'}
-        onClick={onToggle}
-        style={{
-          width: 32,
-          height: 20,
-          borderRadius: 10,
-          border: 'none',
-          background: enabled ? 'var(--status-running)' : 'var(--bg-primary)',
-          cursor: 'pointer',
-          position: 'relative',
-          flexShrink: 0,
-        }}
-      >
-        <span style={{
-          position: 'absolute',
-          top: 2,
-          left: enabled ? 14 : 2,
-          width: 16,
-          height: 16,
-          borderRadius: '50%',
-          background: '#fff',
-        }} />
-      </button>
+        {/* 启用开关 */}
+        <button
+          role="switch"
+          aria-checked={enabled}
+          aria-label={enabled ? '已启用，点击禁用' : '已禁用，点击启用'}
+          onClick={onToggle}
+          style={{
+            width: 32,
+            height: 20,
+            borderRadius: 10,
+            border: 'none',
+            background: enabled ? 'var(--status-running)' : 'var(--bg-primary)',
+            cursor: 'pointer',
+            position: 'relative' as const,
+            flexShrink: 0,
+          }}
+        >
+          <span style={{
+            position: 'absolute' as const,
+            top: 2,
+            left: enabled ? 14 : 2,
+            width: 16,
+            height: 16,
+            borderRadius: '50%',
+            background: '#fff',
+            transition: 'left 0.15s ease',
+          }} />
+        </button>
 
-      {/* 第二个开关（如 autoSend） */}
-      {secondaryToggle && (
-        <>
-          {secondaryToggle.label && (
-            <span
-              style={{
-                fontSize: 11,
-                color: 'var(--text-muted)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {secondaryToggle.label}
-            </span>
-          )}
+        {/* 中间内容（由调用者提供） */}
+        {children}
+
+        {/* 展开按钮 */}
+        {isExpandable && (
           <button
-            role="switch"
-            aria-checked={secondaryToggle.enabled}
-            aria-label={secondaryToggle.ariaLabel}
-            onClick={secondaryToggle.onToggle}
+            aria-label={isExpanded ? '收起详情' : '展开详情'}
+            aria-expanded={isExpanded}
+            onClick={onToggleExpand}
             style={{
-              width: 32,
-              height: 20,
-              borderRadius: 10,
+              width: 28,
+              height: 28,
+              padding: 0,
+              borderRadius: 6,
               border: 'none',
-              background: secondaryToggle.enabled ? 'var(--status-running)' : 'var(--bg-primary)',
+              background: 'transparent',
+              color: 'var(--text-muted)',
               cursor: 'pointer',
-              position: 'relative',
+              fontSize: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               flexShrink: 0,
             }}
           >
             <span style={{
-              position: 'absolute',
-              top: 2,
-              left: secondaryToggle.enabled ? 14 : 2,
-              width: 16,
-              height: 16,
-              borderRadius: '50%',
-              background: '#fff',
-            }} />
+              display: 'inline-block',
+              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)',
+              transition: 'transform 0.2s ease',
+            }}>
+              ▼
+            </span>
           </button>
-        </>
+        )}
+
+        {/* 删除按钮 */}
+        <button
+          aria-label="删除"
+          onClick={onDelete}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 6,
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            fontSize: 18,
+            flexShrink: 0,
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* 详情面板（展开时显示） */}
+      {isExpandable && isExpanded && (
+        <div style={{
+          padding: '8px 16px 12px 68px',
+          borderTop: '1px solid var(--border-color)',
+          background: 'var(--bg-secondary)',
+        }}>
+          {detailContent}
+        </div>
       )}
-
-      {/* 中间内容（由调用者提供） */}
-      {children}
-
-      {/* 删除按钮 */}
-      <button
-        aria-label="删除"
-        onClick={onDelete}
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 6,
-          border: 'none',
-          background: 'transparent',
-          color: 'var(--text-secondary)',
-          cursor: 'pointer',
-          fontSize: 18,
-          flexShrink: 0,
-        }}
-      >
-        ×
-      </button>
     </div>
   );
 }
