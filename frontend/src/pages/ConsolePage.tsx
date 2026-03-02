@@ -88,7 +88,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
   const { write, scrollToBottom, adaptToPtyCols } = useTerminal(
     containerRef,
     useCallback((cols: number, rows: number) => {
-      sendRef.current?.({ type: 'resize', cols, rows });
+      return sendRef.current?.({ type: 'resize', cols, rows }) ?? false;
     }, []),
   );
 

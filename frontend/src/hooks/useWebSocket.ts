@@ -146,10 +146,12 @@ export function useWebSocket(
     connectRef.current = connect;
   }, [connect]);
 
-  const send = useCallback((msg: ClientMessage) => {
+  const send = useCallback((msg: ClientMessage): boolean => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
+      return true;
     }
+    return false;
   }, []);
 
   const disconnect = useCallback(() => {

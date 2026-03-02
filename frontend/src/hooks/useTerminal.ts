@@ -10,7 +10,7 @@ const RESIZE_THROTTLE_MS = 50;
 
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
-  onResize?: (cols: number, rows: number) => void,
+  onResize?: (cols: number, rows: number) => boolean | void,
 ) {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -52,8 +52,11 @@ export function useTerminal(
       const elapsed = now - lastResizeSentAtRef.current;
       const run = () => {
         lastResizeSentAtRef.current = Date.now();
-        lastReportedResizeRef.current = { cols, rows };
-        onResizeRef.current?.(cols, rows);
+        // 只在成功发送时更新 lastReportedResizeRef
+        const sent = onResizeRef.current?.(cols, rows);
+        if (sent !== false) {
+          lastReportedResizeRef.current = { cols, rows };
+        }
       };
 
       if (elapsed >= RESIZE_THROTTLE_MS) {
@@ -69,8 +72,11 @@ export function useTerminal(
           pendingResizeValueRef.current = null;
           if (pending) {
             lastResizeSentAtRef.current = Date.now();
-            lastReportedResizeRef.current = { cols: pending.cols, rows: pending.rows };
-            onResizeRef.current?.(pending.cols, pending.rows);
+            // 只在成功发送时更新 lastReportedResizeRef
+            const sent = onResizeRef.current?.(pending.cols, pending.rows);
+            if (sent !== false) {
+              lastReportedResizeRef.current = { cols: pending.cols, rows: pending.rows };
+            }
           }
         }, RESIZE_THROTTLE_MS - elapsed);
       }

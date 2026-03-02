@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, writeFileSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -322,52 +322,40 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 21. Start listening
   httpServer.listen(actualPort, config.host, () => {
     const url = `http://${config.displayIp}:${actualPort}`;
-    const isCli = process.env.CLI_MODE === 'true';
+    const isFirstInstance = tokenSource === 'generated';
 
-    if (isCli) {
-      // CLI mode: write connection info to file, keep terminal clean
-      const logDir = resolve(projectRoot, 'logs');
-      mkdirSync(logDir, { recursive: true });
-      const connectionInfo = `URL: ${url}\nToken: ${token}\nInstanceId: ${instanceId}\nName: ${config.instanceName}\n`;
-      writeFileSync(resolve(logDir, `connection-p${actualPort}.txt`), connectionInfo);
-      logger.info({ url, instanceName: config.instanceName }, 'Server started');
-    } else {
-      // Dev/production mode: print banner to stderr
-      const isFirstInstance = tokenSource === 'generated';
+    process.stderr.write('\n');
+    process.stderr.write('╔══════════════════════════════════════════════════╗\n');
+    process.stderr.write('║         Claude Code Remote Proxy Started         ║\n');
+    process.stderr.write('╠══════════════════════════════════════════════════╣\n');
+    process.stderr.write(`║  Instance: ${config.instanceName.padEnd(37)}║\n`);
+    process.stderr.write(`║  URL:      ${url.padEnd(37)}║\n`);
 
-      process.stderr.write('\n');
-      process.stderr.write('╔══════════════════════════════════════════════════╗\n');
-      process.stderr.write('║         Claude Code Remote Proxy Started         ║\n');
+    if (isFirstInstance) {
+      // 首次启动（生成了新 Token）：完整显示 Token
+      const tokenPreview = token.length >= 16
+        ? `${token.substring(0, 8)}...${token.substring(token.length - 8)}`
+        : token;
+      process.stderr.write(`║  Token:    ${tokenPreview.padEnd(37)}║\n`);
       process.stderr.write('╠══════════════════════════════════════════════════╣\n');
-      process.stderr.write(`║  Instance: ${config.instanceName.padEnd(37)}║\n`);
-      process.stderr.write(`║  URL:      ${url.padEnd(37)}║\n`);
-
-      if (isFirstInstance) {
-        // 首次启动（生成了新 Token）：完整显示 Token
-        const tokenPreview = token.length >= 16
-          ? `${token.substring(0, 8)}...${token.substring(token.length - 8)}`
-          : token;
-        process.stderr.write(`║  Token:    ${tokenPreview.padEnd(37)}║\n`);
-        process.stderr.write('╠══════════════════════════════════════════════════╣\n');
-        process.stderr.write(`║  Full Token (copy to phone):                     ║\n`);
-        process.stderr.write(`║  ${token.padEnd(48)}║\n`);
-      } else {
-        // 后续启动（读取共享 Token）：简短提示
-        process.stderr.write(`║  Token:    ${'(shared, see first instance)'.padEnd(37)}║\n`);
-      }
-
-      process.stderr.write('╚══════════════════════════════════════════════════╝\n');
-
-      // 首次启动时显示二维码，方便手机扫码连接
-      if (isFirstInstance) {
-        const qrUrl = `${url}?token=${token}`;
-        printQRCode(qrUrl);
-      }
-
-      process.stderr.write('\n');
-
-      logger.info({ url, host: config.host, port: actualPort, instanceName: config.instanceName, tokenSource }, 'Server started');
+      process.stderr.write(`║  Full Token (copy to phone):                     ║\n`);
+      process.stderr.write(`║  ${token.padEnd(48)}║\n`);
+    } else {
+      // 后续启动（读取共享 Token）：简短提示
+      process.stderr.write(`║  Token:    ${'(shared, see first instance)'.padEnd(37)}║\n`);
     }
+
+    process.stderr.write('╚══════════════════════════════════════════════════╝\n');
+
+    // 首次启动时显示二维码，方便手机扫码连接
+    if (isFirstInstance) {
+      const qrUrl = `${url}?token=${token}`;
+      printQRCode(qrUrl);
+    }
+
+    process.stderr.write('\n');
+
+    logger.info({ url, host: config.host, port: actualPort, instanceName: config.instanceName, tokenSource }, 'Server started');
   });
 }
 

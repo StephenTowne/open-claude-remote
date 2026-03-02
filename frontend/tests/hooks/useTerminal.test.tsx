@@ -442,4 +442,68 @@ describe('useTerminal', () => {
 
     expect(mockFitAddonFit).toHaveBeenCalled();
   });
+
+  // ---- resize only records on successful send ----
+
+  it('should NOT record resize if onResize returns false (WebSocket not connected)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+
+    // First call returns false (WebSocket not connected)
+    // Second call returns true (WebSocket connected)
+    const onResize = vi.fn()
+      .mockReturnValueOnce(false)
+      .mockReturnValue(true);
+
+    mockFitAddonFit.mockImplementation(() => {
+      mockTermState.cols = 42;
+      mockTermState.rows = 33;
+    });
+
+    renderUseTerminal(onResize);
+
+    // Initial RAF → emitResize(42, 33)
+    act(() => { rafCallback?.(0); });
+
+    // onResize was called but returned false on first call
+    expect(onResize).toHaveBeenCalledTimes(1);
+    expect(onResize).toHaveBeenCalledWith(42, 33);
+
+    // Wait for throttle window to pass
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Trigger same resize again (e.g., from adaptToPtyCols)
+    act(() => { resizeObserverCallback?.(); });
+
+    // Should be called again because previous send was not recorded (returned false)
+    expect(onResize).toHaveBeenCalledTimes(2);
+    expect(onResize).toHaveBeenLastCalledWith(42, 33);
+
+    vi.useRealTimers();
+  });
+
+  it('should record resize when onResize returns true and deduplicate subsequent same-size calls', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+
+    const onResize = vi.fn().mockReturnValue(true);
+
+    mockFitAddonFit.mockImplementation(() => {
+      mockTermState.cols = 42;
+      mockTermState.rows = 33;
+    });
+
+    renderUseTerminal(onResize);
+
+    // First call: WebSocket connected → recorded
+    act(() => { rafCallback?.(0); });
+    expect(onResize).toHaveBeenCalledTimes(1);
+
+    // Wait for throttle window to pass
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second call: Same size → deduplicated
+    act(() => { resizeObserverCallback?.(); });
+    expect(onResize).toHaveBeenCalledTimes(1); // Not called again
+
+    vi.useRealTimers();
+  });
 });
