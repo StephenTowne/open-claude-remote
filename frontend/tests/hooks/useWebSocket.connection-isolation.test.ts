@@ -239,7 +239,8 @@ describe('useWebSocket connection isolation', () => {
       useWebSocket(vi.fn(), 'ws://10.0.0.8:3000/ws', 'instance-test'),
     );
 
-    act(() => {
+    // connect() 现在是异步的，需要等待认证完成
+    await act(async () => {
       result.current.connect();
     });
 
@@ -255,6 +256,8 @@ describe('useWebSocket connection isolation', () => {
       socket.onclose?.();
     });
 
+    // 初始连接时认证一次 + onclose 时认证一次 = 共 2 次
+    expect(mockedAuthenticateToInstance).toHaveBeenCalledTimes(2);
     expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('10.0.0.8', 3000, 'cached-token-123');
     expect(mockedAuthenticate).not.toHaveBeenCalled();
     expect(useAppStore.getState().instanceConnectionStatus['instance-test']).toBe('disconnected');
@@ -268,23 +271,24 @@ describe('useWebSocket connection isolation', () => {
       useWebSocket(vi.fn(), 'ws://example:3000/ws', 'instance-test'),
     );
 
-    act(() => {
+    // connect() 是异步的，认证失败时会安排重连而不是创建 WebSocket
+    await act(async () => {
       result.current.connect();
     });
 
-    const socket = sockets[0];
+    // 认证失败时状态为 disconnected，且会安排重连
+    expect(useAppStore.getState().instanceConnectionStatus['instance-test']).toBe('connecting');
+
+    // 第一次重连会再次尝试认证（仍失败）
     await act(async () => {
-      socket.onclose?.();
-    });
-
-    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('example', 3000, 'invalid-token');
-    expect(useAppStore.getState().instanceConnectionStatus['instance-test']).toBe('disconnected');
-
-    // Should still schedule reconnect
-    act(() => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(sockets.length).toBe(2);
+    // 认证被调用了两次（初始 + 第一次重连）
+    expect(mockedAuthenticateToInstance).toHaveBeenCalledTimes(2);
+    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('example', 3000, 'invalid-token');
+
+    // 没有 WebSocket 被创建（因为认证一直失败）
+    expect(sockets.length).toBe(0);
   });
 });

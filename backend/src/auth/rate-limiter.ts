@@ -76,6 +76,13 @@ export class RateLimiter {
   }
 
   /**
+   * Reset rate limit counter for an IP (e.g., after successful auth).
+   */
+  reset(ip: string): void {
+    this.entries.delete(ip);
+  }
+
+  /**
    * Stop cleanup timer.
    */
   destroy(): void {

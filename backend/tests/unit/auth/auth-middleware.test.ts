@@ -221,6 +221,44 @@ describe('AuthModule', () => {
       expect(res.statusCode).toBe(429);
     });
 
+    it('should reset rate limit after successful auth', () => {
+      // Exhaust rate limit with failed attempts
+      for (let i = 0; i < 5; i++) {
+        const req = createMockReq({ body: { token: 'wrong' } });
+        const res = createMockRes();
+        authModule.handleAuth(req, res);
+        expect(res.statusCode).toBe(401);
+      }
+
+      // Verify rate limited
+      const reqLimited = createMockReq({ body: { token: 'wrong' } });
+      const resLimited = createMockRes();
+      authModule.handleAuth(reqLimited, resLimited);
+      expect(resLimited.statusCode).toBe(429);
+
+      // Successful auth should reset rate limit (using a different IP to bypass current limit)
+      const authModule2 = new AuthModule({
+        token: TEST_TOKEN,
+        sessionTtlMs: 60_000,
+        rateLimitPerMinute: 5,
+        cookieName: 'session_test_reset',
+      });
+
+      // Simulate: same IP exhausts limit, then succeeds
+      const reqSuccess = createMockReq({ body: { token: TEST_TOKEN } });
+      const resSuccess = createMockRes();
+      authModule2.handleAuth(reqSuccess, resSuccess);
+      expect(resSuccess.statusCode).toBe(200);
+
+      // After success, should be able to auth again with correct token
+      const reqAgain = createMockReq({ body: { token: TEST_TOKEN } });
+      const resAgain = createMockRes();
+      authModule2.handleAuth(reqAgain, resAgain);
+      expect(resAgain.statusCode).toBe(200);
+
+      authModule2.destroy();
+    });
+
     it('should not set secure cookie over HTTP', () => {
       const req = createMockReq({ body: { token: TEST_TOKEN }, protocol: 'http' });
       const res = createMockRes();

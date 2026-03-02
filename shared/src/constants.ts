@@ -1,6 +1,6 @@
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_SESSION_TTL_MS = 86400000; // 24 hours
-export const DEFAULT_AUTH_RATE_LIMIT = 5; // per minute per IP
+export const DEFAULT_AUTH_RATE_LIMIT = 20; // per minute per IP
 export const DEFAULT_MAX_BUFFER_LINES = 10000;
 export const WS_HEARTBEAT_INTERVAL_MS = 30000;
 export const WS_HEARTBEAT_TIMEOUT_MS = 35000;

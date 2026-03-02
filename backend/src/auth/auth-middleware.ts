@@ -126,6 +126,10 @@ export class AuthModule {
     }
 
     const sessionId = this.createSession(ip);
+
+    // Reset rate limiter on successful auth - user has proven they know the token
+    this.rateLimiter.reset(ip);
+
     res.setHeader('Set-Cookie', cookie.serialize(this.cookieName, sessionId, {
       httpOnly: true,
       secure: req.protocol === 'https',

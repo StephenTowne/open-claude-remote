@@ -57,4 +57,32 @@ describe('RateLimiter', () => {
     limiter.attempt('1.2.3.4');
     expect(limiter.remaining('1.2.3.4')).toBe(0);
   });
+
+  it('should reset counter for an IP', () => {
+    // Exhaust the limit
+    limiter.attempt('1.2.3.4');
+    limiter.attempt('1.2.3.4');
+    limiter.attempt('1.2.3.4');
+    expect(limiter.attempt('1.2.3.4')).toBe(false);
+
+    // Reset should allow new attempts
+    limiter.reset('1.2.3.4');
+    expect(limiter.attempt('1.2.3.4')).toBe(true);
+    expect(limiter.remaining('1.2.3.4')).toBe(2);
+  });
+
+  it('should only reset the specified IP', () => {
+    // Exhaust limit for both IPs
+    limiter.attempt('1.2.3.4');
+    limiter.attempt('1.2.3.4');
+    limiter.attempt('1.2.3.4');
+    limiter.attempt('5.6.7.8');
+    limiter.attempt('5.6.7.8');
+    limiter.attempt('5.6.7.8');
+
+    // Reset only 1.2.3.4
+    limiter.reset('1.2.3.4');
+    expect(limiter.attempt('1.2.3.4')).toBe(true);
+    expect(limiter.attempt('5.6.7.8')).toBe(false);
+  });
 });

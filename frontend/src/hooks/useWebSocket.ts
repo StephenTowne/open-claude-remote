@@ -61,7 +61,7 @@ export function useWebSocket(
     }, delay);
   }, []);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     // Prevent duplicate connections
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       return;
@@ -80,14 +80,47 @@ export function useWebSocket(
     // Safe to reset: this hook relies on key={instanceId} for rebuild,
     // so connect() is never called after cleanup within the same hook instance.
     isDisposedRef.current = false;
-    const token = ++connectionTokenRef.current;
+    const connectionToken = ++connectionTokenRef.current;
 
     setStatus('connecting');
+
+    // 远程实例：先认证再建立 WebSocket 连接
+    // 这确保了服务端的 session Map 中有有效的 session
+    if (wsUrl) {
+      const cachedToken = loadToken();
+      if (cachedToken) {
+        try {
+          const target = new URL(wsUrl);
+          const port = Number(target.port || (target.protocol === 'wss:' ? '443' : '80'));
+          console.log('[useWebSocket] connecting to remote instance, authenticating first...');
+          const ok = await authenticateToInstance(target.hostname, port, cachedToken);
+          if (!ok) {
+            console.log('[useWebSocket] auth failed, will retry...');
+            scheduleReconnect(connectionToken);
+            return;
+          }
+          console.log('[useWebSocket] auth successful, creating WebSocket...');
+        } catch (err) {
+          console.log('[useWebSocket] auth error:', err);
+          scheduleReconnect(connectionToken);
+          return;
+        }
+      } else {
+        console.log('[useWebSocket] no cached token for remote instance, connecting anyway...');
+      }
+      // 没有 cachedToken 的情况也继续尝试连接（session cookie 可能有效，但服务端重启后会失效）
+    }
+
+    // 检查是否在异步认证期间被 dispose
+    if (isDisposedRef.current || connectionToken !== connectionTokenRef.current) {
+      return;
+    }
+
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      if (isDisposedRef.current || token !== connectionTokenRef.current || wsRef.current !== ws) {
+      if (isDisposedRef.current || connectionToken !== connectionTokenRef.current || wsRef.current !== ws) {
         return;
       }
       setStatus('connected');
@@ -95,7 +128,7 @@ export function useWebSocket(
     };
 
     ws.onmessage = (event) => {
-      if (isDisposedRef.current || token !== connectionTokenRef.current || wsRef.current !== ws) {
+      if (isDisposedRef.current || connectionToken !== connectionTokenRef.current || wsRef.current !== ws) {
         return;
       }
       try {
@@ -107,7 +140,7 @@ export function useWebSocket(
     };
 
     ws.onclose = async () => {
-      if (isDisposedRef.current || token !== connectionTokenRef.current || wsRef.current !== ws) {
+      if (isDisposedRef.current || connectionToken !== connectionTokenRef.current || wsRef.current !== ws) {
         return;
       }
       wsRef.current = null;
@@ -133,7 +166,7 @@ export function useWebSocket(
         }
       }
 
-      scheduleReconnect(token);
+      scheduleReconnect(connectionToken);
     };
 
     ws.onerror = () => {

@@ -347,11 +347,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
 
     process.stderr.write('╚══════════════════════════════════════════════════╝\n');
 
-    // 首次启动时显示二维码，方便手机扫码连接
-    if (isFirstInstance) {
-      const qrUrl = `${url}?token=${token}`;
-      printQRCode(qrUrl);
-    }
+    // 每次启动都显示二维码，方便手机扫码连接
+    const qrUrl = `${url}?token=${token}`;
+    printQRCode(qrUrl);
 
     process.stderr.write('\n');
 
