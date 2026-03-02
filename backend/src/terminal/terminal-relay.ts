@@ -1,4 +1,5 @@
 import { PtyManager } from '../pty/pty-manager.js';
+import type { IPtyManager } from '../pty/types.js';
 import { logger } from '../logger/logger.js';
 
 /**
@@ -19,7 +20,7 @@ export class TerminalRelay {
   private lastCtrlCTime: number = 0;
   private resizePaused: boolean = false;
 
-  constructor(private ptyManager: PtyManager) {}
+  constructor(private ptyManager: IPtyManager) {}
 
   /**
    * Start relaying stdin → PTY and listen for terminal resize.

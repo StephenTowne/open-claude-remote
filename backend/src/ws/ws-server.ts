@@ -12,6 +12,9 @@ interface ClientInfo {
 
 /**
  * WebSocket server with session-based auth and heartbeat.
+ * 支持双重认证：
+ * 1. Cookie Session 认证（现有）
+ * 2. URL 参数 ?token=xxx 认证（用于 attach 命令）
  */
 export class WsServer {
   private wss: WebSocketServer;
@@ -53,17 +56,43 @@ export class WsServer {
   }
 
   /**
-   * HTTP upgrade → authenticate via cookie, then establish WS.
+   * HTTP upgrade → authenticate via cookie or token, then establish WS.
+   * 支持两种认证方式：
+   * 1. Cookie Session 认证（现有流程）
+   * 2. URL 参数 ?token=xxx 认证（用于 attach 命令）
    */
   private setupUpgrade(): void {
     this.httpServer.on('upgrade', (req: IncomingMessage, socket, head) => {
       // Only handle /ws path for WebSocket upgrades
-      const pathname = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`).pathname;
+      const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+      const pathname = url.pathname;
       if (pathname !== '/ws') {
         socket.destroy();
         return;
       }
 
+      // 方式 1: 检查 URL 参数中的 token
+      const tokenParam = url.searchParams.get('token');
+      if (tokenParam) {
+        if (!this.authModule.verifyToken(tokenParam)) {
+          logger.warn({
+            url: req.url,
+            reason: 'invalid_token_param',
+          }, 'WS upgrade rejected: invalid token param');
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+        logger.info({
+          remoteAddress: req.socket.remoteAddress,
+        }, 'WS upgrade accepted via token param');
+        this.wss.handleUpgrade(req, socket, head, (ws) => {
+          this.wss.emit('connection', ws, req);
+        });
+        return;
+      }
+
+      // 方式 2: 检查 Cookie Session
       const cookieHeader = req.headers.cookie ?? '';
       const sessionId = this.authModule.getSessionFromCookieHeader(cookieHeader);
 

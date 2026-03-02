@@ -9,6 +9,7 @@ import { createConfigRoutes } from './config-routes.js';
 import { AuthModule } from '../auth/auth-middleware.js';
 import { HookReceiver } from '../hooks/hook-receiver.js';
 import { PushService } from '../push/push-service.js';
+import { InstanceSpawner } from '../registry/instance-spawner.js';
 import type { SessionController } from '../session/session-controller.js';
 import type { InstanceInfo } from '@claude-remote/shared';
 
@@ -19,6 +20,7 @@ export interface ApiRouterOptions {
   pushService?: PushService;
   listInstances?: () => Promise<InstanceInfo[]>;
   currentInstanceId?: string;
+  instanceSpawner?: InstanceSpawner;
 }
 
 export function createApiRouter(opts: ApiRouterOptions): Router;
@@ -59,7 +61,12 @@ export function createApiRouter(
   }
 
   if (opts.listInstances && opts.currentInstanceId) {
-    router.use(createInstanceRoutes(opts.authModule, opts.listInstances, opts.currentInstanceId));
+    router.use(createInstanceRoutes(
+      opts.authModule,
+      opts.listInstances,
+      opts.currentInstanceId,
+      opts.instanceSpawner,
+    ));
   }
 
   return router;

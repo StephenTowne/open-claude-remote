@@ -20,6 +20,7 @@ const errorLogPath = resolve(logDir, 'error.log');
 const isDev = process.env.NODE_ENV !== 'production';
 const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
 const isCli = process.env.CLI_MODE === 'true';
+const isStderrTTY = process.stderr.isTTY === true;
 
 function createLogger() {
   if (isTest) {
@@ -40,8 +41,8 @@ function createLogger() {
     });
   }
 
-  if (isDev) {
-    // Pretty console output in dev
+  if (isDev && isStderrTTY) {
+    // Pretty console output in dev (only when stderr is a TTY)
     return pino({
       level: 'debug',
       transport: {

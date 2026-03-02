@@ -15,7 +15,16 @@
 - StatusBar.tsx: 顶部状态栏，左侧 Logo，右侧双指示灯（session idle/running/waiting + WS connected/disconnected）
 
 ## instances/
-- InstanceTabs.tsx: 多实例 Tab 切换栏，单实例时自动隐藏，显示实例名称+端口，活跃 Tab 高亮底部边框
+- InstanceTabs.tsx: 多实例 Tab 切换栏，显示实例名称+端口，右侧"+"按钮打开创建实例对话框
+- CreateInstanceModal.tsx: 创建实例对话框，工作目录选择/自定义输入，实例名称/Claude 参数可选
+
+## settings/
+- SettingsModal.tsx: 设置模态框，Tab 切换（快捷键/命令），加载/保存用户配置
+- ShortcutSettings.tsx: 快捷键设置面板，按键录制转换为 ANSI 序列
+- CommandSettings.tsx: 命令设置面板，编辑/删除/重置命令列表
+
+## onboarding/
+- OnboardingGuide.tsx: 首次使用引导组件，分步展示功能介绍，localStorage 记录完成状态
 
 ## terminal/
 - TerminalView.tsx: xterm.js 挂载容器，disableStdin 只读模式，外部通过 containerRef 注入

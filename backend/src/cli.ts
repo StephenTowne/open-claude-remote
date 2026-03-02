@@ -4,6 +4,7 @@
  *
  * 用法：
  *   claude-remote [options] [--] [claude args...]
+ *   claude-remote attach <port|name>
  *
  * 代理层选项：
  *   --port <number>      服务端口 (默认: 3000, 被占用时自动递增)
@@ -17,6 +18,7 @@
 import { fileURLToPath } from 'node:url';
 import type { CliOverrides } from './config.js';
 import { startServer } from './index.js';
+import { attachInstance } from './attach.js';
 
 export interface CliOptions {
   port?: number;
@@ -24,7 +26,10 @@ export interface CliOptions {
   token?: string;
   name?: string;
   help: boolean;
+  noTerminal: boolean;
   claudeArgs: string[];
+  /** attach 子命令 */
+  attach?: string;
 }
 
 function parsePort(raw: string | undefined): number {
@@ -41,15 +46,32 @@ function parsePort(raw: string | undefined): number {
 export function parseCliArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     help: false,
+    noTerminal: false,
     claudeArgs: [],
   };
 
   let i = 2; // Skip 'node' and script path
+
+  // 检查子命令
+  if (argv.length > 2) {
+    const firstArg = argv[2];
+    if (firstArg === 'attach') {
+      if (argv.length <= 3) {
+        throw new Error('attach 命令需要指定目标实例（端口或名称）');
+      }
+      options.attach = argv[3];
+      return options;
+    }
+  }
+
   while (i < argv.length) {
     const arg = argv[i];
 
     if (arg === '--help' || arg === '-h') {
       options.help = true;
+      i++;
+    } else if (arg === '--no-terminal') {
+      options.noTerminal = true;
       i++;
     } else if (arg === '--port') {
       options.port = parsePort(argv[++i]);
@@ -95,12 +117,14 @@ Claude Code Remote - 在局域网内通过手机远程控制 Claude Code
 
 用法：
   claude-remote [options] [--] [claude args...]
+  claude-remote attach <port|name>  # 接管指定实例
 
 代理层选项：
   --port <number>      服务端口 (默认: 3000, 被占用时自动递增)
   --host <ip>          绑定地址 (默认: 自动检测 LAN IP)
   --token <string>     认证 Token (默认: 共享 Token)
   --name <string>      实例名称 (默认: 工作目录名)
+  --no-terminal        无终端模式（web 创建的实例使用）
   --help, -h           显示帮助信息
 
 配置文件：
@@ -115,6 +139,8 @@ Claude Code Remote - 在局域网内通过手机远程控制 Claude Code
     claudeCwd       Claude 工作目录 (默认: 当前目录)
     claudeArgs      Claude CLI 额外参数 (数组)
     maxBufferLines  输出缓冲区行数 (默认: 10000)
+    workspaces      预设工作目录列表 (数组)
+    defaultClaudeArgs 默认 Claude 参数 (数组)
 
 示例：
   claude-remote                    # 启动 Claude Code
@@ -122,6 +148,8 @@ Claude Code Remote - 在局域网内通过手机远程控制 Claude Code
   claude-remote --port 8080        # 使用端口 8080
   claude-remote --name api         # 自定义实例名称
   claude-remote -- --dangerously-skip-permissions  # 透传参数给 claude
+  claude-remote attach 3001        # 接管端口 3001 的实例
+  claude-remote attach myproject   # 接管名为 myproject 的实例
 
 更多 Claude Code 选项请运行：claude --help
 `);
@@ -135,8 +163,20 @@ export async function main(argv: string[] = process.argv): Promise<void> {
     process.exit(0);
   }
 
+  // 处理 attach 子命令
+  if (options.attach) {
+    process.env.CLI_MODE = 'true';
+    await attachInstance({ target: options.attach });
+    return;
+  }
+
   // Set CLI mode flag for clean output
   process.env.CLI_MODE = 'true';
+
+  // Set NO_TERMINAL flag for headless mode
+  if (options.noTerminal) {
+    process.env.NO_TERMINAL = 'true';
+  }
 
   // Build CLI overrides for config
   const cliOverrides: CliOverrides = {
@@ -145,6 +185,7 @@ export async function main(argv: string[] = process.argv): Promise<void> {
     token: options.token,
     instanceName: options.name,
     claudeArgs: options.claudeArgs.length > 0 ? options.claudeArgs : undefined,
+    noTerminal: options.noTerminal,
   };
 
   // Start server directly (no spawn)

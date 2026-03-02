@@ -100,11 +100,13 @@ sequenceDiagram
 | GET | `/api/health` | No | health-routes.ts → 健康检查 |
 | POST | `/api/hook` | Localhost only | hook-routes.ts → HookReceiver.processHook |
 | GET | `/api/instances` | Session | instance-routes.ts → 注册表实例列表 + isCurrent 标记 |
+| GET | `/api/instances/config` | Session | instance-routes.ts → 工作目录列表 + 默认 Claude 参数 |
+| POST | `/api/instances/create` | Session | instance-routes.ts → 通过 InstanceSpawner 创建 headless 实例 |
 
 ### Backend WebSocket
 | Direction | Path | Auth |
 |-----------|------|------|
-| Upgrade | `/ws` | Session Cookie |
+| Upgrade | `/ws` | Session Cookie 或 URL Token 参数 |
 
 ### Frontend Pages
 | Path | Component | 说明 |
@@ -114,8 +116,9 @@ sequenceDiagram
 ## 6. Domain Map
 
 ### PTY 代理
-- backend: `pty/pty-manager.ts`, `pty/output-buffer.ts`, `terminal/terminal-relay.ts`
+- backend: `pty/types.ts` (IPtyManager 接口), `pty/pty-manager.ts`, `pty/output-buffer.ts`, `pty/virtual-pty.ts`, `terminal/terminal-relay.ts`
 - backend: `session/session-controller.ts`
+- backend: `attach.ts` (attach 命令入口)
 
 ### Hook 通知
 - backend: `hooks/hook-receiver.ts`, `api/hook-routes.ts`
@@ -133,10 +136,10 @@ sequenceDiagram
 - frontend: `components/input/InputBar.tsx`, `components/status/StatusBar.tsx`
 
 ### 多实例管理
-- backend: `registry/shared-token.ts`, `registry/port-finder.ts`, `registry/instance-registry.ts`, `registry/stop-instances.ts`
+- backend: `registry/shared-token.ts`, `registry/port-finder.ts`, `registry/instance-registry.ts`, `registry/instance-spawner.ts`, `registry/stop-instances.ts`
 - backend: `utils/ip-monitor.ts` (IP 变化检测 + 注册表更新)
 - backend: `api/instance-routes.ts`
-- frontend: `components/instances/InstanceTabs.tsx`, `hooks/useInstances.ts`, `stores/instance-store.ts`, `services/instance-api.ts`
+- frontend: `components/instances/InstanceTabs.tsx`, `components/instances/CreateInstanceModal.tsx`, `hooks/useInstances.ts`, `stores/instance-store.ts`, `services/instance-api.ts`, `services/instance-create-api.ts`
 - shared: `instance.ts` (类型定义 + 常量)
 
 ### 共享协议

@@ -47,4 +47,29 @@ describe('parseCliArgs', () => {
     expect(options.port).toBe(8080);
     expect(options.name).toBe('backend');
   });
+
+  it('should parse "attach 3001" correctly', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'attach', '3001']);
+    expect(options.attach).toBe('3001');
+  });
+
+  it('should parse "attach myproject" correctly', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'attach', 'myproject']);
+    expect(options.attach).toBe('myproject');
+  });
+
+  it('should throw error when attach has no target argument', () => {
+    expect(() => parseCliArgs(['node', 'cli.js', 'attach'])).toThrow('attach 命令需要指定目标实例');
+  });
+
+  it('should parse --no-terminal flag', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--no-terminal']);
+    expect(options.noTerminal).toBe(true);
+  });
+
+  it('should combine --no-terminal with other options', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--no-terminal', '--port', '3001']);
+    expect(options.noTerminal).toBe(true);
+    expect(options.port).toBe(3001);
+  });
 });

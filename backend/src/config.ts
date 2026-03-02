@@ -49,6 +49,12 @@ export interface UserConfig {
   shortcuts?: Array<{ label: string; data: string; enabled: boolean; desc?: string }>;
   /** 自定义命令列表 */
   commands?: Array<{ label: string; command: string; enabled: boolean; desc?: string }>;
+
+  // === 实例创建配置 ===
+  /** 默认 Claude 参数 */
+  defaultClaudeArgs?: string[];
+  /** 预设工作目录列表 */
+  workspaces?: string[];
 }
 
 /**
@@ -121,6 +127,7 @@ export interface CliOverrides {
   token?: string;
   instanceName?: string;
   claudeArgs?: string[];
+  noTerminal?: boolean;
 }
 
 /**

@@ -20,6 +20,7 @@ import { logger, setInstanceContext } from './logger/logger.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { findAvailablePort } from './registry/port-finder.js';
 import { InstanceRegistryManager } from './registry/instance-registry.js';
+import { InstanceSpawner } from './registry/instance-spawner.js';
 import { IpMonitor } from './utils/ip-monitor.js';
 import { printQRCode } from './utils/qrcode-banner.js';
 
@@ -100,6 +101,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 10. Session controller reference (set after PTY spawn)
   let sessionController: SessionController | null = null;
 
+  // 10.5. Create Instance Spawner (for creating new instances via API)
+  const instanceSpawner = new InstanceSpawner();
+
   // 11. Mount REST API (with instance routes)
   app.use('/api', createApiRouter({
     authModule,
@@ -108,6 +112,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     pushService,
     listInstances: () => registry.list(),
     currentInstanceId: instanceId,
+    instanceSpawner,
   }));
 
   // 12. Serve frontend static files (if built)
@@ -133,8 +138,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 14. Spawn PTY with Claude Code CLI
   const ptyManager = new PtyManager();
 
-  // 15. Start Terminal Relay (raw mode)
-  const relay = new TerminalRelay(ptyManager);
+  // 15. Terminal Relay (条件启动，headless 模式跳过)
+  const noTerminal = process.env.NO_TERMINAL === 'true';
+  const relay = (!noTerminal && process.stdin.isTTY) ? new TerminalRelay(ptyManager) : undefined;
 
   // 16. Create Session Controller (with relay for dynamic master switch)
   sessionController = new SessionController(ptyManager, wsServer, hookReceiver, config.maxBufferLines, relay);
@@ -165,8 +171,10 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     cwd: config.claudeCwd,
   });
 
-  // Start relay after spawn
-  relay.start();
+  // Start relay after spawn (if not headless)
+  if (relay) {
+    relay.start();
+  }
   sessionController.setStatus('running');
 
   // 18. Register instance in shared registry
@@ -178,6 +186,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     pid: process.pid,
     cwd: config.claudeCwd,
     startedAt: new Date().toISOString(),
+    headless: noTerminal,
   });
 
   // 18.5. Clean up stale settings files for dead instances
@@ -234,7 +243,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     logger.info({ exitCode }, 'Shutting down...');
     // Unregister from shared registry
     registry.unregister(instanceId);
-    relay.stop();
+    if (relay) {
+      relay.stop();
+    }
     ipMonitor.stop();
     // Pause stdin to remove it as an active event loop handle
     if (!process.stdin.isTTY) {

@@ -6,6 +6,8 @@ export interface InstanceInfo {
   pid: number;
   cwd: string;
   startedAt: string;    // ISO
+  /** 是否为无终端模式（web 创建的实例） */
+  headless?: boolean;
 }
 
 export interface InstanceRegistry {
