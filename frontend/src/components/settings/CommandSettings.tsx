@@ -1,6 +1,18 @@
 import { useState } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import type { ConfigurableCommand } from '../../config/commands.js';
+import { generateId } from '../../utils/id.js';
 import type { WithId } from './SettingsModal.js';
+import { SortableItemShell } from './SortableItemShell.js';
+import { useDndSensors } from './useDndSensors.js';
 
 interface CommandSettingsProps {
   commands: WithId<ConfigurableCommand>[];
@@ -10,6 +22,7 @@ interface CommandSettingsProps {
 export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
+  const sensors = useDndSensors();
 
   const startEdit = (index: number) => {
     setEditingIndex(index);
@@ -18,6 +31,13 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
   };
 
   const saveEdit = (index: number) => {
+    // 取消编辑
+    if (index < 0) {
+      setEditingIndex(null);
+      setEditValue('');
+      return;
+    }
+
     let value = editValue.trim();
     if (!value) {
       // 空值直接删除
@@ -39,6 +59,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
     };
     onChange(newCommands);
     setEditingIndex(null);
+    setEditValue('');
   };
 
   const toggleEnabled = (index: number) => {
@@ -51,7 +72,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
   };
 
   const addCommand = () => {
-    const newCommands: WithId<ConfigurableCommand>[] = [...commands, { label: '/new', command: '/new', enabled: true, _id: crypto.randomUUID() }];
+    const newCommands: WithId<ConfigurableCommand>[] = [...commands, { label: '/new', command: '/new', enabled: true, _id: generateId() }];
     onChange(newCommands);
     // 自动开始编辑新添加的项
     setEditingIndex(newCommands.length - 1);
@@ -63,8 +84,22 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
     onChange(newCommands);
   };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = commands.findIndex((c) => c._id === active.id);
+      const newIndex = commands.findIndex((c) => c._id === over.id);
+
+      const newCommands = [...commands];
+      const [removed] = newCommands.splice(oldIndex, 1);
+      newCommands.splice(newIndex, 0, removed);
+      onChange(newCommands);
+    }
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -77,9 +112,9 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
         <button
           onClick={addCommand}
           style={{
-            padding: '4px 12px',
+            padding: '8px 16px',
             fontSize: 13,
-            borderRadius: 4,
+            borderRadius: 6,
             border: '1px solid var(--border-color)',
             background: 'var(--bg-tertiary)',
             color: 'var(--text-primary)',
@@ -101,108 +136,76 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
         </div>
       )}
 
-      {commands.map((cmd, index) => (
-        <div
-          key={cmd._id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '8px 12px',
-            borderRadius: 6,
-            background: 'var(--bg-tertiary)',
-          }}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={commands.map((c) => c._id)}
+          strategy={verticalListSortingStrategy}
         >
-          {/* 启用开关 */}
-          <button
-            onClick={() => toggleEnabled(index)}
-            style={{
-              width: 32,
-              height: 20,
-              borderRadius: 10,
-              border: 'none',
-              background: cmd.enabled ? 'var(--status-running)' : 'var(--bg-primary)',
-              cursor: 'pointer',
-              position: 'relative',
-              transition: 'background 0.2s',
-            }}
-          >
-            <span style={{
-              position: 'absolute',
-              top: 2,
-              left: cmd.enabled ? 14 : 2,
-              width: 16,
-              height: 16,
-              borderRadius: '50%',
-              background: '#fff',
-              transition: 'left 0.2s',
-            }} />
-          </button>
-
-          {/* 命令输入/显示 */}
-          {editingIndex === index ? (
-            <input
-              type="text"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') saveEdit(index);
-                if (e.key === 'Escape') setEditingIndex(null);
-              }}
-              onBlur={() => saveEdit(index)}
-              placeholder="输入命令..."
-              autoFocus
-              style={{
-                flex: 1,
-                height: 32,
-                padding: '0 8px',
-                borderRadius: 4,
-                border: '2px solid var(--status-running)',
-                background: 'var(--bg-primary)',
-                color: 'var(--text-primary)',
-                fontSize: 13,
-                outline: 'none',
-              }}
-            />
-          ) : (
-            <div
-              onClick={() => startEdit(index)}
-              style={{
-                flex: 1,
-                height: 32,
-                padding: '0 8px',
-                borderRadius: 4,
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-primary)',
-                color: 'var(--text-primary)',
-                fontSize: 13,
-                display: 'flex',
-                alignItems: 'center',
-                cursor: 'pointer',
-              }}
+          {commands.map((cmd, index) => (
+            <SortableItemShell
+              key={cmd._id}
+              id={cmd._id}
+              enabled={cmd.enabled}
+              onToggle={() => toggleEnabled(index)}
+              onDelete={() => deleteCommand(index)}
             >
-              {cmd.label}
-            </div>
-          )}
-
-          {/* 删除按钮 */}
-          <button
-            onClick={() => deleteCommand(index)}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 4,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: 16,
-            }}
-          >
-            ×
-          </button>
-        </div>
-      ))}
+              {/* 命令输入/显示 */}
+              {editingIndex === index ? (
+                <input
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveEdit(index);
+                    if (e.key === 'Escape') {
+                      // 取消编辑
+                      setEditValue('');
+                      saveEdit(-1); // -1 表示取消
+                    }
+                  }}
+                  onBlur={() => saveEdit(index)}
+                  placeholder="输入命令..."
+                  autoFocus
+                  style={{
+                    flex: 1,
+                    height: 36,
+                    padding: '0 12px',
+                    borderRadius: 6,
+                    border: '2px solid var(--status-running)',
+                    background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    fontSize: 14,
+                    outline: 'none',
+                  }}
+                />
+              ) : (
+                <div
+                  onClick={() => startEdit(index)}
+                  style={{
+                    flex: 1,
+                    height: 36,
+                    padding: '0 12px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    fontSize: 14,
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {cmd.label}
+                </div>
+              )}
+            </SortableItemShell>
+          ))}
+        </SortableContext>
+      </DndContext>
 
       <div style={{
         fontSize: 12,

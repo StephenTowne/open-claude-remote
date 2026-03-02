@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../../stores/app-store.js';
 import { useInstanceStore } from '../../stores/instance-store.js';
+import { notifyConfigChanged } from '../../hooks/useUserConfig.js';
 import { SettingsModal } from '../settings/SettingsModal.js';
 
 const STATUS_CONFIG = {
@@ -20,7 +21,6 @@ export function StatusBar() {
   const sessionStatus = useAppStore((s) => s.sessionStatus);
   const instances = useInstanceStore((s) => s.instances);
   const activeInstanceId = useInstanceStore((s) => s.activeInstanceId);
-
   const connectionStatus = useAppStore((s) => {
     if (!activeInstanceId) {
       return s.connectionStatus;
@@ -96,7 +96,7 @@ export function StatusBar() {
         </div>
       </div>
 
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} onConfigSaved={notifyConfigChanged} />
     </>
   );
 }

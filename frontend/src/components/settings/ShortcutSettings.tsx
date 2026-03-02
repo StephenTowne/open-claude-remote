@@ -1,6 +1,18 @@
 import { useState } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import type { ConfigurableShortcut } from '../../config/commands.js';
+import { generateId } from '../../utils/id.js';
 import type { WithId } from './SettingsModal.js';
+import { SortableItemShell } from './SortableItemShell.js';
+import { useDndSensors } from './useDndSensors.js';
 
 interface ShortcutSettingsProps {
   shortcuts: WithId<ConfigurableShortcut>[];
@@ -105,6 +117,7 @@ function keyEventToAnsi(e: React.KeyboardEvent): { label: string; data: string }
 
 export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps) {
   const [capturingIndex, setCapturingIndex] = useState<number | null>(null);
+  const sensors = useDndSensors();
 
   const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
     e.preventDefault();
@@ -135,7 +148,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
   const addShortcut = () => {
     onChange([
       ...shortcuts,
-      { label: 'New', data: '', enabled: true, _id: crypto.randomUUID() },
+      { label: 'New', data: '', enabled: true, _id: generateId() },
     ]);
   };
 
@@ -144,8 +157,22 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
     onChange(newShortcuts);
   };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = shortcuts.findIndex((s) => s._id === active.id);
+      const newIndex = shortcuts.findIndex((s) => s._id === over.id);
+
+      const newShortcuts = [...shortcuts];
+      const [removed] = newShortcuts.splice(oldIndex, 1);
+      newShortcuts.splice(newIndex, 0, removed);
+      onChange(newShortcuts);
+    }
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -158,9 +185,9 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
         <button
           onClick={addShortcut}
           style={{
-            padding: '4px 12px',
+            padding: '8px 16px',
             fontSize: 13,
-            borderRadius: 4,
+            borderRadius: 6,
             border: '1px solid var(--border-color)',
             background: 'var(--bg-tertiary)',
             color: 'var(--text-primary)',
@@ -182,100 +209,64 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
         </div>
       )}
 
-      {shortcuts.map((shortcut, index) => (
-        <div
-          key={shortcut._id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '8px 12px',
-            borderRadius: 6,
-            background: 'var(--bg-tertiary)',
-          }}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={shortcuts.map((s) => s._id)}
+          strategy={verticalListSortingStrategy}
         >
-          {/* 启用开关 */}
-          <button
-            onClick={() => toggleEnabled(index)}
-            style={{
-              width: 32,
-              height: 20,
-              borderRadius: 10,
-              border: 'none',
-              background: shortcut.enabled ? 'var(--status-running)' : 'var(--bg-primary)',
-              cursor: 'pointer',
-              position: 'relative',
-              transition: 'background 0.2s',
-            }}
-          >
-            <span style={{
-              position: 'absolute',
-              top: 2,
-              left: shortcut.enabled ? 14 : 2,
-              width: 16,
-              height: 16,
-              borderRadius: '50%',
-              background: '#fff',
-              transition: 'left 0.2s',
-            }} />
-          </button>
+          {shortcuts.map((shortcut, index) => (
+            <SortableItemShell
+              key={shortcut._id}
+              id={shortcut._id}
+              enabled={shortcut.enabled}
+              onToggle={() => toggleEnabled(index)}
+              onDelete={() => deleteShortcut(index)}
+            >
+              {/* 按键捕获输入框 */}
+              <input
+                type="text"
+                value={shortcut.label}
+                readOnly
+                placeholder="按键捕获"
+                onClick={() => setCapturingIndex(index)}
+                onKeyDown={(e) => handleKeyDown(e, index)}
+                onBlur={() => setCapturingIndex(null)}
+                style={{
+                  flex: 1,
+                  height: 36,
+                  padding: '0 12px',
+                  borderRadius: 6,
+                  border: capturingIndex === index
+                    ? '2px solid var(--status-running)'
+                    : '1px solid var(--border-color)',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  fontSize: 14,
+                  outline: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                }}
+              />
 
-          {/* 按键捕获输入框 */}
-          <input
-            type="text"
-            value={shortcut.label}
-            readOnly
-            placeholder="按键捕获"
-            onClick={() => setCapturingIndex(index)}
-            onKeyDown={(e) => handleKeyDown(e, index)}
-            onBlur={() => setCapturingIndex(null)}
-            style={{
-              flex: 1,
-              height: 32,
-              padding: '0 8px',
-              borderRadius: 4,
-              border: capturingIndex === index
-                ? '2px solid var(--status-running)'
-                : '1px solid var(--border-color)',
-              background: 'var(--bg-primary)',
-              color: 'var(--text-primary)',
-              fontSize: 13,
-              outline: 'none',
-              cursor: 'pointer',
-              textAlign: 'center',
-            }}
-          />
-
-          {/* ANSI 序列预览 */}
-          <span style={{
-            fontSize: 11,
-            color: 'var(--text-muted)',
-            fontFamily: 'monospace',
-            minWidth: 60,
-          }}>
-            {shortcut.data
-              ? shortcut.data.replace(/\x1b/g, 'ESC').replace(/\r/g, 'CR').replace(/\t/g, 'TAB')
-              : '(未设置)'}
-          </span>
-
-          {/* 删除按钮 */}
-          <button
-            onClick={() => deleteShortcut(index)}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 4,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: 16,
-            }}
-          >
-            ×
-          </button>
-        </div>
-      ))}
+              {/* ANSI 序列预览 */}
+              <span style={{
+                fontSize: 11,
+                color: 'var(--text-muted)',
+                fontFamily: 'monospace',
+                minWidth: 60,
+              }}>
+                {shortcut.data
+                  ? shortcut.data.replace(/\x1b/g, 'ESC').replace(/\r/g, 'CR').replace(/\t/g, 'TAB')
+                  : '(未设置)'}
+              </span>
+            </SortableItemShell>
+          ))}
+        </SortableContext>
+      </DndContext>
 
       {capturingIndex !== null && (
         <div style={{

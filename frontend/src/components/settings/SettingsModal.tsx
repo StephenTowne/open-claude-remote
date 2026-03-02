@@ -9,17 +9,20 @@ export type WithId<T> = T & { _id: string };
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onConfigSaved?: () => void;
 }
 
 type TabType = 'shortcuts' | 'commands';
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('shortcuts');
   const [shortcuts, setShortcuts] = useState<WithId<ConfigurableShortcut>[]>([]);
   const [commands, setCommands] = useState<WithId<ConfigurableCommand>[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
   const idCounter = useRef(0);
 
   function nextId(): string {
@@ -36,6 +39,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       loadConfig();
     }
   }, [isOpen]);
+
+  // 抽屉动画状态管理
+  useEffect(() => {
+    if (isOpen) {
+      setIsVisible(true);
+      // 双重 rAF 确保浏览器先渲染 translateY(100%) 的初始帧，再过渡到 translateY(0)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setIsAnimating(true));
+      });
+    } else if (isVisible) {
+      setIsAnimating(false);
+      const timer = setTimeout(() => setIsVisible(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, isVisible]);
 
   const loadConfig = async () => {
     try {
@@ -68,6 +86,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const ok = await updateUserConfig(config);
       if (ok) {
         setSuccess(true);
+        onConfigSaved?.();
         setTimeout(() => setSuccess(false), 2000);
       } else {
         setError('保存失败');
@@ -80,7 +99,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  if (!isOpen) return null;
+  if (!isVisible) return null;
 
   return (
     <div
@@ -91,25 +110,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'rgba(0, 0, 0, 0.5)',
+        background: isAnimating ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0)',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-end',
         justifyContent: 'center',
         zIndex: 1000,
+        transition: 'background 0.3s ease',
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: '90%',
+          width: '100%',
           maxWidth: 480,
-          maxHeight: '80vh',
-          borderRadius: 12,
+          maxHeight: '85vh',
+          borderRadius: '16px 16px 0 0',
           background: 'var(--bg-secondary)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+          boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.3)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+          transform: isAnimating ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 0.3s ease',
+          paddingBottom: 'var(--safe-bottom)',
         }}
       >
         {/* 头部 */}

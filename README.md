@@ -131,37 +131,135 @@ pnpm stop
 
 ## 配置文件
 
-配置文件位于 `~/.claude-remote/config.json`，支持以下字段：
+配置文件位于 `~/.claude-remote/config.json`。项目根目录提供 `config.example.json` 作为模板：
 
-```json
-{
-  "port": 3000,           // 服务端口（被占用自动递增）
-  "host": "0.0.0.0",      // 绑定地址
-  "token": "your-token",  // 固定 Token（默认自动生成共享 Token）
-  "instanceName": "api",  // 实例名称（默认工作目录名）
-  "claudeCommand": "claude",  // Claude CLI 命令路径
-  "claudeCwd": "/path/to/project",  // Claude 工作目录
-  "claudeArgs": ["--no-telemetry"],  // Claude CLI 额外参数
-  "maxBufferLines": 10000,  // 输出缓冲区行数
-  "workspaces": [          // 预设工作目录列表（用于 Web 创建实例，也作为允许路径白名单）
-    "/Users/you/projects/api",
-    "/Users/you/projects/web"
-  ],
-  "defaultClaudeArgs": ["--model", "claude-sonnet-4-6"]  // 默认 Claude 参数
-}
+```bash
+cp config.example.json ~/.claude-remote/config.json
 ```
+
+### 完整配置项
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `port` | number | 3000 | 服务监听端口（被占用自动递增） |
+| `host` | string | "0.0.0.0" | 绑定地址 |
+| `token` | string \| null | null | 认证 Token，`null` 自动生成共享 Token |
+| `claudeCommand` | string | "claude" | Claude CLI 命令路径（可用绝对路径） |
+| `claudeArgs` | string[] | [] | Claude CLI 额外参数 |
+| `claudeCwd` | string \| null | null | Claude 工作目录，`null` 使用当前目录 |
+| `sessionTtlMs` | number | 86400000 | Session 有效期（毫秒，默认 24 小时） |
+| `authRateLimit` | number | 20 | 认证速率限制（每分钟每 IP 次数） |
+| `maxBufferLines` | number | 10000 | 输出缓冲区最大行数 |
+| `instanceName` | string \| null | null | 实例名称，`null` 使用工作目录名 |
+| `shortcuts` | array | 见下方 | 快捷输入列表 |
+| `commands` | array | 见下方 | 自定义命令列表 |
+| `defaultClaudeArgs` | string[] | [] | 通过 Web 创建实例时的默认 Claude 参数 |
+| `workspaces` | string[] | [] | 预设工作目录列表（Web 创建实例的白名单） |
 
 **优先级**：CLI 参数 > 配置文件 > 默认值
 
-**示例**：使用固定 Token
+### 快捷输入 (shortcuts)
+
+快捷输入显示在终端下方的快捷栏，用于快速发送常用按键或文本：
 
 ```json
 {
-  "token": "my-secret-token-123"
+  "shortcuts": [
+    { "label": "确认", "data": "y", "enabled": true, "desc": "确认操作" },
+    { "label": "取消", "data": "\u001b", "enabled": true, "desc": "取消操作 (ESC)" },
+    { "label": "继续", "data": "\r", "enabled": true, "desc": "继续执行 (Enter)" },
+    { "label": "Ctrl+C", "data": "\u0003", "enabled": true, "desc": "中断当前操作" },
+    { "label": "是的", "data": "yes", "enabled": false, "desc": "完整 yes 输入" }
+  ]
 }
 ```
 
-配置文件首次启动时会自动创建，包含自动生成的 Token。
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `label` | string | 按钮显示名称 |
+| `data` | string | 发送的数据（支持转义字符如 `\u001b` 表示 ESC） |
+| `enabled` | boolean | 是否启用 |
+| `desc` | string | 描述（可选） |
+
+**常用转义值**：
+- `\u001b` - ESC 键
+- `\r` - Enter 键
+- `\u0003` - Ctrl+C
+- `\u0004` - Ctrl+D
+
+### 自定义命令 (commands)
+
+自定义命令显示在快捷栏的命令区域，点击后直接发送到终端：
+
+```json
+{
+  "commands": [
+    { "label": "/help", "command": "/help", "enabled": true, "desc": "帮助说明" },
+    { "label": "/clear", "command": "/clear", "enabled": true },
+    { "label": "/feature-dev:feature-dev", "command": "/feature-dev:feature-dev", "enabled": false, "desc": "启动feature-dev SKILL" }
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `label` | string | 按钮显示名称 |
+| `command` | string | 要执行的命令 |
+| `enabled` | boolean | 是否启用 |
+| `desc` | string | 描述（可选） |
+
+### 工作区白名单 (workspaces)
+
+配置后，通过 Web 创建实例时只能选择这些目录：
+
+```json
+{
+  "workspaces": [
+    "/Users/tom/projects/api",
+    "/Users/tom/projects/web",
+    "/Users/tom/projects/cli"
+  ]
+}
+```
+
+若未配置，Web 创建实例时只能选择 home 目录下的项目。
+
+### 完整示例
+
+```json
+{
+  "port": 3000,
+  "host": "0.0.0.0",
+  "token": null,
+
+  "claudeCommand": "claude",
+  "claudeArgs": ["--no-telemetry"],
+  "claudeCwd": null,
+
+  "sessionTtlMs": 86400000,
+  "authRateLimit": 20,
+  "maxBufferLines": 10000,
+  "instanceName": null,
+
+  "shortcuts": [
+    { "label": "确认", "data": "y", "enabled": true },
+    { "label": "取消", "data": "\u001b", "enabled": true },
+    { "label": "继续", "data": "\r", "enabled": true },
+    { "label": "Ctrl+C", "data": "\u0003", "enabled": true }
+  ],
+
+  "commands": [
+    { "label": "Git Status", "command": "git status", "enabled": true },
+    { "label": "Git Log", "command": "git log --oneline -10", "enabled": true }
+  ],
+
+  "defaultClaudeArgs": ["--model", "claude-sonnet-4-6"],
+  "workspaces": [
+    "/Users/tom/projects/api",
+    "/Users/tom/projects/web"
+  ]
+}
+```
 
 ---
 
