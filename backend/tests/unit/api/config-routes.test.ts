@@ -323,4 +323,117 @@ describe('config-routes', () => {
     expect(saved.shortcuts).toHaveLength(1);         // 更新
     expect(saved.commands).toHaveLength(1);          // 更新
   });
+
+  describe('auto-fill default shortcuts and commands', () => {
+    it('should fill default shortcuts in response when config exists but missing shortcuts', async () => {
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          port: 4000,
+          commands: [{ label: 'Test', command: 'test', enabled: true }],
+        }),
+        'utf-8'
+      );
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/config`, {
+        headers: { Cookie: cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.config.shortcuts).toBeDefined();
+      expect(body.config.shortcuts.length).toBeGreaterThan(0);
+      // 验证默认 shortcuts 被填充到响应中
+      expect(body.config.shortcuts[0]).toHaveProperty('label');
+      expect(body.config.shortcuts[0]).toHaveProperty('data');
+      expect(body.config.shortcuts[0]).toHaveProperty('enabled');
+
+      // 验证文件不会被修改（懒填充，不持久化）
+      const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
+      expect(saved.shortcuts).toBeUndefined();
+    });
+
+    it('should fill default commands in response when config exists but missing commands', async () => {
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          port: 4000,
+          shortcuts: [{ label: 'Test', data: 'test', enabled: true }],
+        }),
+        'utf-8'
+      );
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/config`, {
+        headers: { Cookie: cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.config.commands).toBeDefined();
+      expect(body.config.commands.length).toBeGreaterThan(0);
+      // 验证默认 commands 被填充到响应中
+      expect(body.config.commands[0]).toHaveProperty('label');
+      expect(body.config.commands[0]).toHaveProperty('command');
+      expect(body.config.commands[0]).toHaveProperty('enabled');
+
+      // 验证文件不会被修改（懒填充，不持久化）
+      const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
+      expect(saved.commands).toBeUndefined();
+    });
+
+    it('should fill both shortcuts and commands in response when both are missing', async () => {
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          port: 4000,
+        }),
+        'utf-8'
+      );
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/config`, {
+        headers: { Cookie: cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.config.shortcuts).toBeDefined();
+      expect(body.config.commands).toBeDefined();
+      expect(body.config.shortcuts.length).toBeGreaterThan(0);
+      expect(body.config.commands.length).toBeGreaterThan(0);
+
+      // 验证其他字段保留
+      expect(body.config.port).toBe(4000);
+    });
+
+    it('should NOT fill when shortcuts and commands already exist', async () => {
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          shortcuts: [{ label: 'Custom', data: 'custom', enabled: true }],
+          commands: [{ label: 'CustomCmd', command: 'custom', enabled: true }],
+        }),
+        'utf-8'
+      );
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/config`, {
+        headers: { Cookie: cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // 应保留用户自定义的配置
+      expect(body.config.shortcuts).toHaveLength(1);
+      expect(body.config.shortcuts[0].label).toBe('Custom');
+      expect(body.config.commands).toHaveLength(1);
+      expect(body.config.commands[0].label).toBe('CustomCmd');
+    });
+  });
 });

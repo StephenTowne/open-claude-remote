@@ -1,8 +1,7 @@
-import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
+import { useRef, useCallback, useEffect, useMemo } from 'react';
 import type { ServerMessage, InstanceListItem } from '@claude-remote/shared';
 import { StatusBar } from '../components/status/StatusBar.js';
 import { TerminalView } from '../components/terminal/TerminalView.js';
-import { ScrollButtons } from '../components/terminal/ScrollButtons.js';
 import { InputBar, type InputBarRef } from '../components/input/InputBar.js';
 import { CommandPicker } from '../components/input/CommandPicker.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
@@ -33,12 +32,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
   const writeRef = useRef((_data: string, _cb?: () => void) => {});
   const resetRef = useRef(() => {});
   const scrollToBottomRef = useRef(() => {});
-  const scrollToTopRef = useRef(() => {});
   const adaptToPtyColsRef = useRef((_cols: number, _rows?: number) => {});
-
-  // 滚动按钮状态
-  const [showScrollButtons, setShowScrollButtons] = useState(false);
-  const [isAtBottom, setIsAtBottom] = useState(true);
 
   const handleMessage = useCallback((msg: ServerMessage) => {
     switch (msg.type) {
@@ -94,7 +88,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
   const { connect, send } = useWebSocket(handleMessage, wsUrl, instanceId);
   sendRef.current = send;
 
-  const { write, reset, scrollToBottom, scrollToTop, setOnScrollPositionChange, adaptToPtyCols } = useTerminal(
+  const { write, reset, scrollToBottom, adaptToPtyCols } = useTerminal(
     containerRef,
     useCallback((cols: number, rows: number) => {
       return sendRef.current?.({ type: 'resize', cols, rows }) ?? false;
@@ -104,19 +98,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
   writeRef.current = write;
   resetRef.current = reset;
   scrollToBottomRef.current = scrollToBottom;
-  scrollToTopRef.current = scrollToTop;
   adaptToPtyColsRef.current = adaptToPtyCols;
-
-  // 滚动位置变化回调
-  const handleScrollPositionChange = useCallback((viewportY: number, isAtBottom: boolean) => {
-    setShowScrollButtons(viewportY > 0);
-    setIsAtBottom(isAtBottom);
-  }, []);
-
-  // 注册滚动监听
-  useEffect(() => {
-    setOnScrollPositionChange(handleScrollPositionChange);
-  }, [setOnScrollPositionChange, handleScrollPositionChange]);
 
   // Connect only once on mount
   const connectCalledRef = useRef(false);
@@ -147,22 +129,12 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
     inputBarRef.current?.setText(command);
   }, []);
 
-  // 计算 ScrollButtons 的底部偏移：CommandPicker 显示时需要更大偏移
-  const scrollButtonsBottom = showCommandPicker ? 156 : 60;
-
   return (
     <>
       <ConnectionBanner />
       <IpChangeToast />
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <TerminalView containerRef={containerRef} />
-        <ScrollButtons
-          onScrollToTop={scrollToTop}
-          onScrollToBottom={scrollToBottom}
-          showButtons={showScrollButtons}
-          isAtBottom={isAtBottom}
-          bottomOffset={scrollButtonsBottom}
-        />
       </div>
       <CommandPicker
         onShortcut={handleKeyPress}

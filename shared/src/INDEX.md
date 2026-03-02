@@ -4,4 +4,5 @@
 - ws-protocol.ts: WebSocket 消息协议类型定义，ServerMessage (terminal_output/status_update/history_sync/heartbeat/error/session_ended/terminal_resize/ip_changed) + ClientMessage (user_input/resize/heartbeat)
 - constants.ts: 共享常量，DEFAULT_PORT/SESSION_TTL/AUTH_RATE_LIMIT/MAX_BUFFER_LINES/WS_HEARTBEAT_INTERVAL/TOKEN_BYTES/MAX_WS_MESSAGE_SIZE
 - instance.ts: 多实例类型定义，InstanceInfo / InstanceRegistry / InstanceListItem + 共享目录名/文件名/settings 目录常量 (CLAUDE_REMOTE_DIR/REGISTRY_FILENAME/SETTINGS_DIR)
-- index.ts: barrel re-export，统一导出 ws-protocol + constants + instance
+- defaults.ts: 默认快捷键/命令列表（前后端唯一真相源），ConfigurableShortcut / ConfigurableCommand 类型 + DEFAULT_SHORTCUTS / DEFAULT_COMMANDS 常量
+- index.ts: barrel re-export，统一导出 ws-protocol + constants + instance + defaults

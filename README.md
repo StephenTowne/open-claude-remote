@@ -203,15 +203,30 @@ cp config.example.json ~/.claude-remote/config.json
 | `authRateLimit` | number | 20 | 认证速率限制（每分钟每 IP 次数） |
 | `maxBufferLines` | number | 10000 | 输出缓冲区最大行数 |
 | `instanceName` | string \| null | null | 实例名称，`null` 使用工作目录名 |
-| `shortcuts` | array | 见下方 | 快捷输入列表 |
-| `commands` | array | 见下方 | 自定义命令列表 |
+| `shortcuts` | array | 见下方 | 快捷输入列表（缺失时 API 返回默认值，不写入文件） |
+| `commands` | array | 见下方 | 自定义命令列表（缺失时 API 返回默认值，不写入文件） |
 | `workspaces` | string[] | [] | 预设工作目录列表（Web 创建实例的白名单） |
 
 **优先级**：CLI 参数 > 配置文件 > 默认值
 
 ### 快捷输入 (shortcuts)
 
-快捷输入显示在终端下方的快捷栏，用于快速发送常用按键或文本：
+快捷输入显示在终端下方的快捷栏，用于快速发送常用按键或文本。
+
+**当配置文件中未定义 `shortcuts` 字段时，API 返回时自动填充以下默认值：**
+
+| 按键 | 数据 | 说明 |
+|------|------|------|
+| Esc | `\u001b` | ESC 键 |
+| Enter | `\r` | 回车键 |
+| Tab | `\t` | Tab 键 |
+| ↑ | `\u001b[A` | 上箭头 |
+| ↓ | `\u001b[B` | 下箭头 |
+| ← | `\u001b[D` | 左箭头 |
+| → | `\u001b[C` | 右箭头 |
+| S-Tab | `\u001b[Z` | Shift+Tab |
+
+**自定义示例：**
 
 ```json
 {
@@ -240,7 +255,24 @@ cp config.example.json ~/.claude-remote/config.json
 
 ### 自定义命令 (commands)
 
-自定义命令显示在快捷栏的命令区域，点击后直接发送到终端：
+自定义命令显示在快捷栏的命令区域，点击后直接发送到终端。
+
+**当配置文件中未定义 `commands` 字段时，API 返回时自动填充以下默认值：**
+
+| 命令 | 说明 |
+|------|------|
+| /clear | 清屏 |
+| /compact | 紧凑对话 |
+| /resume | 恢复会话 |
+| /stats | 统计信息 |
+| /exit | 退出 |
+| /commit-commands:commit | Git 提交 |
+| /feature-dev:feature-dev | 功能开发 |
+| /auto-doc | 自动文档 |
+| /code-review-expert | 代码审查 |
+| /systematic-debugging | 系统调试 |
+
+**自定义示例：**
 
 ```json
 {

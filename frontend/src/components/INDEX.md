@@ -31,4 +31,3 @@
 
 ## terminal/
 - TerminalView.tsx: xterm.js 挂载容器，disableStdin 只读模式，外部通过 containerRef 注入
-- ScrollButtons.tsx: 终端悬浮滚动按钮（顶部/底部），滚动后显示，淡入淡出动画过渡

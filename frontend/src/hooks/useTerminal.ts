@@ -15,8 +15,6 @@ export function useTerminal(
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const adaptFnRef = useRef<((ptyCols: number, ptyRows?: number) => void) | null>(null);
-  const onScrollPositionChangeRef = useRef<((viewportY: number, isAtBottom: boolean) => void) | null>(null);
-  const scrollDisposeRef = useRef<(() => void) | null>(null);
 
   const onResizeRef = useRef(onResize);
   onResizeRef.current = onResize;
@@ -147,17 +145,6 @@ export function useTerminal(
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // 滚动位置监听
-    const scrollDispose = term.onScroll(() => {
-      if (!termRef.current) return;
-      const buffer = termRef.current.buffer.active;
-      const viewportY = buffer.viewportY;
-      const maxViewportY = buffer.length - termRef.current.rows;
-      const isAtBottom = viewportY >= maxViewportY;
-      onScrollPositionChangeRef.current?.(viewportY, isAtBottom);
-    });
-    scrollDisposeRef.current = () => scrollDispose.dispose();
-
     const adaptToPtySizeInner = (_ptyCols: number, _ptyRows?: number) => {
       fitAddon.fit();
       // 主动上报 resize，确保 PTY 了解当前终端尺寸
@@ -174,10 +161,6 @@ export function useTerminal(
 
     return () => {
       resizeObserver.disconnect();
-      if (scrollDisposeRef.current) {
-        scrollDisposeRef.current();
-        scrollDisposeRef.current = null;
-      }
       if (pendingResizeTimeoutRef.current) {
         clearTimeout(pendingResizeTimeoutRef.current);
         pendingResizeTimeoutRef.current = null;
@@ -246,15 +229,6 @@ export function useTerminal(
     termRef.current?.scrollToBottom();
   }, []);
 
-  const scrollToTop = useCallback(() => {
-    termRef.current?.scrollToLine(0);
-  }, []);
-
-  const setOnScrollPositionChange = useCallback(
-    (callback: (viewportY: number, isAtBottom: boolean) => void) => {
-      onScrollPositionChangeRef.current = callback;
-    }, []);
-
   const adaptToPtyCols = useCallback((ptyCols: number, ptyRows?: number) => {
     adaptFnRef.current?.(ptyCols, ptyRows);
   }, []);
@@ -264,8 +238,6 @@ export function useTerminal(
     clear,
     reset,
     scrollToBottom,
-    scrollToTop,
-    setOnScrollPositionChange,
     adaptToPtyCols,
     terminal: termRef,
   };

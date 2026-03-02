@@ -67,12 +67,14 @@ export function useUserConfig(): UseUserConfigResult {
     loadConfig();
   }, [loadConfig, version]);
 
-  // 从配置中提取启用的快捷键和命令，如果没有配置则使用默认值
-  const shortcuts = config
+  // 从配置中提取启用的快捷键和命令
+  // 注意：后端已经实现懒填充（返回时填充默认值但不持久化）
+  // 这里的 fallback 是向后端行为不一致时的边界保护
+  const shortcuts = config?.shortcuts
     ? filterEnabled(config.shortcuts)
     : DEFAULT_SHORTCUTS;
 
-  const commands = config
+  const commands = config?.commands
     ? filterEnabled(config.commands)
     : DEFAULT_COMMANDS;
 

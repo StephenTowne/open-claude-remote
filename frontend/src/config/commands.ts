@@ -1,3 +1,10 @@
+import {
+  DEFAULT_SHORTCUTS as SHARED_DEFAULT_SHORTCUTS,
+  DEFAULT_COMMANDS as SHARED_DEFAULT_COMMANDS,
+  type ConfigurableShortcut as SharedConfigurableShortcut,
+  type ConfigurableCommand as SharedConfigurableCommand,
+} from '@claude-remote/shared';
+
 /**
  * 快捷键 - 点击直接发送 ANSI 控制字符
  */
@@ -39,31 +46,18 @@ export interface UserConfig {
 }
 
 /**
- * 默认快捷键列表（当配置文件不存在时使用）
+ * 默认快捷键列表 - 从 shared 包导入并转换为前端格式（去除 enabled 字段）
  */
-export const DEFAULT_SHORTCUTS: ShortcutKey[] = [
-  { label: 'Esc', data: '\x1b' },
-  { label: 'Enter', data: '\r' },
-  { label: 'Tab', data: '\t' },
-  { label: 'S-Tab', data: '\x1b[Z' },
-  { label: '↑', data: '\x1b[A' },
-  { label: '↓', data: '\x1b[B' },
-  { label: '←', data: '\x1b[D' },
-  { label: '→', data: '\x1b[C' },
-  { label: '^C', data: '\x03' },
-];
+export const DEFAULT_SHORTCUTS: ShortcutKey[] = SHARED_DEFAULT_SHORTCUTS.map(
+  ({ enabled: _enabled, desc: _desc, ...rest }) => rest
+);
 
 /**
- * 默认命令列表（当配置文件不存在时使用）
+ * 默认命令列表 - 从 shared 包导入并转换为前端格式（去除 enabled 字段）
  */
-export const DEFAULT_COMMANDS: CommandItem[] = [
-  { label: '/help', command: '/help' },
-  { label: '/clear', command: '/clear' },
-  { label: '/compact', command: '/compact' },
-  { label: '/terminal-setup', command: '/terminal-setup' },
-  { label: '/review', command: '/review' },
-  { label: '/init', command: '/init' },
-];
+export const DEFAULT_COMMANDS: CommandItem[] = SHARED_DEFAULT_COMMANDS.map(
+  ({ enabled: _enabled, desc: _desc, ...rest }) => rest
+);
 
 /**
  * 从可配置列表中过滤出启用的项

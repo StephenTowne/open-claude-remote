@@ -5,6 +5,10 @@ import {
   DEFAULT_MAX_BUFFER_LINES,
   SETTINGS_DIR,
   CLAUDE_REMOTE_DIR,
+  DEFAULT_SHORTCUTS as SHARED_DEFAULT_SHORTCUTS,
+  DEFAULT_COMMANDS as SHARED_DEFAULT_COMMANDS,
+  type ConfigurableShortcut,
+  type ConfigurableCommand,
 } from '@claude-remote/shared';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -195,6 +199,28 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
 
 export function createSessionCookieName(port: number): string {
   return `session_id_p${port}`;
+}
+
+/** 默认快捷键列表 - 从 shared 包导入 */
+export const DEFAULT_SHORTCUTS: NonNullable<UserConfig['shortcuts']> = SHARED_DEFAULT_SHORTCUTS;
+
+/** 默认命令列表 - 从 shared 包导入 */
+export const DEFAULT_COMMANDS: NonNullable<UserConfig['commands']> = SHARED_DEFAULT_COMMANDS;
+
+/**
+ * 填充缺失的 shortcuts 到配置对象
+ */
+export function fillDefaultShortcuts(config: UserConfig): UserConfig {
+  if (config.shortcuts) return config;
+  return { ...config, shortcuts: DEFAULT_SHORTCUTS };
+}
+
+/**
+ * 填充缺失的 commands 到配置对象
+ */
+export function fillDefaultCommands(config: UserConfig): UserConfig {
+  if (config.commands) return config;
+  return { ...config, commands: DEFAULT_COMMANDS };
 }
 
 /**

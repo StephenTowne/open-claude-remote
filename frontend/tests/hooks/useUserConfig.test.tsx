@@ -112,4 +112,24 @@ describe('useUserConfig', () => {
     // getUserConfig 应该被额外调用了至少 2 次（两个实例各一次）
     expect(vi.mocked(apiClient.getUserConfig).mock.calls.length).toBeGreaterThan(initialCallCount);
   });
+
+  it('当 config 存在但 shortcuts/commands 为 undefined 时使用前端默认值', async () => {
+    // 模拟 config 存在但 shortcuts/commands 字段缺失的情况
+    // 虽然后端应该自动填充，但前端需要防护性处理
+    vi.mocked(apiClient.getUserConfig).mockResolvedValue({
+      config: {
+        // 只有 port，没有 shortcuts/commands
+        port: 4000,
+      } as any,
+      configPath: '/test/config.json',
+    });
+
+    render(<ConfigDisplay testId="d" />);
+
+    await waitFor(() => {
+      // shortcuts 和 commands 应该使用前端默认值
+      expect(screen.getByTestId('d-shortcuts').textContent).not.toBe('0');
+      expect(screen.getByTestId('d-commands').textContent).not.toBe('0');
+    });
+  });
 });

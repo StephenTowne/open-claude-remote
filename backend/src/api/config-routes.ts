@@ -7,7 +7,11 @@ import { AuthModule } from '../auth/auth-middleware.js';
 import { createAuthRoutes } from './auth-routes.js';
 import { logger } from '../logger/logger.js';
 import { withFileLockAsync } from '../utils/file-lock.js';
-import type { UserConfig } from '../config.js';
+import {
+  type UserConfig,
+  fillDefaultShortcuts,
+  fillDefaultCommands,
+} from '../config.js';
 
 const CONFIG_DIR = join(homedir(), '.claude-remote');
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
@@ -109,14 +113,25 @@ export function createConfigRoutes(authModule: AuthModule): Router {
   router.get('/config', authModule.requireAuth.bind(authModule), async (req, res) => {
     try {
       const config = await loadUserConfig();
+
       if (!config) {
-        // 配置文件不存在，返回null让前端使用默认值
+        // 配置文件不存在，返回 null 让前端使用自己的默认值
         res.json({ config: null, configPath: CONFIG_FILE });
-      } else {
-        // 排除敏感字段 token
-        const { token: _, ...safeConfig } = config;
-        res.json({ config: safeConfig, configPath: CONFIG_FILE });
+        return;
       }
+
+      // 懒填充默认值（不持久化，仅返回时填充）
+      // 好处：配置文件保持精简，默认值更新时用户自动受益
+      let filledConfig = config;
+      if (!config.shortcuts) {
+        filledConfig = fillDefaultShortcuts(filledConfig);
+      }
+      if (!config.commands) {
+        filledConfig = fillDefaultCommands(filledConfig);
+      }
+
+      const { token: _, ...safeConfig } = filledConfig;
+      res.json({ config: safeConfig, configPath: CONFIG_FILE });
     } catch (error) {
       logger.error({ error }, 'Failed to get config');
       res.status(500).json({ error: 'Failed to load config' });

@@ -68,7 +68,6 @@ describe('CommandPicker', () => {
       expect(screen.getByText('↓')).toBeDefined();
       expect(screen.getByText('←')).toBeDefined();
       expect(screen.getByText('→')).toBeDefined();
-      expect(screen.getByText('^C')).toBeDefined();
     });
   });
 
@@ -81,12 +80,13 @@ describe('CommandPicker', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('/help')).toBeDefined();
+      // 使用新的默认命令列表
       expect(screen.getByText('/clear')).toBeDefined();
       expect(screen.getByText('/compact')).toBeDefined();
-      expect(screen.getByText('/terminal-setup')).toBeDefined();
-      expect(screen.getByText('/review')).toBeDefined();
-      expect(screen.getByText('/init')).toBeDefined();
+      expect(screen.getByText('/resume')).toBeDefined();
+      expect(screen.getByText('/stats')).toBeDefined();
+      expect(screen.getByText('/exit')).toBeDefined();
+      expect(screen.getByText('/auto-doc')).toBeDefined();
     });
   });
 
@@ -110,9 +110,9 @@ describe('CommandPicker', () => {
     fireEvent.click(screen.getByText('Tab'));
     expect(mockOnShortcut).toHaveBeenCalledWith('\t');
 
-    // 点击 ^C (Ctrl+C)
-    fireEvent.click(screen.getByText('^C'));
-    expect(mockOnShortcut).toHaveBeenCalledWith('\x03');
+    // 点击 S-Tab (Shift+Tab)
+    fireEvent.click(screen.getByText('S-Tab'));
+    expect(mockOnShortcut).toHaveBeenCalledWith('\x1b[Z');
   });
 
   it('点击命令按钮调用 onCommandSelect 并添加空格', async () => {
@@ -124,12 +124,8 @@ describe('CommandPicker', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('/help')).toBeDefined();
+      expect(screen.getByText('/clear')).toBeDefined();
     });
-
-    // 点击 /help
-    fireEvent.click(screen.getByText('/help'));
-    expect(mockOnCommandSelect).toHaveBeenCalledWith('/help ');
 
     // 点击 /clear
     fireEvent.click(screen.getByText('/clear'));
@@ -138,6 +134,10 @@ describe('CommandPicker', () => {
     // 点击 /compact
     fireEvent.click(screen.getByText('/compact'));
     expect(mockOnCommandSelect).toHaveBeenCalledWith('/compact ');
+
+    // 点击 /resume
+    fireEvent.click(screen.getByText('/resume'));
+    expect(mockOnCommandSelect).toHaveBeenCalledWith('/resume ');
   });
 
   it('快捷键按钮阻止默认的 mousedown 行为', async () => {
