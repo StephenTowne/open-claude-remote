@@ -213,7 +213,8 @@ claude-code-remote/
 ├── shared/                  # 前后端共享 TypeScript 类型
 ├── backend/                 # Node.js + Express + ws + node-pty
 │   └── src/
-│       ├── cli.ts           # CLI 入口
+│       ├── cli.ts           # CLI 入口（动态 import 确保 CLI_MODE 早于 logger 加载）
+│       ├── cli-utils.ts     # CLI 参数解析工具函数
 │       ├── index.ts         # 服务入口
 │       ├── api/             # REST API 路由
 │       ├── auth/            # Token 验证、Session Cookie

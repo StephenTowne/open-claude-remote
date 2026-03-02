@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCliArgs } from '../../../src/cli.js';
+import { parseCliArgs } from '../../../src/cli-utils.js';
 
 describe('parseCliArgs', () => {
   it('should parse valid --port and --host and --token', () => {
