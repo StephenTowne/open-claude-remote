@@ -104,7 +104,7 @@ describe('SessionController', () => {
       expect(ptyManager.resize).toHaveBeenCalledWith(120, 40);
     });
 
-    it('should ignore webapp resize when attach client is connected', () => {
+    it('should apply webapp resize when attach client is connected', () => {
       new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
 
       // attach 客户端在线
@@ -113,7 +113,7 @@ describe('SessionController', () => {
       const mockWs = { readyState: 1, send: vi.fn() };
       wsServer._triggerMessage(mockWs, JSON.stringify({ type: 'resize', cols: 80, rows: 24 }), 'webapp');
 
-      expect(ptyManager.resize).not.toHaveBeenCalled();
+      expect(ptyManager.resize).toHaveBeenCalledWith(80, 24);
     });
 
     it('should apply webapp resize when no attach client is connected', () => {
@@ -128,7 +128,7 @@ describe('SessionController', () => {
       expect(ptyManager.resize).toHaveBeenCalledWith(80, 24);
     });
 
-    it('should always apply attach resize regardless of other clients', () => {
+    it('should ignore attach resize when webapp client is connected', () => {
       new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
 
       wsServer.getClientCounts.mockReturnValue({ attach: 1, webapp: 2 });
@@ -136,7 +136,7 @@ describe('SessionController', () => {
       const mockWs = { readyState: 1, send: vi.fn() };
       wsServer._triggerMessage(mockWs, JSON.stringify({ type: 'resize', cols: 120, rows: 40 }), 'attach');
 
-      expect(ptyManager.resize).toHaveBeenCalledWith(120, 40);
+      expect(ptyManager.resize).not.toHaveBeenCalled();
     });
   });
 

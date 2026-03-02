@@ -183,11 +183,11 @@ export class SessionController {
           this.ptyManager.write(input);
         },
         onResize: (cols: number, rows: number) => {
-          // attach 在线时忽略 webapp 的 resize（attach 是主控端）
-          if (clientType === 'webapp') {
+          // webapp 在线时忽略 attach 的 resize（webapp 是主控端）
+          if (clientType === 'attach') {
             const counts = this.wsServer.getClientCounts();
-            if (counts.attach > 0) {
-              logger.debug({ cols, rows }, 'Ignoring webapp resize, attach is master');
+            if (counts.webapp > 0) {
+              logger.debug({ cols, rows }, 'Ignoring attach resize, webapp is master');
               return;
             }
           }
@@ -197,24 +197,24 @@ export class SessionController {
       });
     });
 
-    // 处理客户端连接：区分主控端（attach）和从控端（webapp）
+    // 处理客户端连接：区分主控端（webapp）和从控端（attach）
     this.wsServer.onConnect((ws: WebSocket, clientType: ClientType) => {
       if (clientType === 'attach') {
-        // attach 客户端连接：作为主控端
-        // 暂停 PC 端 resize，让 attach 客户端接管尺寸控制
+        // attach 客户端连接：作为从控端
+        // 暂停 PC 端 resize，attach 将跟随 webapp 的尺寸
         if (this.terminalRelay) {
           this.terminalRelay.pauseResize();
         }
-        logger.info('attach client connected (master mode)');
+        logger.info('attach client connected (slave mode)');
       } else {
-        // WebApp 客户端连接：作为从控端
-        // 只有第一个 WebApp 客户端连接时才暂停 PC 端 resize
+        // WebApp 客户端连接：作为主控端
+        // 暂停 PC 端 resize，让 webapp 接管尺寸控制
         const counts = this.wsServer.getClientCounts();
         if (this.terminalRelay && counts.attach === 0 && counts.webapp === 1) {
           this.terminalRelay.pauseResize();
           logger.info('First WebApp client connected, PC resize paused');
         }
-        logger.info('WebApp client connected (slave mode)');
+        logger.info('WebApp client connected (master mode)');
       }
 
       // 发送历史数据

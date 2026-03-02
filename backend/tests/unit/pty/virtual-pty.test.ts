@@ -207,7 +207,7 @@ describe('VirtualPtyManager', () => {
       expect(dataHandler).not.toHaveBeenCalled();
     });
 
-    it('should sync local size on history_sync when server size differs', async () => {
+    it('should update local size on history_sync when server size differs (slave mode)', async () => {
       const connectPromise = virtualPty.connect('ws://localhost:3000', 'test-token');
       const ws = getLastMockWs();
       ws?.emit('open');
@@ -222,7 +222,11 @@ describe('VirtualPtyManager', () => {
       // Clear mock for next assertion
       (ws?.send as ReturnType<typeof vi.fn>).mockClear();
 
-      // Server sends history_sync with different size (from WebApp)
+      // Listen for resize event to notify local terminal
+      const resizeHandler = vi.fn();
+      virtualPty.on('resize', resizeHandler);
+
+      // Server sends history_sync with different size (from webapp master)
       ws?.emit('message', Buffer.from(JSON.stringify({
         type: 'history_sync',
         data: 'history data',
@@ -230,10 +234,12 @@ describe('VirtualPtyManager', () => {
         rows: 24,
       })));
 
-      // Should have sent local size to override server size
-      expect(ws?.send).toHaveBeenCalledWith(
-        JSON.stringify({ type: 'resize', cols: 100, rows: 30 })
-      );
+      // As slave, should update local size to match server (webapp master), not send resize
+      expect(ws?.send).not.toHaveBeenCalled();
+      expect(virtualPty.cols).toBe(80);
+      expect(virtualPty.rows).toBe(24);
+      // Should emit resize event to notify local terminal
+      expect(resizeHandler).toHaveBeenCalledWith(80, 24);
     });
 
     it('should NOT sync local size on history_sync when server size matches', async () => {
@@ -246,6 +252,10 @@ describe('VirtualPtyManager', () => {
       virtualPty.resize(100, 30);
       (ws?.send as ReturnType<typeof vi.fn>).mockClear();
 
+      // Listen for resize event
+      const resizeHandler = vi.fn();
+      virtualPty.on('resize', resizeHandler);
+
       // Server sends history_sync with matching size
       ws?.emit('message', Buffer.from(JSON.stringify({
         type: 'history_sync',
@@ -254,11 +264,12 @@ describe('VirtualPtyManager', () => {
         rows: 30,
       })));
 
-      // Should NOT have sent resize again
+      // Should NOT have sent resize again, and no resize event
       expect(ws?.send).not.toHaveBeenCalled();
+      expect(resizeHandler).not.toHaveBeenCalled();
     });
 
-    it('should ignore terminal_resize message (as master controller)', async () => {
+    it('should sync local size on terminal_resize (slave mode)', async () => {
       const connectPromise = virtualPty.connect('ws://localhost:3000', 'test-token');
       const ws = getLastMockWs();
       ws?.emit('open');
@@ -268,15 +279,48 @@ describe('VirtualPtyManager', () => {
       virtualPty.resize(100, 30);
       (ws?.send as ReturnType<typeof vi.fn>).mockClear();
 
-      // Server sends terminal_resize with different size (from WebApp or echo)
+      // Listen for resize event to notify local terminal
+      const resizeHandler = vi.fn();
+      virtualPty.on('resize', resizeHandler);
+
+      // Server sends terminal_resize with different size (from webapp master)
       ws?.emit('message', Buffer.from(JSON.stringify({
         type: 'terminal_resize',
         cols: 80,
         rows: 24,
       })));
 
-      // Should NOT have sent resize (master ignores terminal_resize)
+      // As slave, should update local size to match server (webapp master)
       expect(ws?.send).not.toHaveBeenCalled();
+      expect(virtualPty.cols).toBe(80);
+      expect(virtualPty.rows).toBe(24);
+      // Should emit resize event to notify local terminal
+      expect(resizeHandler).toHaveBeenCalledWith(80, 24);
+    });
+
+    it('should NOT emit resize event when terminal_resize size matches', async () => {
+      const connectPromise = virtualPty.connect('ws://localhost:3000', 'test-token');
+      const ws = getLastMockWs();
+      ws?.emit('open');
+      await connectPromise;
+
+      // Set local size first
+      virtualPty.resize(100, 30);
+      (ws?.send as ReturnType<typeof vi.fn>).mockClear();
+
+      // Listen for resize event
+      const resizeHandler = vi.fn();
+      virtualPty.on('resize', resizeHandler);
+
+      // Server sends terminal_resize with matching size
+      ws?.emit('message', Buffer.from(JSON.stringify({
+        type: 'terminal_resize',
+        cols: 100,
+        rows: 30,
+      })));
+
+      // Should NOT emit resize event when size matches
+      expect(resizeHandler).not.toHaveBeenCalled();
     });
   });
 

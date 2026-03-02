@@ -5,7 +5,7 @@ import type { ServerMessage } from '@claude-remote/shared';
 import { AuthModule } from '../auth/auth-middleware.js';
 import { logger } from '../logger/logger.js';
 
-/** 客户端类型：attach（主控端）或 webapp（从控端） */
+/** 客户端类型：attach（从控端）或 webapp（主控端） */
 export type ClientType = 'attach' | 'webapp';
 
 interface ClientInfo {
@@ -88,7 +88,7 @@ export class WsServer {
           socket.destroy();
           return;
         }
-        // 标记为 attach 客户端（主控端）
+        // 标记为 attach 客户端（从控端）
         this.upgradeClientTypes.set(req, 'attach');
         logger.info({
           remoteAddress: req.socket.remoteAddress,
@@ -117,7 +117,7 @@ export class WsServer {
         return;
       }
 
-      // 标记为 WebApp 客户端（从控端）
+      // 标记为 WebApp 客户端（主控端）
       this.upgradeClientTypes.set(req, 'webapp');
       this.wss.handleUpgrade(req, socket, head, (ws) => {
         this.wss.emit('connection', ws, req);
