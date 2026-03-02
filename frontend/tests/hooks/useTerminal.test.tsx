@@ -523,7 +523,7 @@ describe('useTerminal', () => {
 
     mockFitAddonFit.mockImplementation(() => {
       mockTermState.cols = 42;
-      mockTermState.rows = 33;
+      mockTermState.rows = 24;
     });
 
     renderUseTerminal(onResize);
@@ -540,5 +540,114 @@ describe('useTerminal', () => {
     expect(onResize).toHaveBeenCalledTimes(1); // Not called again
 
     vi.useRealTimers();
+  });
+
+  // ---- onScroll callback tests ----
+
+  describe('onScroll callback', () => {
+    let scrollCallback: (() => void) | null = null;
+
+    beforeEach(() => {
+      scrollCallback = null;
+      mockTermOnScroll.mockImplementation((cb: () => void) => {
+        scrollCallback = cb;
+        return { dispose: vi.fn() };
+      });
+      // 模拟足够的缓冲区内容让滚动有意义
+      mockBuffer.active.length = 200; // 200 行内容
+      mockBuffer.active.viewportY = 0; // 初始在顶部
+      mockTermState.rows = 24; // 可见 24 行
+    });
+
+    it('should trigger onScroll callback with correct viewportY and isAtBottom when user scrolls', () => {
+      const onScrollPositionChange = vi.fn();
+      const { result } = renderUseTerminal();
+
+      // 注册滚动回调
+      act(() => {
+        result.current.setOnScrollPositionChange(onScrollPositionChange);
+      });
+
+      // 模拟用户向上滚动（手指上滑，内容向下滚动）
+      mockBuffer.active.viewportY = 100; // 滚动到第 100 行
+      act(() => {
+        scrollCallback?.();
+      });
+
+      // maxViewportY = 200 - 24 = 176
+      // viewportY = 100, isAtBottom = false (100 < 176)
+      expect(onScrollPositionChange).toHaveBeenCalledWith(100, false);
+      onScrollPositionChange.mockClear();
+
+      // 模拟滚动到底部
+      mockBuffer.active.viewportY = 176; // maxViewportY
+      act(() => {
+        scrollCallback?.();
+      });
+
+      // viewportY = 176, isAtBottom = true (176 >= 176)
+      expect(onScrollPositionChange).toHaveBeenCalledWith(176, true);
+    });
+
+    it('should trigger onScroll callback after programmatic scrollToBottom', () => {
+      const onScrollPositionChange = vi.fn();
+      const { result } = renderUseTerminal();
+
+      act(() => {
+        result.current.setOnScrollPositionChange(onScrollPositionChange);
+      });
+
+      // 初始状态：中部位置
+      mockBuffer.active.viewportY = 100;
+      act(() => {
+        scrollCallback?.();
+      });
+      expect(onScrollPositionChange).toHaveBeenCalledWith(100, false);
+      onScrollPositionChange.mockClear();
+
+      // 程序化滚动到底部 → scrollToBottom 修改 viewportY
+      mockBuffer.active.viewportY = 176; // scrollToBottom 会导致 xterm 修改 buffer.viewportY
+      act(() => {
+        result.current.scrollToBottom();
+        // xterm 在 scrollToBottom 后会触发 onScroll 回调
+        scrollCallback?.();
+      });
+
+      expect(onScrollPositionChange).toHaveBeenCalledWith(176, true);
+    });
+
+    it('should continue to trigger onScroll after scrollToBottom + scroll again', () => {
+      const onScrollPositionChange = vi.fn();
+      const { result } = renderUseTerminal();
+
+      act(() => {
+        result.current.setOnScrollPositionChange(onScrollPositionChange);
+      });
+
+      // 1. 用户向上滚动
+      mockBuffer.active.viewportY = 100;
+      act(() => {
+        scrollCallback?.();
+      });
+      expect(onScrollPositionChange).toHaveBeenCalledWith(100, false);
+      onScrollPositionChange.mockClear();
+
+      // 2. 点击「滚动到底部」按钮
+      mockBuffer.active.viewportY = 176;
+      act(() => {
+        result.current.scrollToBottom();
+        scrollCallback?.();
+      });
+      expect(onScrollPositionChange).toHaveBeenCalledWith(176, true);
+      onScrollPositionChange.mockClear();
+
+      // 3. 用户再次向上滚动
+      mockBuffer.active.viewportY = 50;
+      act(() => {
+        scrollCallback?.();
+      });
+      // **关键断言**：再次滚动时，回调应该被触发
+      expect(onScrollPositionChange).toHaveBeenCalledWith(50, false);
+    });
   });
 });

@@ -5,6 +5,7 @@
 - ConnectionBanner.tsx: WS 断开时顶部警告横幅，connecting 黄色 / disconnected 红色
 - IpChangeToast.tsx: IP 变化通知弹窗，显示旧 IP → 新 IP 变化，提供"复制新地址"按钮
 - SafeArea.tsx: iOS 安全区域适配容器，paddingTop 使用 env(safe-area-inset-top)
+- WorkspaceSelector.tsx: 工作目录选择器，可搜索过滤 + 智能路径截取（.../parent/current）+ 键盘导航（↑↓/Enter/Esc）
 
 ## input/
 - CommandPicker.tsx: 命令快捷选择器，两行布局（快捷键行 + 命令行），快捷键直接发送 ANSI 序列，命令点击填入输入框

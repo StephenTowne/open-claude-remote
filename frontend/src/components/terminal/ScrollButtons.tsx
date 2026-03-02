@@ -3,6 +3,7 @@ interface ScrollButtonsProps {
   onScrollToBottom: () => void;
   showButtons: boolean;
   isAtBottom: boolean;
+  bottomOffset?: number;
 }
 
 const buttonStyle: React.CSSProperties = {
@@ -26,12 +27,13 @@ export function ScrollButtons({
   onScrollToBottom,
   showButtons,
   isAtBottom,
+  bottomOffset = 60,
 }: ScrollButtonsProps) {
   return (
     <div style={{
       position: 'absolute',
       right: 12,
-      bottom: 60,
+      bottom: bottomOffset,
       display: 'flex',
       flexDirection: 'column',
       gap: 8,

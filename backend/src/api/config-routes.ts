@@ -138,13 +138,11 @@ export function createConfigRoutes(authModule: AuthModule): Router {
 
       // 文件锁保护 read-modify-write，防止与其他模块并发写入冲突
       await withFileLockAsync(CONFIG_LOCK, async () => {
-        // 检查现有配置，保留 token（前端不传 token）
+        // 合并现有配置和新配置（前端可能只发送部分字段）
         const existingConfig = await loadUserConfig();
-        if (existingConfig?.token) {
-          newConfig.token = existingConfig.token;
-        }
+        const mergedConfig = { ...existingConfig, ...newConfig };
 
-        await saveUserConfig(newConfig);
+        await saveUserConfig(mergedConfig);
       });
 
       logger.info({ configPath: CONFIG_FILE }, 'User config updated');

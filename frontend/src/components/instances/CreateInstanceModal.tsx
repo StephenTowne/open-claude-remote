@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getInstanceConfig, createInstance, type InstanceConfigResponse } from '../../services/instance-create-api.js';
+import { WorkspaceSelector } from '../common/WorkspaceSelector.js';
 
 interface CreateInstanceModalProps {
   isOpen: boolean;
@@ -156,37 +157,23 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
             }}>
               工作目录 *
             </label>
-            {hasWorkspaces ? (
-              <select
-                id="cwd-select"
-                value={cwd}
-                onChange={(e) => setCwd(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--bg-tertiary)',
-                  color: 'var(--text-primary)',
-                  fontSize: 14,
-                  boxSizing: 'border-box',
-                }}
-              >
-                <option value="">选择工作目录...</option>
-                {config?.workspaces.map((ws) => (
-                  <option key={ws} value={ws}>{ws}</option>
-                ))}
-              </select>
-            ) : (
-              <div style={{
-                padding: '10px 12px',
-                borderRadius: 8,
-                background: 'var(--bg-tertiary)',
-                color: 'var(--status-error)',
-                fontSize: 13,
+            <WorkspaceSelector
+              id="cwd-select"
+              workspaces={config?.workspaces ?? []}
+              value={cwd}
+              onChange={setCwd}
+              placeholder="选择工作目录…"
+              disabled={!hasWorkspaces}
+            />
+            {!hasWorkspaces && (
+              <p style={{
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                marginTop: 6,
+                opacity: 0.8,
               }}>
-                没有可用的工作目录。请先在配置文件中设置 workspaces，或通过 CLI 启动一个实例。
-              </div>
+                请先在配置文件中设置 workspaces，或通过 CLI 启动一个实例。
+              </p>
             )}
           </div>
 

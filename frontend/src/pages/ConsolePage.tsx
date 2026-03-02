@@ -20,7 +20,7 @@ import { useInstanceStore } from '../stores/instance-store.js';
 import { authenticate } from '../services/api-client.js';
 import { authenticateToInstance, buildInstanceWsUrl } from '../services/instance-api.js';
 
-function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: { wsUrl?: string; instanceId?: string; showCommandPicker: boolean; onIpChanged?: (newIp: string) => void }) {
+function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, onIpChanged }: { wsUrl?: string; instanceId?: string; showCommandPicker: boolean; isKeyboardOpen: boolean; onIpChanged?: (newIp: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputBarRef = useRef<InputBarRef>(null);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
@@ -147,6 +147,9 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
     inputBarRef.current?.setText(command);
   }, []);
 
+  // 计算 ScrollButtons 的底部偏移：CommandPicker 显示时需要更大偏移
+  const scrollButtonsBottom = showCommandPicker ? 156 : 60;
+
   return (
     <>
       <ConnectionBanner />
@@ -158,6 +161,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
           onScrollToBottom={scrollToBottom}
           showButtons={showScrollButtons}
           isAtBottom={isAtBottom}
+          bottomOffset={scrollButtonsBottom}
         />
       </div>
       <CommandPicker
@@ -165,7 +169,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
         onCommandSelect={handleCommandSelect}
         visible={showCommandPicker}
       />
-      <InputBar ref={inputBarRef} onSend={handleSend} />
+      <InputBar ref={inputBarRef} onSend={handleSend} isKeyboardOpen={isKeyboardOpen} />
     </>
   );
 }
@@ -350,6 +354,7 @@ export function ConsolePage() {
         wsUrl={wsUrl}
         instanceId={activeInstanceId ?? undefined}
         showCommandPicker={showCommandPicker}
+        isKeyboardOpen={keyboardHeight > 0}
         onIpChanged={activeInstance?.isCurrent ? handleCurrentInstanceIpChanged : undefined}
       />
       {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}

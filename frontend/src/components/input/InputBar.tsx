@@ -8,17 +8,17 @@ export interface InputBarRef {
 interface InputBarProps {
   onSend: (text: string) => void;
   disabled?: boolean;
+  isKeyboardOpen?: boolean;
 }
 
 export const InputBar = forwardRef<InputBarRef, InputBarProps>(
-  function InputBar({ onSend, disabled }, ref) {
+  function InputBar({ onSend, disabled, isKeyboardOpen }, ref) {
   const [text, setText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({
     setText: (newText: string) => {
       setText(newText);
-      inputRef.current?.focus();
     },
     focus: () => inputRef.current?.focus(),
   }), []);
@@ -45,7 +45,8 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
       display: 'flex',
       alignItems: 'center',
       padding: '8px 12px',
-      paddingBottom: 'calc(8px + var(--safe-bottom))',
+      // 键盘弹出时移除 safe-bottom padding，避免在华为手机上产生空白
+      paddingBottom: isKeyboardOpen ? '8px' : 'calc(8px + var(--safe-bottom))',
       gap: 8,
       flexShrink: 0,
     }}>
@@ -56,6 +57,7 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
+        autoComplete="off"
         placeholder="输入命令或数字选择..."
         style={{
           flex: 1,

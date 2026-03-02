@@ -80,7 +80,7 @@ describe('InputBar', () => {
       expect(document.activeElement).toBe(input);
     });
 
-    it('setText should also focus the input', () => {
+    it('setText should NOT auto-focus the input (mobile-friendly)', () => {
       const onSend = vi.fn();
       const ref = createRef<InputBarRef>();
       render(<InputBar ref={ref} onSend={onSend} />);
@@ -91,12 +91,13 @@ describe('InputBar', () => {
       input.blur();
       expect(document.activeElement).not.toBe(input);
 
-      // setText 同时聚焦（需要使用 act 包裹状态更新）
+      // setText 不应自动聚焦（移动端友好）
       act(() => {
         ref.current?.setText('/clear ');
       });
       expect(input.value).toBe('/clear ');
-      expect(document.activeElement).toBe(input);
+      // 验证焦点没有被自动设置
+      expect(document.activeElement).not.toBe(input);
     });
   });
 });

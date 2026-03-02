@@ -278,4 +278,49 @@ describe('config-routes', () => {
     expect(res.status).toBe(200);
     expect(existsSync(configPath)).toBe(true);
   });
+
+  it('should preserve non-modified config fields when updating (merge, not replace)', async () => {
+    // 这是 bug 的核心测试：前端只发送 shortcuts/commands，不应覆盖其他字段
+    mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        token: 'secret-token',
+        port: 4000,
+        host: '192.168.1.100',
+        instanceName: 'my-instance',
+        claudeCommand: '/usr/local/bin/claude',
+        claudeArgs: ['--verbose'],
+        shortcuts: [],
+        commands: [],
+      }),
+      'utf-8'
+    );
+
+    const cookie = await authenticate();
+    // 前端只发送 shortcuts 和 commands（这在 SettingsModal 中是实际行为）
+    const partialConfig = {
+      shortcuts: [{ label: 'New', data: 'x', enabled: true }],
+      commands: [{ label: 'Cmd', command: 'test', enabled: true }],
+    };
+
+    const res = await fetch(`${baseUrl}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify(partialConfig),
+    });
+
+    expect(res.status).toBe(200);
+
+    // 验证所有字段都被保留（合并而非替换）
+    const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(saved.token).toBe('secret-token');       // 保留
+    expect(saved.port).toBe(4000);                   // 保留（不应被覆盖）
+    expect(saved.host).toBe('192.168.1.100');        // 保留（不应被覆盖）
+    expect(saved.instanceName).toBe('my-instance');  // 保留（不应被覆盖）
+    expect(saved.claudeCommand).toBe('/usr/local/bin/claude'); // 保留
+    expect(saved.claudeArgs).toEqual(['--verbose']); // 保留
+    expect(saved.shortcuts).toHaveLength(1);         // 更新
+    expect(saved.commands).toHaveLength(1);          // 更新
+  });
 });
