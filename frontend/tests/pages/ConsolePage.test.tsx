@@ -30,12 +30,14 @@ vi.mock('../../src/hooks/useInstances.js', () => ({
 const mockWrite = vi.fn((_data: string, callback?: () => void) => {
   callback?.();
 });
+const mockReset = vi.fn();
 const mockScrollToBottom = vi.fn();
 const mockAdaptToPtyCols = vi.fn();
 
 vi.mock('../../src/hooks/useTerminal.js', () => ({
   useTerminal: () => ({
     write: mockWrite,
+    reset: mockReset,
     scrollToBottom: mockScrollToBottom,
     adaptToPtyCols: mockAdaptToPtyCols,
   }),
@@ -516,6 +518,7 @@ describe('ConsolePage', () => {
       });
     });
 
+    expect(mockReset).toHaveBeenCalled(); // history_sync 应先重置终端
     expect(mockAdaptToPtyCols).toHaveBeenCalledWith(208, 50);
     expect(mockWrite).toHaveBeenCalledWith('hello');
     expect(mockScrollToBottom).toHaveBeenCalled();
@@ -533,6 +536,7 @@ describe('ConsolePage', () => {
       });
     });
 
+    expect(mockReset).toHaveBeenCalled(); // history_sync 应先重置终端
     expect(mockAdaptToPtyCols).not.toHaveBeenCalled();
     expect(mockWrite).toHaveBeenCalledWith('hello');
     expect(mockScrollToBottom).toHaveBeenCalled();

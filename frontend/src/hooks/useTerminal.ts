@@ -221,6 +221,10 @@ export function useTerminal(
     termRef.current?.clear();
   }, []);
 
+  const reset = useCallback(() => {
+    termRef.current?.reset();
+  }, []);
+
   const scrollToBottom = useCallback(() => {
     termRef.current?.scrollToBottom();
   }, []);
@@ -229,5 +233,5 @@ export function useTerminal(
     adaptFnRef.current?.(ptyCols, ptyRows);
   }, []);
 
-  return { write, clear, scrollToBottom, adaptToPtyCols, terminal: termRef };
+  return { write, clear, reset, scrollToBottom, adaptToPtyCols, terminal: termRef };
 }

@@ -17,6 +17,9 @@ const mockTermDispose = vi.fn();
 const mockTermLoadAddon = vi.fn();
 const mockTermWrite = vi.fn();
 const mockTermResize = vi.fn();
+const mockTermReset = vi.fn();
+const mockTermClear = vi.fn();
+const mockTermScrollToBottom = vi.fn();
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: vi.fn(() => ({
@@ -25,8 +28,9 @@ vi.mock('@xterm/xterm', () => ({
     options: mockTermOptions,
     unicode: mockUnicodeState,
     write: mockTermWrite,
-    clear: vi.fn(),
-    scrollToBottom: vi.fn(),
+    clear: mockTermClear,
+    reset: mockTermReset,
+    scrollToBottom: mockTermScrollToBottom,
     resize: mockTermResize,
     open: mockTermOpen,
     dispose: mockTermDispose,
@@ -92,6 +96,9 @@ describe('useTerminal', () => {
     mockUnicodeState.activeVersion = '6';
     mockTermWrite.mockReset();
     mockTermResize.mockReset();
+    mockTermReset.mockReset();
+    mockTermClear.mockReset();
+    mockTermScrollToBottom.mockReset();
   });
 
   afterEach(() => {
@@ -156,12 +163,23 @@ describe('useTerminal', () => {
     expect(onResize).toHaveBeenCalledWith(60, 22);
   });
 
-  it('should return write, clear, scrollToBottom functions', () => {
+  it('should return write, clear, reset, scrollToBottom functions', () => {
     const { result } = renderUseTerminal();
 
     expect(typeof result.current.write).toBe('function');
     expect(typeof result.current.clear).toBe('function');
+    expect(typeof result.current.reset).toBe('function');
     expect(typeof result.current.scrollToBottom).toBe('function');
+  });
+
+  it('reset should call terminal.reset()', () => {
+    const { result } = renderUseTerminal();
+
+    act(() => {
+      result.current.reset();
+    });
+
+    expect(mockTermReset).toHaveBeenCalledOnce();
   });
 
   it('should report initial size through requestAnimationFrame callback', () => {

@@ -30,6 +30,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
   const sendRef = useRef<ReturnType<typeof useWebSocket>['send'] | null>(null);
   // 初始值为 no-op，在 useTerminal 返回真实函数后立即更新
   const writeRef = useRef((_data: string, _cb?: () => void) => {});
+  const resetRef = useRef(() => {});
   const scrollToBottomRef = useRef(() => {});
   const adaptToPtyColsRef = useRef((_cols: number, _rows?: number) => {});
 
@@ -39,6 +40,8 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
         writeRef.current(msg.data);
         break;
       case 'history_sync':
+        // 重置终端状态，避免重连时内容叠加
+        resetRef.current();
         if (msg.cols && msg.cols > 0) {
           adaptToPtyColsRef.current(msg.cols, msg.rows);
         }
@@ -85,7 +88,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
   const { connect, send } = useWebSocket(handleMessage, wsUrl, instanceId);
   sendRef.current = send;
 
-  const { write, scrollToBottom, adaptToPtyCols } = useTerminal(
+  const { write, reset, scrollToBottom, adaptToPtyCols } = useTerminal(
     containerRef,
     useCallback((cols: number, rows: number) => {
       return sendRef.current?.({ type: 'resize', cols, rows }) ?? false;
@@ -93,6 +96,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, onIpChanged }: {
   );
 
   writeRef.current = write;
+  resetRef.current = reset;
   scrollToBottomRef.current = scrollToBottom;
   adaptToPtyColsRef.current = adaptToPtyCols;
 
