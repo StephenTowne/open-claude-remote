@@ -141,6 +141,9 @@ export function useTerminal(
 
     const adaptToPtySizeInner = (_ptyCols: number, _ptyRows?: number) => {
       fitAddon.fit();
+      // 主动上报 resize，确保 PTY 了解当前终端尺寸
+      // 这在 history_sync 后尤为重要：移动端连接时需要让 PTY 调整到移动端的实际尺寸
+      emitResize(term.cols, term.rows);
     };
     adaptFnRef.current = adaptToPtySizeInner;
 

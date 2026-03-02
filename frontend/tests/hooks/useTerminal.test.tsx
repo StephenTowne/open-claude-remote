@@ -339,7 +339,7 @@ describe('useTerminal', () => {
     expect(mockTermResize).not.toHaveBeenCalled();
   });
 
-  it('should still trigger onResize from ResizeObserver after adaptToPtyCols is called', () => {
+  it('adaptToPtyCols should emit resize after fit', () => {
     const onResize = vi.fn();
 
     mockFitAddonFit.mockImplementation(() => {
@@ -350,18 +350,76 @@ describe('useTerminal', () => {
     const { result } = renderUseTerminal(onResize);
     onResize.mockClear();
 
-    // adaptToPtyCols（不再进入 mobile mode）
+    // adaptToPtyCols 应该立即发送 resize
     act(() => {
       result.current.adaptToPtyCols(200);
     });
+
+    expect(onResize).toHaveBeenCalledWith(42, 33);
+  });
+
+  it('should NOT emit duplicate resize when ResizeObserver triggers after adaptToPtyCols with same size', () => {
+    const onResize = vi.fn();
+
+    mockFitAddonFit.mockImplementation(() => {
+      mockTermState.cols = 42;
+      mockTermState.rows = 33;
+    });
+
+    const { result } = renderUseTerminal(onResize);
     onResize.mockClear();
 
-    // ResizeObserver 触发 → 应正常上报 resize
+    // adaptToPtyCols 发送第一次 resize (42, 33)
+    act(() => {
+      result.current.adaptToPtyCols(200);
+    });
+    expect(onResize).toHaveBeenCalledTimes(1);
+    onResize.mockClear();
+
+    // ResizeObserver 触发，但尺寸相同，不应重复发送
     act(() => {
       resizeObserverCallback?.();
     });
 
+    expect(onResize).not.toHaveBeenCalled();
+  });
+
+  it('should emit resize from ResizeObserver when size changes significantly after adaptToPtyCols', async () => {
+    vi.useFakeTimers();
+
+    const onResize = vi.fn();
+
+    mockFitAddonFit.mockImplementation(() => {
+      mockTermState.cols = 42;
+      mockTermState.rows = 33;
+    });
+
+    const { result } = renderUseTerminal(onResize);
+    onResize.mockClear();
+
+    // adaptToPtyCols 发送第一次 resize (42, 33)
+    act(() => {
+      result.current.adaptToPtyCols(200);
+    });
     expect(onResize).toHaveBeenCalledWith(42, 33);
+    onResize.mockClear();
+
+    // 等待 throttle 窗口过去
+    await vi.advanceTimersByTimeAsync(100);
+
+    // 模拟 ResizeObserver 触发时尺寸变化（fit 后变成新尺寸）
+    mockFitAddonFit.mockImplementation(() => {
+      mockTermState.cols = 50;
+      mockTermState.rows = 20;
+    });
+
+    act(() => {
+      resizeObserverCallback?.();
+    });
+
+    expect(onResize).toHaveBeenCalledWith(50, 20);
+
+    vi.useRealTimers();
   });
 
   it('should call fitAddon.fit() from ResizeObserver after adaptToPtyCols', () => {
