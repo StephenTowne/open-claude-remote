@@ -129,6 +129,12 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
     inputBarRef.current?.setText(command);
   }, []);
 
+  // 命令发送处理：直接发送给 PTY
+  const handleCommandSend = useCallback((command: string) => {
+    send({ type: 'user_input', data: command });
+    send({ type: 'user_input', data: '\r' });
+  }, [send]);
+
   return (
     <>
       <ConnectionBanner />
@@ -139,6 +145,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
       <CommandPicker
         onShortcut={handleKeyPress}
         onCommandSelect={handleCommandSelect}
+        onCommandSend={handleCommandSend}
         visible={showCommandPicker}
       />
       <InputBar ref={inputBarRef} onSend={handleSend} isKeyboardOpen={isKeyboardOpen} />
@@ -320,14 +327,16 @@ export function ConsolePage() {
       <StatusBar />
       <InstanceTabs onSwitch={handleInstanceSwitch} />
       {/* key=activeInstanceId 强制 React 重建整个终端+WS */}
-      <ConsoleContent
-        key={`${activeInstanceId ?? 'default'}:${effectiveHost ?? 'none'}`}
-        wsUrl={wsUrl}
-        instanceId={activeInstanceId ?? undefined}
-        showCommandPicker={showCommandPicker}
-        isKeyboardOpen={keyboardHeight > 0}
-        onIpChanged={activeInstance?.isCurrent ? handleCurrentInstanceIpChanged : undefined}
-      />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <ConsoleContent
+          key={`${activeInstanceId ?? 'default'}:${effectiveHost ?? 'none'}`}
+          wsUrl={wsUrl}
+          instanceId={activeInstanceId ?? undefined}
+          showCommandPicker={showCommandPicker}
+          isKeyboardOpen={keyboardHeight > 0}
+          onIpChanged={activeInstance?.isCurrent ? handleCurrentInstanceIpChanged : undefined}
+        />
+      </div>
       {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}
       <OnboardingGuide />
     </div>

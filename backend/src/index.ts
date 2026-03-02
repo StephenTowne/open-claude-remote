@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import { CLAUDE_REMOTE_DIR, SETTINGS_DIR } from '@claude-remote/shared';
-import { loadConfig, createSessionCookieName, createClaudeSettings, extractSettingsFromArgs, saveClaudeSettings, type CliOverrides } from './config.js';
+import { loadConfig, createSessionCookieName, createClaudeSettings, extractSettingsFromArgs, saveClaudeSettings, ensureDefaultUserConfig, type CliOverrides } from './config.js';
 import { AuthModule } from './auth/auth-middleware.js';
 import { PtyManager } from './pty/pty-manager.js';
 import { WsServer } from './ws/ws-server.js';
@@ -29,6 +29,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   const config = loadConfig(cliOverrides);
 
   const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+
+  // 1.5. Ensure default shortcuts/commands in user config
+  await ensureDefaultUserConfig();
 
   // 2. Shared config directory and token
   const sharedConfigDir = resolve(homedir(), CLAUDE_REMOTE_DIR);

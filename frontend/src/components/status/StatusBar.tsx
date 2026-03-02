@@ -19,7 +19,6 @@ const CONNECTION_CONFIG = {
 export function StatusBar() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const sessionStatus = useAppStore((s) => s.sessionStatus);
-  const instances = useInstanceStore((s) => s.instances);
   const activeInstanceId = useInstanceStore((s) => s.activeInstanceId);
   const connectionStatus = useAppStore((s) => {
     if (!activeInstanceId) {
@@ -30,8 +29,6 @@ export function StatusBar() {
 
   const statusCfg = STATUS_CONFIG[sessionStatus];
   const connCfg = CONNECTION_CONFIG[connectionStatus];
-  const activeInstance = instances.find(i => i.instanceId === activeInstanceId);
-  const instanceName = activeInstance?.name;
 
   return (
     <>
@@ -58,26 +55,9 @@ export function StatusBar() {
             fontSize: 13,
             fontWeight: 600,
             color: 'var(--text-primary)',
-            flexShrink: 0,
           }}>
             Claude Remote
           </span>
-          {instanceName && (
-            <span
-              title={instanceName}
-              style={{
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                minWidth: 0,
-                maxWidth: '200px',
-              }}
-            >
-              / {instanceName}
-            </span>
-          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -101,8 +81,8 @@ export function StatusBar() {
             onClick={() => setSettingsOpen(true)}
             aria-label="设置"
             style={{
-              width: 28,
-              height: 28,
+              width: 32,
+              height: 32,
               borderRadius: 6,
               border: 'none',
               background: 'transparent',
@@ -111,7 +91,7 @@ export function StatusBar() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 16,
+              fontSize: 18,
             }}
           >
             ⚙

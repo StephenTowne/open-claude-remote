@@ -13,9 +13,11 @@ import {
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { detectLanIp, detectNonLoopbackIp } from './utils/network.js';
 import { logger } from './logger/logger.js';
+import { withFileLockAsync } from './utils/file-lock.js';
 
 /**
  * 用户配置文件结构 (~/.claude-remote/config.json)
@@ -290,6 +292,91 @@ export function saveClaudeSettings(
 
   logger.info({ settingsPath, port }, 'Claude settings saved to file');
   return settingsPath;
+}
+
+/**
+ * 确保用户配置文件包含默认的 shortcuts 和 commands
+ * - 配置文件不存在时创建
+ * - shortcuts 或 commands 缺失或为空数组时写入默认值
+ * - 使用文件锁保护并发写入
+ *
+ * @param configDir 配置目录路径 (默认: ~/.claude-remote/)
+ * @returns shortcutsWritten/commandsWritten 是否写入了默认值
+ */
+export async function ensureDefaultUserConfig(configDir?: string): Promise<{
+  shortcutsWritten: boolean;
+  commandsWritten: boolean;
+}> {
+  const dir = configDir ?? getUserConfigDir();
+  const configPath = resolve(dir, CONFIG_FILENAME);
+  const lockPath = `${configPath}.lock`;
+
+  const result = { shortcutsWritten: false, commandsWritten: false };
+
+  try {
+    await withFileLockAsync(lockPath, async () => {
+      // 确保配置目录存在
+      if (!existsSync(dir)) {
+        await mkdir(dir, { recursive: true, mode: 0o700 });
+      }
+
+      // 读取现有配置（使用 try-catch 处理文件不存在和解析错误）
+      let config: UserConfig;
+      let needsWrite = false;
+
+      try {
+        const content = await readFile(configPath, 'utf-8');
+        config = JSON.parse(content) as UserConfig;
+      } catch (err: any) {
+        if (err.code === 'ENOENT') {
+          // 文件不存在，使用空对象
+          config = {};
+        } else if (err instanceof SyntaxError) {
+          // JSON 解析失败，备份损坏文件后覆盖默认值
+          const backupPath = `${configPath}.backup-${Date.now()}`;
+          try {
+            const corruptContent = await readFile(configPath, 'utf-8');
+            await writeFile(backupPath, corruptContent, { mode: 0o600 });
+            logger.warn({ configPath, backupPath }, 'Failed to parse user config, backed up corrupt file and overwriting with defaults');
+          } catch (backupErr) {
+            logger.warn({ configPath, backupErr }, 'Failed to backup corrupt config file, proceeding with defaults');
+          }
+          config = {};
+        } else {
+          throw err;
+        }
+      }
+
+      // 检查 shortcuts
+      if (!config.shortcuts || config.shortcuts.length === 0) {
+        config.shortcuts = DEFAULT_SHORTCUTS;
+        result.shortcutsWritten = true;
+        needsWrite = true;
+      }
+
+      // 检查 commands
+      if (!config.commands || config.commands.length === 0) {
+        config.commands = DEFAULT_COMMANDS;
+        result.commandsWritten = true;
+        needsWrite = true;
+      }
+
+      // 写入配置（如果需要）
+      if (needsWrite) {
+        await writeFile(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+        logger.info({
+          configPath,
+          shortcutsWritten: result.shortcutsWritten,
+          commandsWritten: result.commandsWritten,
+        }, 'Default shortcuts/commands written to user config');
+      }
+    });
+  } catch (err) {
+    // 失败时记录日志但不阻塞启动
+    logger.warn({ configPath, err }, 'Failed to ensure default user config, continuing startup');
+  }
+
+  return result;
 }
 
 /**

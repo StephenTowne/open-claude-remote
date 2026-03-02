@@ -87,12 +87,12 @@ export function InstanceTabs({ onSwitch }: InstanceTabsProps) {
           onClick={() => setIsCreateModalOpen(true)}
           aria-label="创建新实例"
           style={{
-            padding: '8px 12px',
+            padding: '10px 16px',
             background: 'transparent',
             border: 'none',
             borderLeft: showTabs ? '1px solid var(--border-color)' : 'none',
             color: 'var(--text-secondary)',
-            fontSize: 16,
+            fontSize: 20,
             fontWeight: 600,
             cursor: 'pointer',
             whiteSpace: 'nowrap',

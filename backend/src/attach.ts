@@ -124,6 +124,14 @@ export async function attachInstance(options: AttachOptions): Promise<void> {
     process.stdout.write(data);
   });
 
+  // 处理服务端 resize 通知 → 发送本地终端尺寸
+  // 当 WebApp 断开时，服务端广播 terminal_resize，让 attach 用真实尺寸响应
+  virtualPty.on('server_resize', () => {
+    const cols = process.stdout.columns ?? 80;
+    const rows = process.stdout.rows ?? 24;
+    virtualPty.resize(cols, rows);
+  });
+
   // 处理连接关闭
   virtualPty.on('exit', (_exitCode: number) => {
     console.log('\n连接已关闭');

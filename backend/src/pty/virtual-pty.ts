@@ -83,9 +83,12 @@ export class VirtualPtyManager extends EventEmitter implements IPtyManager {
                   // 通知本地终端调整尺寸
                   this.emit('resize', msg.cols, msg.rows);
                 }
+                // emit server_resize 事件，让 attach.ts 用真实终端尺寸响应
+                // 这在 WebApp 断开后特别重要：让 PTY 恢复到 attach 终端的尺寸
+                this.emit('server_resize', msg.cols, msg.rows);
                 logger.info(
                   { cols: msg.cols, rows: msg.rows },
-                  'VirtualPtyManager: synced size from webapp (master)'
+                  'VirtualPtyManager: synced size from server'
                 );
               }
               break;

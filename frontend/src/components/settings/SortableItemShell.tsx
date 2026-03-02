@@ -8,6 +8,12 @@ interface SortableItemShellProps {
   onToggle: () => void;
   onDelete: () => void;
   children: ReactNode;
+  secondaryToggle?: {
+    enabled: boolean;
+    onToggle: () => void;
+    ariaLabel: string;
+    label?: string; // 可选的视觉标签，用于说明开关含义
+  };
 }
 
 /**
@@ -20,6 +26,7 @@ export function SortableItemShell({
   onToggle,
   onDelete,
   children,
+  secondaryToggle,
 }: SortableItemShellProps) {
   const {
     attributes,
@@ -96,6 +103,49 @@ export function SortableItemShell({
           background: '#fff',
         }} />
       </button>
+
+      {/* 第二个开关（如 autoSend） */}
+      {secondaryToggle && (
+        <>
+          {secondaryToggle.label && (
+            <span
+              style={{
+                fontSize: 11,
+                color: 'var(--text-muted)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {secondaryToggle.label}
+            </span>
+          )}
+          <button
+            role="switch"
+            aria-checked={secondaryToggle.enabled}
+            aria-label={secondaryToggle.ariaLabel}
+            onClick={secondaryToggle.onToggle}
+            style={{
+              width: 32,
+              height: 20,
+              borderRadius: 10,
+              border: 'none',
+              background: secondaryToggle.enabled ? 'var(--status-running)' : 'var(--bg-primary)',
+              cursor: 'pointer',
+              position: 'relative',
+              flexShrink: 0,
+            }}
+          >
+            <span style={{
+              position: 'absolute',
+              top: 2,
+              left: secondaryToggle.enabled ? 14 : 2,
+              width: 16,
+              height: 16,
+              borderRadius: '50%',
+              background: '#fff',
+            }} />
+          </button>
+        </>
+      )}
 
       {/* 中间内容（由调用者提供） */}
       {children}

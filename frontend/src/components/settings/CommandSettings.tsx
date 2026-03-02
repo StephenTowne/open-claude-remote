@@ -75,9 +75,18 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
     onChange(sortByEnabled(newCommands));
   };
 
+  const toggleAutoSend = (index: number) => {
+    const newCommands = [...commands];
+    newCommands[index] = {
+      ...newCommands[index],
+      autoSend: !(newCommands[index].autoSend ?? true),
+    };
+    onChange(newCommands);
+  };
+
   const addCommand = () => {
-    // 新项添加到列表开头，enabled: true，排序后自然在最前面
-    const newCommands: WithId<ConfigurableCommand>[] = [{ label: '/new', command: '/new', enabled: true, _id: generateId() }, ...commands];
+    // 新项添加到列表开头，enabled: true，autoSend: true（默认），排序后自然在最前面
+    const newCommands: WithId<ConfigurableCommand>[] = [{ label: '/new', command: '/new', enabled: true, autoSend: true, _id: generateId() }, ...commands];
     onChange(sortByEnabled(newCommands));
     // 自动开始编辑新添加的项（索引 0）
     setEditingIndex(0);
@@ -157,6 +166,12 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
               enabled={cmd.enabled}
               onToggle={() => toggleEnabled(index)}
               onDelete={() => deleteCommand(index)}
+              secondaryToggle={{
+                enabled: cmd.autoSend ?? true,
+                onToggle: () => toggleAutoSend(index),
+                ariaLabel: cmd.autoSend ?? true ? '自动发送已开启，点击关闭' : '自动发送已关闭，点击开启',
+                label: '自动发送',
+              }}
             >
               {/* 命令输入/显示 */}
               {editingIndex === index ? (

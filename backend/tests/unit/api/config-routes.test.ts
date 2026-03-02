@@ -198,6 +198,54 @@ describe('config-routes', () => {
       body: JSON.stringify({ port: 'invalid' }),
     });
     expect(res.status).toBe(400);
+
+    // autoSend 不是布尔值
+    res = await fetch(`${baseUrl}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        shortcuts: [],
+        commands: [{ label: 'Test', command: '/test', enabled: true, autoSend: 'invalid' }],
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('should accept commands with valid autoSend field', async () => {
+    const cookie = await authenticate();
+
+    // autoSend: true
+    let res = await fetch(`${baseUrl}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        shortcuts: [],
+        commands: [{ label: 'Test', command: '/test', enabled: true, autoSend: true }],
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    // autoSend: false
+    res = await fetch(`${baseUrl}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        shortcuts: [],
+        commands: [{ label: 'Test', command: '/test', enabled: true, autoSend: false }],
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    // autoSend 缺失（向后兼容）
+    res = await fetch(`${baseUrl}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        shortcuts: [],
+        commands: [{ label: 'Test', command: '/test', enabled: true }],
+      }),
+    });
+    expect(res.status).toBe(200);
   });
 
   it('should save valid config', async () => {

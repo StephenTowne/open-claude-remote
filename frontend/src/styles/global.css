@@ -117,3 +117,9 @@ button {
   pointer-events: none;
   user-select: none;
 }
+
+/* Force xterm.js to fill its container */
+.xterm {
+  height: 100%;
+  width: 100%;
+}

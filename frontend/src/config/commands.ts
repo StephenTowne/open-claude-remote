@@ -14,11 +14,12 @@ export interface ShortcutKey {
 }
 
 /**
- * 命令 - 点击填入输入框
+ * 命令 - 点击填入输入框或直接发送
  */
 export interface CommandItem {
   label: string;   // 显示文本
   command: string; // 实际命令
+  autoSend?: boolean; // true=点击直接发送（默认），false=填入输入框
 }
 
 /**

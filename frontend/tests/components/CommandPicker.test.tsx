@@ -11,10 +11,12 @@ vi.mock('../../src/services/api-client.js', () => ({
 describe('CommandPicker', () => {
   const mockOnShortcut = vi.fn();
   const mockOnCommandSelect = vi.fn();
+  const mockOnCommandSend = vi.fn();
 
   beforeEach(() => {
     mockOnShortcut.mockClear();
     mockOnCommandSelect.mockClear();
+    mockOnCommandSend.mockClear();
     // 默认返回 null 配置，使用默认值
     vi.mocked(apiClient.getUserConfig).mockResolvedValue({
       config: null,
@@ -31,6 +33,7 @@ describe('CommandPicker', () => {
       <CommandPicker
         onShortcut={mockOnShortcut}
         onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
         visible={false}
       />
     );
@@ -43,6 +46,7 @@ describe('CommandPicker', () => {
       <CommandPicker
         onShortcut={mockOnShortcut}
         onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
         visible={true}
       />
     );
@@ -57,6 +61,7 @@ describe('CommandPicker', () => {
       <CommandPicker
         onShortcut={mockOnShortcut}
         onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
       />
     );
 
@@ -76,6 +81,7 @@ describe('CommandPicker', () => {
       <CommandPicker
         onShortcut={mockOnShortcut}
         onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
       />
     );
 
@@ -95,6 +101,7 @@ describe('CommandPicker', () => {
       <CommandPicker
         onShortcut={mockOnShortcut}
         onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
       />
     );
 
@@ -115,11 +122,12 @@ describe('CommandPicker', () => {
     expect(mockOnShortcut).toHaveBeenCalledWith('\x1b[Z');
   });
 
-  it('点击命令按钮调用 onCommandSelect 并添加空格', async () => {
+  it('点击命令按钮默认调用 onCommandSend（autoSend=true）', async () => {
     render(
       <CommandPicker
         onShortcut={mockOnShortcut}
         onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
       />
     );
 
@@ -127,17 +135,13 @@ describe('CommandPicker', () => {
       expect(screen.getByText('/clear')).toBeDefined();
     });
 
-    // 点击 /clear
+    // 点击 /clear - 默认 autoSend=true，应该调用 onCommandSend
     fireEvent.click(screen.getByText('/clear'));
-    expect(mockOnCommandSelect).toHaveBeenCalledWith('/clear ');
+    expect(mockOnCommandSend).toHaveBeenCalledWith('/clear');
 
     // 点击 /compact
     fireEvent.click(screen.getByText('/compact'));
-    expect(mockOnCommandSelect).toHaveBeenCalledWith('/compact ');
-
-    // 点击 /resume
-    fireEvent.click(screen.getByText('/resume'));
-    expect(mockOnCommandSelect).toHaveBeenCalledWith('/resume ');
+    expect(mockOnCommandSend).toHaveBeenCalledWith('/compact');
   });
 
   it('快捷键按钮阻止默认的 mousedown 行为', async () => {
@@ -145,6 +149,7 @@ describe('CommandPicker', () => {
       <CommandPicker
         onShortcut={mockOnShortcut}
         onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
       />
     );
 
@@ -168,6 +173,7 @@ describe('CommandPicker', () => {
       <CommandPicker
         onShortcut={mockOnShortcut}
         onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
       />
     );
 
@@ -196,6 +202,7 @@ describe('CommandPicker', () => {
       <CommandPicker
         onShortcut={mockOnShortcut}
         onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
       />
     );
 
@@ -239,6 +246,7 @@ describe('CommandPicker', () => {
       <CommandPicker
         onShortcut={mockOnShortcut}
         onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
       />
     );
 
@@ -252,5 +260,40 @@ describe('CommandPicker', () => {
       // /clear 禁用，不应该显示
       expect(screen.queryByText('/clear')).toBeNull();
     });
+  });
+
+  it('autoSend=false 时点击命令调用 onCommandSelect 并添加空格', async () => {
+    // Mock 返回自定义配置，包含 autoSend=false
+    vi.mocked(apiClient.getUserConfig).mockResolvedValue({
+      config: {
+        shortcuts: [],
+        commands: [
+          { label: '/help', command: '/help', enabled: true, autoSend: false },
+          { label: '/clear', command: '/clear', enabled: true, autoSend: true },
+        ],
+      },
+      configPath: '/test/config.json',
+    });
+
+    render(
+      <CommandPicker
+        onShortcut={mockOnShortcut}
+        onCommandSelect={mockOnCommandSelect}
+        onCommandSend={mockOnCommandSend}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('/help')).toBeDefined();
+    });
+
+    // /help 的 autoSend=false，应该调用 onCommandSelect
+    fireEvent.click(screen.getByText('/help'));
+    expect(mockOnCommandSelect).toHaveBeenCalledWith('/help ');
+    expect(mockOnCommandSend).not.toHaveBeenCalled();
+
+    // /clear 的 autoSend=true，应该调用 onCommandSend
+    fireEvent.click(screen.getByText('/clear'));
+    expect(mockOnCommandSend).toHaveBeenCalledWith('/clear');
   });
 });

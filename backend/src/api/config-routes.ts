@@ -66,6 +66,7 @@ function validateConfigStructure(config: unknown): config is UserConfig {
         return false;
       }
       if (c.desc !== undefined && typeof c.desc !== 'string') return false;
+      if (c.autoSend !== undefined && typeof c.autoSend !== 'boolean') return false;
     }
   }
 

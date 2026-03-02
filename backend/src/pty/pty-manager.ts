@@ -100,6 +100,8 @@ export class PtyManager extends EventEmitter {
    */
   resize(cols: number, rows: number): void {
     if (!this.process) return;
+    // 避免重复 resize，防止无限循环
+    if (cols === this._cols && rows === this._rows) return;
     try {
       this.process.resize(cols, rows);
       this._cols = cols;

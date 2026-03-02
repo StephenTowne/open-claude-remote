@@ -3,7 +3,8 @@ import { useUserConfig } from '../../hooks/useUserConfig.js';
 
 interface CommandPickerProps {
   onShortcut: (data: string) => void;         // 快捷键点击回调
-  onCommandSelect: (command: string) => void; // 命令点击回调
+  onCommandSelect: (command: string) => void; // 命令点击回调（填入输入框）
+  onCommandSend: (command: string) => void;   // 命令点击回调（直接发送）
   visible?: boolean;
 }
 
@@ -83,11 +84,11 @@ function handleButtonClick<T>(
 /**
  * 命令选择器组件
  * - 快捷键行：点击直接发送 ANSI 控制字符
- * - 命令行：点击填入输入框 + 空格
+ * - 命令行：根据 autoSend 决定是直接发送还是填入输入框
  *
  * 配置从 ~/.claude-remote/config.json 加载
  */
-export function CommandPicker({ onShortcut, onCommandSelect, visible = true }: CommandPickerProps) {
+export function CommandPicker({ onShortcut, onCommandSelect, onCommandSend, visible = true }: CommandPickerProps) {
   const { shortcuts, commands, isLoading } = useUserConfig();
 
   if (!visible || isLoading) {
@@ -142,22 +143,31 @@ export function CommandPicker({ onShortcut, onCommandSelect, visible = true }: C
         scrollbarWidth: 'none',
         msOverflowStyle: 'none',
       }}>
-        {commands.map((cmd) => (
-          <button
-            key={cmd.label}
-            type="button"
-            className="cmd-picker-btn"
-            onClick={(e) => handleButtonClick(e, onCommandSelect, cmd.command + ' ')}
-            onTouchStart={handleButtonTouchStart}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              handleButtonTouchStart();
-            }}
-            style={commandButtonStyle}
-          >
-            {cmd.label}
-          </button>
-        ))}
+        {commands.map((cmd) => {
+          const shouldAutoSend = cmd.autoSend ?? true;
+          return (
+            <button
+              key={cmd.label}
+              type="button"
+              className="cmd-picker-btn"
+              onClick={(e) => {
+                if (shouldAutoSend) {
+                  handleButtonClick(e, onCommandSend, cmd.command);
+                } else {
+                  handleButtonClick(e, onCommandSelect, cmd.command + ' ');
+                }
+              }}
+              onTouchStart={handleButtonTouchStart}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleButtonTouchStart();
+              }}
+              style={commandButtonStyle}
+            >
+              {cmd.label}
+            </button>
+          );
+        })}
       </div>
 
       <style>{`

@@ -271,7 +271,7 @@ cp config.example.json ~/.claude-remote/config.json
 
 ### 自定义命令 (commands)
 
-自定义命令显示在快捷栏的命令区域，点击后直接发送到终端。
+自定义命令显示在快捷栏的命令区域。
 
 **当配置文件中未定义 `commands` 字段时，API 返回时自动填充以下默认值：**
 
@@ -295,17 +295,19 @@ cp config.example.json ~/.claude-remote/config.json
   "commands": [
     { "label": "/help", "command": "/help", "enabled": true, "desc": "帮助说明" },
     { "label": "/clear", "command": "/clear", "enabled": true },
+    { "label": "Git Status", "command": "git status", "enabled": true, "autoSend": false, "desc": "填入输入框编辑后发送" },
     { "label": "/feature-dev:feature-dev", "command": "/feature-dev:feature-dev", "enabled": false, "desc": "启动feature-dev SKILL" }
   ]
 }
 ```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `label` | string | 按钮显示名称 |
-| `command` | string | 要执行的命令 |
-| `enabled` | boolean | 是否启用 |
-| `desc` | string | 描述（可选） |
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `label` | string | - | 按钮显示名称 |
+| `command` | string | - | 要执行的命令 |
+| `enabled` | boolean | - | 是否启用 |
+| `autoSend` | boolean | `true` | `true`=点击直接发送，`false`=填入输入框 |
+| `desc` | string | - | 描述（可选） |
 
 ### 工作区白名单 (workspaces)
 
