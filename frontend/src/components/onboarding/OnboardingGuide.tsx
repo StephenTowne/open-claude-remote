@@ -10,19 +10,39 @@ interface Step {
 const STEPS: Step[] = [
   {
     title: '欢迎使用 Claude Code Remote',
-    description: '这是一个让你用手机远程掌控 PC 终端的工具。Claude Code 运行在你的 PC 上，你可以在任何地方通过手机访问它。',
+    description: '这是一个让你用手机远程掌控 PC 终端的工具。Claude Code 运行在你的 PC 上，你可以在任何地方通过手机访问它。支持 ANSI 颜色渲染，保持完整的终端体验。',
   },
   {
-    title: '终端区域',
-    description: '这里会实时显示 Claude Code 的输出内容，就像在 PC 终端里一样。支持 ANSI 颜色渲染和滚动。',
+    title: '终端显示区',
+    description: '这里实时显示 Claude Code 的输出内容，就像在 PC 终端里一样。右上角的 ↑↓ 按钮可以快速滚动到顶部或底部，支持 10,000 行历史记录回滚。',
   },
   {
-    title: '快捷按键与命令',
-    description: '底部区域提供常用快捷键（如 Esc、方向键）和命令。点击即可发送，无需在手机上输入复杂按键。',
+    title: '命令输入框',
+    description: '在底部输入框中输入命令或消息，按 Enter 发送。Claude 会根据你的输入继续工作。',
   },
   {
-    title: '多实例切换',
-    description: '如果你同时运行多个 Claude Code 实例，可以通过顶部标签页快速切换。每个实例独立连接和管理。',
+    title: '快捷按键栏 (1/2)',
+    description: '底部横栏提供常用快捷键：Esc 取消操作、Enter 继续执行、Tab 补全。点击即可发送，无需在手机键盘上输入复杂按键组合。',
+  },
+  {
+    title: '快捷按键栏 (2/2)',
+    description: '方向键用于在选项间移动，Ctrl+C 可中断当前操作。这些按键让远程操作更便捷。',
+  },
+  {
+    title: '斜杠命令',
+    description: '输入 /help 查看 Claude 帮助，/clear 清空终端，/compact 压缩对话上下文。还有 /review、/init 等命令可用。',
+  },
+  {
+    title: '状态指示器',
+    description: '顶部状态栏显示当前会话状态：Idle（空闲）、Running（执行中）、Waiting Input（等待审批）。理解状态帮助你把握 Claude 的工作进度。',
+  },
+  {
+    title: '工具审批',
+    description: '当 Claude 需要使用敏感工具时，会请求你的批准。此时状态变为黄色，在输入框输入 y 确认或按 Esc 拒绝。',
+  },
+  {
+    title: '多实例与设置',
+    description: '如果你运行多个 Claude Code 实例，可通过顶部标签页切换。点击状态栏的 ⚙️ 按钮可以自定义快捷键和命令。',
   },
 ];
 
