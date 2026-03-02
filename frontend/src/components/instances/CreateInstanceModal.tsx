@@ -10,7 +10,6 @@ interface CreateInstanceModalProps {
 export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstanceModalProps) {
   const [config, setConfig] = useState<InstanceConfigResponse | null>(null);
   const [cwd, setCwd] = useState('');
-  const [customCwd, setCustomCwd] = useState('');
   const [name, setName] = useState('');
   const [claudeArgs, setClaudeArgs] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,7 +21,6 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
       loadConfig();
       // 重置表单
       setCwd('');
-      setCustomCwd('');
       setName('');
       setClaudeArgs('');
       setError(null);
@@ -44,9 +42,8 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
   };
 
   const handleSubmit = async () => {
-    const finalCwd = cwd === '__custom__' ? customCwd : cwd;
-    if (!finalCwd) {
-      setError('请选择或输入工作目录');
+    if (!cwd) {
+      setError('请选择工作目录');
       return;
     }
 
@@ -59,13 +56,13 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
         : undefined;
 
       await createInstance({
-        cwd: finalCwd,
+        cwd,
         name: name.trim() || undefined,
         claudeArgs: args,
       });
 
       // 计算新实例名称（与 instance-spawner.ts 逻辑一致）
-      const newInstanceName = name.trim() || finalCwd.split('/').pop() || 'unknown';
+      const newInstanceName = name.trim() || cwd.split('/').pop() || 'unknown';
       onSuccess(newInstanceName);
       onClose();
     } catch (err) {
@@ -133,6 +130,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               fontSize: 20,
               cursor: 'pointer',
             }}
+            aria-label="关闭"
           >
             ×
           </button>
@@ -149,7 +147,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
         }}>
           {/* 工作目录选择 */}
           <div>
-            <label style={{
+            <label htmlFor="cwd-select" style={{
               display: 'block',
               fontSize: 13,
               fontWeight: 500,
@@ -159,56 +157,10 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               工作目录 *
             </label>
             {hasWorkspaces ? (
-              <>
-                <select
-                  value={cwd}
-                  onChange={(e) => setCwd(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--bg-tertiary)',
-                    color: 'var(--text-primary)',
-                    fontSize: 14,
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  <option value="">选择工作目录...</option>
-                  {config?.workspaces.map((ws) => (
-                    <option key={ws} value={ws}>{ws}</option>
-                  ))}
-                  <option value="__custom__">自定义路径...</option>
-                </select>
-                {cwd === '__custom__' && (
-                  <input
-                    type="text"
-                    value={customCwd}
-                    onChange={(e) => setCustomCwd(e.target.value)}
-                    placeholder="输入工作目录的绝对路径"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      marginTop: 8,
-                      borderRadius: 8,
-                      border: '1px solid var(--border-color)',
-                      background: 'var(--bg-tertiary)',
-                      color: 'var(--text-primary)',
-                      fontSize: 14,
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                )}
-              </>
-            ) : (
-              <input
-                type="text"
-                value={cwd === '__custom__' ? customCwd : cwd}
-                onChange={(e) => {
-                  setCwd('__custom__');
-                  setCustomCwd(e.target.value);
-                }}
-                placeholder="输入工作目录的绝对路径"
+              <select
+                id="cwd-select"
+                value={cwd}
+                onChange={(e) => setCwd(e.target.value)}
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -219,7 +171,22 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
                   fontSize: 14,
                   boxSizing: 'border-box',
                 }}
-              />
+              >
+                <option value="">选择工作目录...</option>
+                {config?.workspaces.map((ws) => (
+                  <option key={ws} value={ws}>{ws}</option>
+                ))}
+              </select>
+            ) : (
+              <div style={{
+                padding: '10px 12px',
+                borderRadius: 8,
+                background: 'var(--bg-tertiary)',
+                color: 'var(--status-error)',
+                fontSize: 13,
+              }}>
+                没有可用的工作目录。请先在配置文件中设置 workspaces，或通过 CLI 启动一个实例。
+              </div>
             )}
           </div>
 
@@ -328,20 +295,20 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
           </button>
           <button
             onClick={handleSubmit}
-            disabled={loading}
+            disabled={loading || !hasWorkspaces}
             style={{
               padding: '8px 20px',
               borderRadius: 6,
               border: 'none',
-              background: loading ? 'var(--bg-tertiary)' : 'var(--status-running)',
+              background: loading || !hasWorkspaces ? 'var(--bg-tertiary)' : 'var(--status-running)',
               color: '#fff',
               fontSize: 14,
               fontWeight: 600,
-              cursor: loading ? 'default' : 'pointer',
-              opacity: loading ? 0.7 : 1,
+              cursor: loading || !hasWorkspaces ? 'default' : 'pointer',
+              opacity: loading || !hasWorkspaces ? 0.7 : 1,
             }}
           >
-            {loading ? '创建中...' : '创建'}
+            {loading ? '创建中…' : '创建'}
           </button>
         </div>
       </div>

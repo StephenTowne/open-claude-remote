@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { existsSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
-import { homedir } from 'node:os';
 import type { InstanceInfo, InstanceListItem } from '@claude-remote/shared';
 import { AuthModule } from '../auth/auth-middleware.js';
 import { createAuthRoutes } from './auth-routes.js';
@@ -11,27 +10,32 @@ import { logger } from '../logger/logger.js';
 
 /**
  * 检查 cwd 是否在允许的路径范围内
- * 允许：homedir() 下 或 workspaces 白名单中
+ * 只允许白名单中的目录或其子目录
  */
-function isCwdAllowed(absoluteCwd: string, workspaces: string[]): boolean {
-  const home = homedir();
-
-  // 检查是否在 homedir 下
-  const relToHome = relative(home, absoluteCwd);
-  if (relToHome && !relToHome.startsWith('..') && !relative(absoluteCwd, home).startsWith('..')) {
-    return true;
-  }
-
-  // 检查是否在 workspaces 白名单中
-  for (const ws of workspaces) {
-    const absWs = resolve(ws);
-    const relToWs = relative(absWs, absoluteCwd);
-    if (relToWs && !relToWs.startsWith('..') && !relative(absoluteCwd, absWs).startsWith('..')) {
+function isCwdAllowed(absoluteCwd: string, allowedCwds: string[]): boolean {
+  for (const allowed of allowedCwds) {
+    const absAllowed = resolve(allowed);
+    const rel = relative(absAllowed, absoluteCwd);
+    // rel 为空字符串表示路径相同，不以 '..' 开头表示是子目录
+    if (rel === '' || (rel && !rel.startsWith('..'))) {
       return true;
     }
   }
-
   return false;
+}
+
+/**
+ * 获取合并后的允许 cwd 白名单
+ * 来源：配置文件 workspaces + 已启动实例的 cwd（去重）
+ */
+async function getAllowedCwds(
+  listInstances: () => Promise<InstanceInfo[]>,
+): Promise<string[]> {
+  const config = loadUserConfig();
+  const configWorkspaces = config.workspaces ?? [];
+  const instances = await listInstances();
+  const instanceCwds = instances.map(inst => inst.cwd);
+  return [...new Set([...configWorkspaces, ...instanceCwds])];
 }
 
 export interface CreateInstanceRequest {
@@ -72,13 +76,16 @@ export function createInstanceRoutes(
 
   /**
    * GET /api/instances/config - 获取实例创建配置
-   * 返回工作目录列表和默认参数
+   * 返回合并后的工作目录白名单和默认参数
+   * 白名单 = 配置文件 workspaces + 已启动实例的 cwd（去重）
    */
   router.get('/instances/config', authModule.requireAuth, async (_req, res) => {
     try {
       const config = loadUserConfig();
+      const allowedCwds = await getAllowedCwds(listInstances);
+
       const response: InstanceConfigResponse = {
-        workspaces: config.workspaces ?? [],
+        workspaces: allowedCwds,
         defaultClaudeArgs: config.defaultClaudeArgs ?? [],
       };
       res.json(response);
@@ -110,13 +117,13 @@ export function createInstanceRoutes(
 
       // 加载用户配置（用于 workspaces 白名单和默认参数）
       const userConfig = loadUserConfig();
-      const workspaces = userConfig.workspaces ?? [];
+      const allowedCwds = await getAllowedCwds(listInstances);
 
-      // 路径安全检查：cwd 必须在 homedir 下或 workspaces 白名单中
-      if (!isCwdAllowed(absoluteCwd, workspaces)) {
-        logger.warn({ absoluteCwd, workspaces }, 'Cwd path not allowed');
+      // 路径安全检查：cwd 必须在白名单中
+      if (!isCwdAllowed(absoluteCwd, allowedCwds)) {
+        logger.warn({ absoluteCwd, allowedCwds }, 'Cwd path not allowed');
         res.status(403).json({
-          error: 'Directory not allowed. Must be under home directory or in workspaces whitelist.',
+          error: 'Directory not allowed. Must be in allowed workspaces list.',
         });
         return;
       }
