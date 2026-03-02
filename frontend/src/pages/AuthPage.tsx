@@ -50,9 +50,8 @@ export function AuthPage() {
           type="password"
           value={token}
           onChange={(e) => setToken(e.target.value)}
-          placeholder="Paste token here..."
+          placeholder="Paste token here…"
           aria-label="Authentication token"
-          autoFocus
           autoComplete="off"
           style={{
             height: 48,
@@ -62,7 +61,6 @@ export function AuthPage() {
             background: 'var(--bg-tertiary)',
             color: 'var(--text-primary)',
             fontSize: 16,
-            outline: 'none',
           }}
         />
 
@@ -90,7 +88,7 @@ export function AuthPage() {
             opacity: loading ? 0.7 : 1,
           }}
         >
-          {loading ? 'Authenticating...' : 'Connect'}
+          {loading ? 'Authenticating…' : 'Connect'}
         </button>
       </form>
     </div>

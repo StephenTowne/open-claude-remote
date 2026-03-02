@@ -153,7 +153,6 @@ cp config.example.json ~/.claude-remote/config.json
 | `instanceName` | string \| null | null | 实例名称，`null` 使用工作目录名 |
 | `shortcuts` | array | 见下方 | 快捷输入列表 |
 | `commands` | array | 见下方 | 自定义命令列表 |
-| `defaultClaudeArgs` | string[] | [] | 通过 Web 创建实例时的默认 Claude 参数 |
 | `workspaces` | string[] | [] | 预设工作目录列表（Web 创建实例的白名单） |
 
 **优先级**：CLI 参数 > 配置文件 > 默认值
@@ -253,7 +252,6 @@ cp config.example.json ~/.claude-remote/config.json
     { "label": "Git Log", "command": "git log --oneline -10", "enabled": true }
   ],
 
-  "defaultClaudeArgs": ["--model", "claude-sonnet-4-6"],
   "workspaces": [
     "/Users/tom/projects/api",
     "/Users/tom/projects/web"

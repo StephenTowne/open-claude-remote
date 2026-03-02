@@ -32,7 +32,6 @@ export function SortableItemShell({
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
     opacity: isDragging ? 0.5 : 1,
   };
 
@@ -84,7 +83,6 @@ export function SortableItemShell({
           background: enabled ? 'var(--status-running)' : 'var(--bg-primary)',
           cursor: 'pointer',
           position: 'relative',
-          transition: 'background 0.2s',
           flexShrink: 0,
         }}
       >
@@ -96,7 +94,6 @@ export function SortableItemShell({
           height: 16,
           borderRadius: '50%',
           background: '#fff',
-          transition: 'left 0.2s',
         }} />
       </button>
 

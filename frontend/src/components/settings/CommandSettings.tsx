@@ -168,8 +168,8 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                     }
                   }}
                   onBlur={() => saveEdit(index)}
-                  placeholder="输入命令..."
-                  autoFocus
+                  placeholder="输入命令…"
+                  aria-label={`命令 ${index + 1}`}
                   style={{
                     flex: 1,
                     height: 36,
@@ -179,12 +179,13 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                     background: 'var(--bg-primary)',
                     color: 'var(--text-primary)',
                     fontSize: 14,
-                    outline: 'none',
                   }}
                 />
               ) : (
-                <div
+                <button
+                  type="button"
                   onClick={() => startEdit(index)}
+                  aria-label={`编辑命令 ${cmd.label}`}
                   style={{
                     flex: 1,
                     height: 36,
@@ -197,10 +198,11 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                     display: 'flex',
                     alignItems: 'center',
                     cursor: 'pointer',
+                    textAlign: 'left' as const,
                   }}
                 >
                   {cmd.label}
-                </div>
+                </button>
               )}
             </SortableItemShell>
           ))}

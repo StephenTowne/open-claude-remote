@@ -142,17 +142,6 @@ export function WorkspaceSelector({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, handleClose]);
 
-  // 下拉展开时自动聚焦搜索框
-  useEffect(() => {
-    if (isOpen) {
-      // 延迟聚焦，确保 DOM 已渲染
-      const timer = setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
-
   // 空状态
   if (workspaces.length === 0) {
     return (
@@ -389,7 +378,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'transparent',
     color: 'var(--text-primary)',
     fontSize: 14,
-    outline: 'none',
     fontFamily: 'var(--font-mono)',
   },
 

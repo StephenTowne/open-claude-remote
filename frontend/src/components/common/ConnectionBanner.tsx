@@ -26,7 +26,7 @@ export function ConnectionBanner() {
       fontSize: 13,
       fontWeight: 500,
     }}>
-      {status === 'connecting' ? 'Connecting...' : 'Disconnected. Reconnecting...'}
+      {status === 'connecting' ? 'Connecting…' : 'Disconnected. Reconnecting…'}
     </div>
   );
 }

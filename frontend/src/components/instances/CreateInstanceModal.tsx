@@ -33,8 +33,8 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
       const cfg = await getInstanceConfig();
       setConfig(cfg);
       // 设置默认 Claude 参数
-      if (cfg.defaultClaudeArgs.length > 0) {
-        setClaudeArgs(cfg.defaultClaudeArgs.join(' '));
+      if (cfg.claudeArgs.length > 0) {
+        setClaudeArgs(cfg.claudeArgs.join(' '));
       }
     } catch (err) {
       console.error('Failed to load instance config:', err);
@@ -121,6 +121,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
           </h2>
           <button
             onClick={onClose}
+            aria-label="关闭"
             style={{
               width: 32,
               height: 32,
@@ -131,7 +132,6 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               fontSize: 20,
               cursor: 'pointer',
             }}
-            aria-label="关闭"
           >
             ×
           </button>
@@ -179,7 +179,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
 
           {/* 实例名称 */}
           <div>
-            <label style={{
+            <label htmlFor="instance-name" style={{
               display: 'block',
               fontSize: 13,
               fontWeight: 500,
@@ -189,6 +189,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               实例名称（可选）
             </label>
             <input
+              id="instance-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -208,7 +209,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
 
           {/* Claude 参数 */}
           <div>
-            <label style={{
+            <label htmlFor="claude-args" style={{
               display: 'block',
               fontSize: 13,
               fontWeight: 500,
@@ -218,6 +219,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               Claude 参数（可选）
             </label>
             <input
+              id="claude-args"
               type="text"
               value={claudeArgs}
               onChange={(e) => setClaudeArgs(e.target.value)}

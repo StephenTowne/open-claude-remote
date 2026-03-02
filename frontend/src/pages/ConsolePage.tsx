@@ -344,7 +344,6 @@ export function ConsolePage() {
       display: 'flex',
       flexDirection: 'column',
       paddingBottom: keyboardHeight > 0 ? keyboardHeight : undefined,
-      transition: 'padding-bottom 0.15s ease-out',
     }}>
       <StatusBar />
       <InstanceTabs onSwitch={handleInstanceSwitch} />

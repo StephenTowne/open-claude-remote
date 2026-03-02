@@ -96,7 +96,7 @@ export function App() {
         background: 'var(--bg-primary)',
         color: 'var(--text-secondary)',
       }}>
-        Checking session...
+        Checking session…
       </div>
     );
   }

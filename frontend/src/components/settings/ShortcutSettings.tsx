@@ -235,6 +235,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
                 onClick={() => setCapturingIndex(index)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
                 onBlur={() => setCapturingIndex(null)}
+                aria-label={`快捷键 ${index + 1}`}
                 style={{
                   flex: 1,
                   height: 36,
@@ -246,7 +247,6 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
                   background: 'var(--bg-primary)',
                   color: 'var(--text-primary)',
                   fontSize: 14,
-                  outline: 'none',
                   cursor: 'pointer',
                   textAlign: 'center',
                 }}
@@ -275,7 +275,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
           textAlign: 'center',
           marginTop: 4,
         }}>
-          请按下要捕获的按键...
+          请按下要捕获的按键…
         </div>
       )}
     </div>

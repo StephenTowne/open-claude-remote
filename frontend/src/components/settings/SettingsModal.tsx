@@ -115,7 +115,6 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         alignItems: 'flex-end',
         justifyContent: 'center',
         zIndex: 1000,
-        transition: 'background 0.3s ease',
       }}
     >
       <div
@@ -131,7 +130,6 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
           flexDirection: 'column',
           overflow: 'hidden',
           transform: isAnimating ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform 0.3s ease',
           paddingBottom: 'var(--safe-bottom)',
         }}
       >
@@ -148,6 +146,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
           </h2>
           <button
             onClick={onClose}
+            aria-label="关闭"
             style={{
               width: 32,
               height: 32,
@@ -251,7 +250,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
                 opacity: saving ? 0.7 : 1,
               }}
             >
-              {saving ? '保存中...' : '保存'}
+              {saving ? '保存中…' : '保存'}
             </button>
           </div>
         </div>

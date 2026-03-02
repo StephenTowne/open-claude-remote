@@ -50,8 +50,8 @@ export interface CreateInstanceRequest {
 export interface InstanceConfigResponse {
   /** 预设工作目录列表 */
   workspaces: string[];
-  /** 默认 Claude 参数 */
-  defaultClaudeArgs: string[];
+  /** Claude 参数 */
+  claudeArgs: string[];
 }
 
 export function createInstanceRoutes(
@@ -86,7 +86,7 @@ export function createInstanceRoutes(
 
       const response: InstanceConfigResponse = {
         workspaces: allowedCwds,
-        defaultClaudeArgs: config.defaultClaudeArgs ?? [],
+        claudeArgs: config.claudeArgs ?? [],
       };
       res.json(response);
     } catch (error) {
@@ -135,7 +135,7 @@ export function createInstanceRoutes(
       }
 
       // 合并默认参数
-      const finalClaudeArgs = claudeArgs ?? userConfig.defaultClaudeArgs ?? [];
+      const finalClaudeArgs = claudeArgs ?? userConfig.claudeArgs ?? [];
 
       const spawnOptions: SpawnOptions = {
         cwd: absoluteCwd,

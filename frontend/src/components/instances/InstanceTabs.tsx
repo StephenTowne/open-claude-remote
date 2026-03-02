@@ -85,7 +85,7 @@ export function InstanceTabs({ onSwitch }: InstanceTabsProps) {
         {/* "+" 按钮 */}
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          title="创建新实例"
+          aria-label="创建新实例"
           style={{
             padding: '8px 12px',
             background: 'transparent',

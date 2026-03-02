@@ -21,8 +21,8 @@ describe('ScrollButtons', () => {
       />
     );
 
-    expect(screen.getByTitle('滚动到顶部')).toBeDefined();
-    expect(screen.getByTitle('滚动到底部')).toBeDefined();
+    expect(screen.getByLabelText('滚动到顶部')).toBeDefined();
+    expect(screen.getByLabelText('滚动到底部')).toBeDefined();
   });
 
   it('showButtons=false 时隐藏按钮（opacity: 0）', () => {
@@ -65,7 +65,7 @@ describe('ScrollButtons', () => {
       />
     );
 
-    fireEvent.click(screen.getByTitle('滚动到顶部'));
+    fireEvent.click(screen.getByLabelText('滚动到顶部'));
     expect(mockOnScrollToTop).toHaveBeenCalledTimes(1);
   });
 
@@ -79,7 +79,7 @@ describe('ScrollButtons', () => {
       />
     );
 
-    fireEvent.click(screen.getByTitle('滚动到底部'));
+    fireEvent.click(screen.getByLabelText('滚动到底部'));
     expect(mockOnScrollToBottom).toHaveBeenCalledTimes(1);
   });
 
@@ -93,7 +93,7 @@ describe('ScrollButtons', () => {
       />
     );
 
-    const downButton = screen.getByTitle('滚动到底部') as HTMLButtonElement;
+    const downButton = screen.getByLabelText('滚动到底部') as HTMLButtonElement;
     expect(downButton.disabled).toBe(true);
     expect(downButton.style.opacity).toBe('0.5');
   });

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { rmSync, existsSync, readFileSync } from 'node:fs';
+import { rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createSessionCookieName, createClaudeSettings, saveClaudeSettings } from '../../../src/config.js';
+import { createSessionCookieName, createClaudeSettings, saveClaudeSettings, loadUserConfig, loadConfig, type CliOverrides, type UserConfig } from '../../../src/config.js';
 
 describe('createSessionCookieName', () => {
   it('should generate cookie name based on port number', () => {
@@ -184,5 +184,139 @@ describe('saveClaudeSettings', () => {
 
     expect(existsSync(resolve(testDir, 'settings'))).toBe(true);
     expect(existsSync(path)).toBe(true);
+  });
+});
+
+describe('loadUserConfig', () => {
+  const testDir = resolve(tmpdir(), `claude-remote-config-test-${Date.now()}`);
+
+  beforeEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('should return empty object when config file does not exist', () => {
+    const config = loadUserConfig(testDir);
+    expect(config).toEqual({});
+  });
+
+  it('should load valid config file', () => {
+    const configPath = resolve(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify({ port: 4000, claudeArgs: ['--test'] }), 'utf-8');
+
+    const config = loadUserConfig(testDir);
+    expect(config.port).toBe(4000);
+    expect(config.claudeArgs).toEqual(['--test']);
+  });
+
+  it('should migrate defaultClaudeArgs to claudeArgs when claudeArgs is not set', () => {
+    const configPath = resolve(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify({ defaultClaudeArgs: ['--migrated'] }), 'utf-8');
+
+    const config = loadUserConfig(testDir);
+    expect(config.claudeArgs).toEqual(['--migrated']);
+  });
+
+  it('should NOT overwrite existing claudeArgs with defaultClaudeArgs', () => {
+    const configPath = resolve(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify({
+      claudeArgs: ['--keep'],
+      defaultClaudeArgs: ['--migrated'],
+    }), 'utf-8');
+
+    const config = loadUserConfig(testDir);
+    expect(config.claudeArgs).toEqual(['--keep']);
+  });
+
+  it('should return empty object on invalid JSON', () => {
+    const configPath = resolve(testDir, 'config.json');
+    writeFileSync(configPath, 'not valid json', 'utf-8');
+
+    const config = loadUserConfig(testDir);
+    expect(config).toEqual({});
+  });
+});
+
+describe('loadConfig', () => {
+  const testDir = resolve(tmpdir(), `claude-remote-loadconfig-test-${Date.now()}`);
+
+  beforeEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  /**
+   * Helper: 创建带有 mock 用户配置的 loadConfig 测试环境
+   */
+  function loadConfigWithMocks(userConfig: UserConfig, cliOverrides: CliOverrides = {}) {
+    const configPath = resolve(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify(userConfig), 'utf-8');
+    return loadConfig(cliOverrides, testDir);
+  }
+
+  it('should merge claudeArgs from config file and CLI', () => {
+    const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
+    const cliOverrides: CliOverrides = { claudeArgs: ['--settings', '/path/to/settings.json'] };
+
+    const config = loadConfigWithMocks(userConfig, cliOverrides);
+
+    expect(config.claudeArgs).toEqual([
+      '--dangerously-skip-permissions',
+      '--settings',
+      '/path/to/settings.json',
+    ]);
+  });
+
+  it('should use config file claudeArgs when CLI args are empty array', () => {
+    const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
+    const cliOverrides: CliOverrides = { claudeArgs: [] };
+
+    const config = loadConfigWithMocks(userConfig, cliOverrides);
+
+    expect(config.claudeArgs).toEqual(['--dangerously-skip-permissions']);
+  });
+
+  it('should use CLI claudeArgs when config file args are empty', () => {
+    const userConfig = { claudeArgs: [] };
+    const cliOverrides: CliOverrides = { claudeArgs: ['--settings', '/path/to/settings.json'] };
+
+    const config = loadConfigWithMocks(userConfig, cliOverrides);
+
+    expect(config.claudeArgs).toEqual(['--settings', '/path/to/settings.json']);
+  });
+
+  it('should use config file claudeArgs when CLI args is undefined', () => {
+    const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
+    const cliOverrides: CliOverrides = {}; // claudeArgs 未传递
+
+    const config = loadConfigWithMocks(userConfig, cliOverrides);
+
+    expect(config.claudeArgs).toEqual(['--dangerously-skip-permissions']);
+  });
+
+  it('should return empty array when neither config nor CLI has claudeArgs', () => {
+    const userConfig = {};
+    const cliOverrides: CliOverrides = {};
+
+    const config = loadConfigWithMocks(userConfig, cliOverrides);
+
+    expect(config.claudeArgs).toEqual([]);
+  });
+
+  it('should merge multiple args from both sources', () => {
+    const userConfig = { claudeArgs: ['--arg1', '--arg2'] };
+    const cliOverrides: CliOverrides = { claudeArgs: ['--arg3', '--arg4'] };
+
+    const config = loadConfigWithMocks(userConfig, cliOverrides);
+
+    expect(config.claudeArgs).toEqual(['--arg1', '--arg2', '--arg3', '--arg4']);
   });
 });

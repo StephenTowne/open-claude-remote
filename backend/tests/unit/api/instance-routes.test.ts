@@ -16,7 +16,7 @@ vi.mock('../../../src/logger/logger.js', () => ({
 // Mock config
 const mockConfig = {
   workspaces: [] as string[] | undefined,
-  defaultClaudeArgs: [] as string[],
+  claudeArgs: [] as string[],
 };
 vi.mock('../../../src/config.js', () => ({
   loadUserConfig: () => mockConfig,
@@ -87,7 +87,7 @@ describe('instance-routes', () => {
     listFn.mockReset().mockResolvedValue([]);
     spawner.spawn.mockReset();
     mockConfig.workspaces = [];
-    mockConfig.defaultClaudeArgs = [];
+    mockConfig.claudeArgs = [];
   });
 
   async function authenticate(): Promise<string> {

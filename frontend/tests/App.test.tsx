@@ -50,7 +50,7 @@ describe('App', () => {
 
     render(<App />);
 
-    expect(screen.getByText('Checking session...')).toBeDefined();
+    expect(screen.getByText('Checking session…')).toBeDefined();
   });
 
   it('should restore authentication when session cookie is valid', async () => {

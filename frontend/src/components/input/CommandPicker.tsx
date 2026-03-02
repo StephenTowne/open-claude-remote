@@ -18,7 +18,6 @@ const baseButtonStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  transition: 'background 0.15s, transform 0.1s',
 };
 
 const shortcutButtonStyle: CSSProperties = {
@@ -165,12 +164,22 @@ export function CommandPicker({ onShortcut, onCommandSelect, visible = true }: C
         [data-scrollable]::-webkit-scrollbar {
           display: none;
         }
-        .cmd-picker-btn:hover {
-          filter: brightness(1.2);
+        @media (prefers-reduced-motion: no-preference) {
+          .cmd-picker-btn:hover {
+            filter: brightness(1.2);
+          }
+          .cmd-picker-btn:active {
+            transform: scale(0.95);
+            filter: brightness(0.9);
+          }
         }
-        .cmd-picker-btn:active {
-          transform: scale(0.95);
-          filter: brightness(0.9);
+        @media (prefers-reduced-motion: reduce) {
+          .cmd-picker-btn:hover {
+            filter: brightness(1.2);
+          }
+          .cmd-picker-btn:active {
+            filter: brightness(0.9);
+          }
         }
       `}</style>
     </div>

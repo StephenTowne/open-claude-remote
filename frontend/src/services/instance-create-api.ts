@@ -3,7 +3,7 @@ import { loadToken } from './token-storage.js';
 
 export interface InstanceConfigResponse {
   workspaces: string[];
-  defaultClaudeArgs: string[];
+  claudeArgs: string[];
 }
 
 export interface CreateInstanceRequest {

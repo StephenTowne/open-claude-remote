@@ -118,7 +118,6 @@ export function OnboardingGuide({ onComplete }: OnboardingGuideProps) {
                   : index < currentStep
                     ? 'var(--status-idle)'
                     : 'var(--border-color)',
-                transition: 'background 0.2s',
               }}
             />
           ))}

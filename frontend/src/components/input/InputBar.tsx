@@ -27,7 +27,6 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
     const trimmed = text.trim();
     onSend(trimmed);
     setText('');
-    inputRef.current?.focus();
   }, [text, onSend]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -58,7 +57,8 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
         onKeyDown={handleKeyDown}
         disabled={disabled}
         autoComplete="off"
-        placeholder="输入命令或数字选择..."
+        placeholder="输入命令或数字选择…"
+        aria-label="命令输入框"
         style={{
           flex: 1,
           height: 40,
@@ -68,7 +68,6 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
           background: 'var(--bg-tertiary)',
           color: 'var(--text-primary)',
           fontSize: 16,
-          outline: 'none',
         }}
       />
     </div>

@@ -51,8 +51,6 @@ export interface UserConfig {
   commands?: Array<{ label: string; command: string; enabled: boolean; desc?: string }>;
 
   // === 实例创建配置 ===
-  /** 默认 Claude 参数 */
-  defaultClaudeArgs?: string[];
   /** 预设工作目录列表 */
   workspaces?: string[];
 }
@@ -110,6 +108,14 @@ export function loadUserConfig(configDir?: string): UserConfig {
   try {
     const content = readFileSync(configPath, 'utf-8');
     const config = JSON.parse(content) as UserConfig;
+
+    // 向后兼容：迁移旧的 defaultClaudeArgs 到 claudeArgs
+    const rawConfig = config as Record<string, unknown>;
+    if (!config.claudeArgs && rawConfig.defaultClaudeArgs) {
+      config.claudeArgs = rawConfig.defaultClaudeArgs as string[];
+      logger.info('Migrated defaultClaudeArgs to claudeArgs');
+    }
+
     logger.info({ configPath, keys: Object.keys(config) }, 'User config loaded');
     return config;
   } catch (err) {
@@ -147,12 +153,21 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
   const port = cliOverrides.port ?? userConfig.port ?? DEFAULT_PORT;
   const claudeCwd = userConfig.claudeCwd ?? process.cwd();
 
+  // 合并 claudeArgs：配置文件参数在前，命令行参数在后
+  const userArgs = userConfig.claudeArgs ?? [];
+  const cliArgs = cliOverrides.claudeArgs ?? [];
+  const mergedArgs = [...userArgs, ...cliArgs];
+
+  if (userArgs.length > 0 && cliArgs.length > 0) {
+    logger.info({ userArgs, cliArgs, mergedArgs }, 'Merged claudeArgs from config file and CLI');
+  }
+
   const config: AppConfig = {
     port,
     host: cliOverrides.host ?? userConfig.host ?? '0.0.0.0',
     displayIp,
     claudeCommand: userConfig.claudeCommand ?? 'claude',
-    claudeArgs: cliOverrides.claudeArgs ?? userConfig.claudeArgs ?? [],
+    claudeArgs: mergedArgs,
     claudeCwd,
     token: cliOverrides.token ?? userConfig.token ?? null,
     sessionTtlMs: userConfig.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS,
