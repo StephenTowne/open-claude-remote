@@ -1,0 +1,10 @@
+# npm 镜像配置示例
+# 国内用户可执行: cp .npmrc.example .npmrc
+
+# 淘宝镜像源（推荐国内用户使用）
+registry=https://registry.npmmirror.com
+
+# 其他可选镜像源：
+# 官方源: https://registry.npmjs.org
+# 腾讯镜像: https://mirrors.cloud.tencent.com/npm/
+# 华为镜像: https://repo.huaweicloud.com/repository/npm/

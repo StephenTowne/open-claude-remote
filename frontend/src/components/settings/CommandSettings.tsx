@@ -14,6 +14,10 @@ import type { WithId } from './SettingsModal.js';
 import { SortableItemShell } from './SortableItemShell.js';
 import { useDndSensors } from './useDndSensors.js';
 
+/** 按 enabled 状态排序：启用的在前，禁用的在后（稳定排序保持相对顺序） */
+const sortByEnabled = <T extends { enabled: boolean }>(items: T[]): T[] =>
+  [...items].sort((a, b) => Number(b.enabled) - Number(a.enabled));
+
 interface CommandSettingsProps {
   commands: WithId<ConfigurableCommand>[];
   onChange: (commands: WithId<ConfigurableCommand>[]) => void;
@@ -68,14 +72,15 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
       ...newCommands[index],
       enabled: !newCommands[index].enabled,
     };
-    onChange(newCommands);
+    onChange(sortByEnabled(newCommands));
   };
 
   const addCommand = () => {
-    const newCommands: WithId<ConfigurableCommand>[] = [...commands, { label: '/new', command: '/new', enabled: true, _id: generateId() }];
-    onChange(newCommands);
-    // 自动开始编辑新添加的项
-    setEditingIndex(newCommands.length - 1);
+    // 新项添加到列表开头，enabled: true，排序后自然在最前面
+    const newCommands: WithId<ConfigurableCommand>[] = [{ label: '/new', command: '/new', enabled: true, _id: generateId() }, ...commands];
+    onChange(sortByEnabled(newCommands));
+    // 自动开始编辑新添加的项（索引 0）
+    setEditingIndex(0);
     setEditValue('/new');
   };
 

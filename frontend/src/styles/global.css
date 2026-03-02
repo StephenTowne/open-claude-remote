@@ -111,3 +111,9 @@ button {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Disable xterm.js internal textarea from triggering soft keyboard on mobile */
+.xterm-helper-textarea {
+  pointer-events: none;
+  user-select: none;
+}

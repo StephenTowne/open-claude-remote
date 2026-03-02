@@ -14,6 +14,10 @@ import type { WithId } from './SettingsModal.js';
 import { SortableItemShell } from './SortableItemShell.js';
 import { useDndSensors } from './useDndSensors.js';
 
+/** 按 enabled 状态排序：启用的在前，禁用的在后（稳定排序保持相对顺序） */
+const sortByEnabled = <T extends { enabled: boolean }>(items: T[]): T[] =>
+  [...items].sort((a, b) => Number(b.enabled) - Number(a.enabled));
+
 interface ShortcutSettingsProps {
   shortcuts: WithId<ConfigurableShortcut>[];
   onChange: (shortcuts: WithId<ConfigurableShortcut>[]) => void;
@@ -142,14 +146,18 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
       ...newShortcuts[index],
       enabled: !newShortcuts[index].enabled,
     };
-    onChange(newShortcuts);
+    onChange(sortByEnabled(newShortcuts));
   };
 
   const addShortcut = () => {
-    onChange([
-      ...shortcuts,
+    // 新项添加到列表开头，enabled: true，排序后自然在最前面
+    const newShortcuts = [
       { label: 'New', data: '', enabled: true, _id: generateId() },
-    ]);
+      ...shortcuts,
+    ];
+    onChange(sortByEnabled(newShortcuts));
+    // 自动开始捕获新添加的项（索引 0）
+    setCapturingIndex(0);
   };
 
   const deleteShortcut = (index: number) => {
