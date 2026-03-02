@@ -71,7 +71,7 @@ export class WsServer {
       if (!isValid) {
         logger.warn({
           url: req.url,
-          cookieHeaderPresent: cookieHeader.length > 0,
+          cookieNames: cookieHeader.split(';').map(c => c.trim().split('=')[0]).filter(Boolean),
           sessionCookieName: this.authModule.getCookieName(),
           hasSessionCookie: Boolean(sessionId),
         }, 'WS upgrade rejected: invalid session');

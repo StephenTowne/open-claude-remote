@@ -110,7 +110,7 @@ export async function stopInstances(
   const isAlive = createIsAlive(signalSender);
   const processVerifier = options.processVerifier ?? createProcessVerifier(signalSender);
 
-  const instances = registry.list();
+  const instances = await registry.list();
   const summary: StopSummary = {
     total: instances.length,
     stopped: 0,

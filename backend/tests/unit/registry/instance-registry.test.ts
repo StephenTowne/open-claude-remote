@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, rmSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -44,20 +44,20 @@ describe('InstanceRegistryManager', () => {
   });
 
   describe('register', () => {
-    it('should register a new instance', () => {
+    it('should register a new instance', async () => {
       const info = makeInstance();
       registry.register(info);
 
-      const list = registry.list();
+      const list = await registry.list();
       expect(list).toHaveLength(1);
       expect(list[0].instanceId).toBe(info.instanceId);
     });
 
-    it('should register multiple instances', () => {
+    it('should register multiple instances', async () => {
       registry.register(makeInstance({ port: 3000 }));
       registry.register(makeInstance({ port: 3001 }));
 
-      const list = registry.list();
+      const list = await registry.list();
       expect(list).toHaveLength(2);
     });
 
@@ -72,24 +72,24 @@ describe('InstanceRegistryManager', () => {
       expect(content.instances).toHaveLength(1);
     });
 
-    it('should replace existing instance with same instanceId', () => {
+    it('should replace existing instance with same instanceId', async () => {
       const info = makeInstance();
       registry.register(info);
       registry.register({ ...info, port: 3999 });
 
-      const list = registry.list();
+      const list = await registry.list();
       expect(list).toHaveLength(1);
       expect(list[0].port).toBe(3999);
     });
   });
 
   describe('unregister', () => {
-    it('should remove an instance by id', () => {
+    it('should remove an instance by id', async () => {
       const info = makeInstance();
       registry.register(info);
       registry.unregister(info.instanceId);
 
-      const list = registry.list();
+      const list = await registry.list();
       expect(list).toHaveLength(0);
     });
 
@@ -99,12 +99,12 @@ describe('InstanceRegistryManager', () => {
   });
 
   describe('list', () => {
-    it('should return empty array when no registry file', () => {
-      const list = registry.list();
+    it('should return empty array when no registry file', async () => {
+      const list = await registry.list();
       expect(list).toEqual([]);
     });
 
-    it('should clean up zombie processes', () => {
+    it('should clean up zombie processes', async () => {
       // Register with a PID that definitely doesn't exist
       const zombieInfo = makeInstance({ pid: 999999 });
       registry.register(zombieInfo);
@@ -113,17 +113,17 @@ describe('InstanceRegistryManager', () => {
       const aliveInfo = makeInstance({ pid: process.pid, port: 3001 });
       registry.register(aliveInfo);
 
-      const list = registry.list();
+      const list = await registry.list();
       expect(list).toHaveLength(1);
       expect(list[0].instanceId).toBe(aliveInfo.instanceId);
     });
 
-    it('should handle corrupted registry file gracefully', () => {
+    it('should handle corrupted registry file gracefully', async () => {
       const filePath = join(testDir, 'instances.json');
       const { writeFileSync } = require('node:fs');
       writeFileSync(filePath, 'not valid json!!!');
 
-      const list = registry.list();
+      const list = await registry.list();
       expect(list).toEqual([]);
     });
   });
@@ -134,10 +134,37 @@ describe('InstanceRegistryManager', () => {
       registry.register(info);
 
       // Verify no leftover tmp files
-      const { readdirSync } = require('node:fs');
       const files = readdirSync(testDir);
       const tmpFiles = files.filter((f: string) => f.includes('.tmp.'));
       expect(tmpFiles).toHaveLength(0);
+    });
+  });
+
+  describe('file lock', () => {
+    it('should not leave lock directory after register', () => {
+      registry.register(makeInstance());
+      const files = readdirSync(testDir);
+      const lockDirs = files.filter(f => f.endsWith('.lock'));
+      expect(lockDirs).toHaveLength(0);
+    });
+
+    it('should maintain consistency after register + unregister sequence', async () => {
+      const a = makeInstance({ port: 3000 });
+      const b = makeInstance({ port: 3001 });
+
+      registry.register(a);
+      registry.register(b);
+      expect(await registry.list()).toHaveLength(2);
+
+      registry.unregister(a.instanceId);
+      const remaining = await registry.list();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].instanceId).toBe(b.instanceId);
+
+      // 锁不残留
+      const files = readdirSync(testDir);
+      const lockDirs = files.filter(f => f.endsWith('.lock'));
+      expect(lockDirs).toHaveLength(0);
     });
   });
 });

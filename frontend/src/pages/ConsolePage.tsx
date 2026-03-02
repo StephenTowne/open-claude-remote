@@ -7,6 +7,7 @@ import { CommandPicker } from '../components/input/CommandPicker.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
 import { IpChangeToast } from '../components/common/IpChangeToast.js';
 import { InstanceTabs } from '../components/instances/InstanceTabs.js';
+import { OnboardingGuide } from '../components/onboarding/OnboardingGuide.js';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useTerminal } from '../hooks/useTerminal.js';
 import { useViewport } from '../hooks/useViewport.js';
@@ -322,6 +323,7 @@ export function ConsolePage() {
         onIpChanged={activeInstance?.isCurrent ? handleCurrentInstanceIpChanged : undefined}
       />
       {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}
+      <OnboardingGuide />
     </div>
   );
 }

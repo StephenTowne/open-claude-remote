@@ -14,10 +14,9 @@
  *
  * 其他所有参数透传给 claude 命令。
  */
-import { spawn } from 'node:child_process';
-import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
+import type { CliOverrides } from './config.js';
+import { startServer } from './index.js';
 
 export interface CliOptions {
   port?: number;
@@ -104,14 +103,18 @@ Claude Code Remote - 在局域网内通过手机远程控制 Claude Code
   --name <string>      实例名称 (默认: 工作目录名)
   --help, -h           显示帮助信息
 
-环境变量：
-  PORT                 服务端口
-  HOST                 绑定地址
-  AUTH_TOKEN           固定 Token (覆盖共享 Token)
-  INSTANCE_NAME        实例名称
-  CLAUDE_COMMAND       Claude CLI 命令路径 (默认: claude)
-  CLAUDE_CWD           Claude 工作目录 (默认: 当前目录)
-  MAX_BUFFER_LINES     输出缓冲区行数 (默认: 10000)
+配置文件：
+  ~/.claude-remote/config.json  用户配置文件 (JSON 格式)
+
+  可配置项：
+    port            服务端口
+    host            绑定地址
+    token           固定 Token (覆盖共享 Token)
+    instanceName    实例名称
+    claudeCommand   Claude CLI 命令路径 (默认: claude)
+    claudeCwd       Claude 工作目录 (默认: 当前目录)
+    claudeArgs      Claude CLI 额外参数 (数组)
+    maxBufferLines  输出缓冲区行数 (默认: 10000)
 
 示例：
   claude-remote                    # 启动 Claude Code
@@ -132,52 +135,20 @@ export async function main(argv: string[] = process.argv): Promise<void> {
     process.exit(0);
   }
 
-  // Set environment variables for the main process
-  process.env.CLI_MODE = 'true';  // Enable clean CLI experience
-  if (options.port !== undefined) {
-    process.env.PORT = String(options.port);
-  }
-  if (options.host !== undefined) {
-    process.env.HOST = options.host;
-  }
-  if (options.token !== undefined) {
-    process.env.AUTH_TOKEN = options.token;
-  }
-  if (options.name !== undefined) {
-    process.env.INSTANCE_NAME = options.name;
-  }
-  if (options.claudeArgs.length > 0) {
-    process.env.CLAUDE_ARGS = JSON.stringify(options.claudeArgs);
-  }
+  // Set CLI mode flag for clean output
+  process.env.CLI_MODE = 'true';
 
-  // Resolve main entry path
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const mainPath = resolve(__dirname, 'index.js');
+  // Build CLI overrides for config
+  const cliOverrides: CliOverrides = {
+    port: options.port,
+    host: options.host,
+    token: options.token,
+    instanceName: options.name,
+    claudeArgs: options.claudeArgs.length > 0 ? options.claudeArgs : undefined,
+  };
 
-  if (!existsSync(mainPath)) {
-    console.error('Error: Backend not built. Run `pnpm build` first.');
-    process.exit(1);
-  }
-
-  // Spawn the main process with inherited stdio
-  // This gives the exact terminal experience as running claude directly
-  const child = spawn(process.execPath, [mainPath], {
-    stdio: 'inherit',
-    env: process.env,
-  });
-
-  // Forward exit codes
-  child.on('exit', (code, signal) => {
-    if (signal) {
-      process.kill(process.pid, signal);
-    } else {
-      process.exit(code ?? 0);
-    }
-  });
-
-  // Forward signals
-  process.on('SIGINT', () => child.kill('SIGINT'));
-  process.on('SIGTERM', () => child.kill('SIGTERM'));
+  // Start server directly (no spawn)
+  await startServer(cliOverrides);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

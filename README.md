@@ -1,30 +1,14 @@
 # Claude Code Remote
 
-在局域网内通过手机浏览器远程监控和控制 PC 上运行的 Claude Code 会话。
+**手机远程掌控 PC 终端的 Claude Code**
 
-## 简介
+在局域网内通过手机浏览器实时查看终端输出、发送指令、审批工具调用——离开工位也能继续工作。
 
-Claude Code 是强大的 CLI 编程助手，但被绑定在 PC 终端上。离开工位后，任务可能因等待审批而长时间阻塞。
+---
 
-Claude Code Remote 在 PC 和 Claude Code CLI 之间架设代理层：
-- 手机浏览器实时查看终端输出
-- 远程发送文本指令
-- 在手机上查看"等待输入"提示并远程发送按键/文本
-- **结构化问答面板**：Claude Code 提出选择题时，自动弹出 Tab 分页问答面板（支持单选/多选/自定义输入），所有问题一次性展示，每题独立作答后统一提交。PC 端支持键盘快捷键操作（数字键直选、方向键导航、Tab 切换题目、Enter 选择、Space 多选切换、Escape 取消）
-- **多实例支持**：不同项目各启一个 claude-remote，手机端 Tab 切换
-- 回到 PC 后，终端状态完整保留
+## 快速开始 (3 步)
 
-> **与官方 `remote-control` 的区别**：Claude Code v2.1.51+ 内置了 remote-control 功能，但它通过 Anthropic API 公网中转。本项目是**纯局域网方案**，数据不出内网。
-
-## 安装
-
-### 前置条件
-
-- Node.js >= 20
-- pnpm >= 9
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 已安装并可用
-
-### 一键安装
+### 1. 安装
 
 ```bash
 git clone <repo-url> claude-code-remote
@@ -32,239 +16,162 @@ cd claude-code-remote
 ./install.sh
 ```
 
-脚本会自动完成：依赖安装 → 项目构建 → 全局链接 `claude-remote` 命令 → 配置 Claude Code Hook（审批通知 + 交互式问答）。
-
-### 手动安装
+### 2. 启动
 
 ```bash
-# 1. 克隆并安装依赖
-git clone <repo-url> claude-code-remote
-cd claude-code-remote
-pnpm install
+claude-remote
+```
 
-# 2. 构建
-pnpm build
+### 3. 扫码连接
 
-# 3. 全局链接命令
-pnpm link -g
+PC 终端显示 ASCII 二维码 → 手机扫码 → 自动填充 Token → 开始使用
 
-# 4. 配置审批 Hook + 交互式问答 Hook
+---
+
+## 功能亮点
+
+### 实时终端同步
+- PC 终端完整输出实时同步到手机
+- 支持 ANSI 颜色渲染
+- 10K 行历史记录，重连自动恢复
+
+### 快捷按键栏
+- 一键发送 Esc、方向键、Ctrl+C 等
+- 自定义快捷键（在设置中配置）
+- 预设常用命令（/help, /clear 等）
+
+### 多实例切换
+- 不同项目各启一个 claude-remote
+- 手机顶部 Tab 切换，无需重新认证
+- 实例掉线自动切换到下一个
+
+### 推送通知
+- Claude 等待输入时推送通知到手机
+- 后台运行也能收到提醒
+
+### Web UI 设置界面
+- 可视化配置快捷键
+- 命令管理（自动补足 `/` 前缀）
+- 配置即时生效
+
+---
+
+## 常见问题
+
+### 找不到 `claude-remote` 命令？
+
+确保已执行 `pnpm link -g`，或使用 `node backend/dist/cli.js` 直接运行。
+
+### 二维码扫不出来？
+
+1. 确保手机和 PC 在同一局域网
+2. 手动访问终端显示的 URL，输入 Token
+
+### 手机无法连接？
+
+1. 检查 PC 防火墙是否放行端口（默认 3000）
+2. 检查终端显示的 URL 是否为正确的局域网 IP
+3. 如果使用 VPN，可能需要配置 `host` 选项（见下方配置说明）
+
+### 如何配置 Hook（审批通知）？
+
+首次启动后执行：
+
+```bash
 ./scripts/setup-hooks.sh
 ```
 
-### Hook 配置排查
+Hook 配置详情请参见 [ARCHITECTURE.md#routes](./ARCHITECTURE.md#5-routes)。
 
-如果手机端看不到审批提示或结构化问答面板，可按下面步骤排查：
+---
 
-1. 确认 `jq` 已安装（macOS: `brew install jq`）
-2. 重新执行 `./scripts/setup-hooks.sh`（脚本会先备份 `~/.claude/settings.json`，再进行幂等合并）
-3. 检查 `~/.claude/settings.json` 是否包含以下两个 matcher：
-   - `Notification.permission_prompt`
-   - `PreToolUse.AskUserQuestion`
-4. 若你不是默认端口启动（例如 `claude-remote --port 3001`），请使用对应地址执行：
-   - `./scripts/setup-hooks.sh http://localhost:3001`
-5. 确认代理服务正在运行，且后端日志中能看到 `/api/hook` 请求
-
-## 使用
-
-### 启动
+## 基本用法
 
 ```bash
-# 基本用法（等同于直接运行 claude）
+# 直接运行（等同于 claude）
 claude-remote
 
-# 透传参数给 claude
+# 透传参数
 claude-remote chat
 claude-remote -- --dangerously-skip-permissions
 
-# 自定义代理层选项
+# 自定义选项
 claude-remote --port 8080
-claude-remote --name my-project   # 自定义实例名称（默认为工作目录名）
-claude-remote --help
+claude-remote --name my-project
 ```
-
-首次启动时终端显示完整 Token：
-
-```
-╔══════════════════════════════════════════════════╗
-║         Claude Code Remote Proxy Started         ║
-╠══════════════════════════════════════════════════╣
-║  Instance: my-project                            ║
-║  URL:      http://192.168.1.100:3000             ║
-║  Token:    a1b2c3d4...e5f6g7h8                   ║
-╠══════════════════════════════════════════════════╣
-║  Full Token (copy to phone):                     ║
-║  a1b2c3d4e5f6g7h8...                             ║
-╚══════════════════════════════════════════════════╝
-```
-
-后续启动的实例共用相同 Token，不再重复显示：
-
-```
-╔══════════════════════════════════════════════════╗
-║         Claude Code Remote Proxy Started         ║
-╠══════════════════════════════════════════════════╣
-║  Instance: api-server                            ║
-║  URL:      http://192.168.1.100:3001             ║
-║  Token:    (shared, see first instance)          ║
-╚══════════════════════════════════════════════════╝
-```
-
-### 多实例使用
-
-在不同终端 Tab 中为不同项目启动 claude-remote：
-
-```bash
-# Tab 1: ~/projects/app
-cd ~/projects/app && claude-remote
-
-# Tab 2: ~/projects/api
-cd ~/projects/api && claude-remote --name api
-```
-
-- **Token 共享**：所有实例使用同一个 Token（存储在 `~/.claude-remote/token`），只需认证一次
-- **端口自动分配**：默认端口 3000 被占用时自动递增（3001, 3002...）
-- **实例注册表**：实例信息记录在 `~/.claude-remote/instances.json`，进程退出时自动清理
-
-### 手机连接
-
-1. 确保手机和 PC 在同一局域网
-2. 手机浏览器访问任意实例的 URL（如 `http://192.168.1.100:3000`）
-3. 输入终端上显示的 Token
-4. 进入控制台，开始远程操作
-5. **多实例时**：顶部出现 Tab 栏，点击切换不同实例（自动认证，终端内容自动恢复）
-6. **实例自动切换**：当前活跃实例下线或断开后，前端会按端口顺序自动轮询切换到下一个可用实例，并提示 `已切换到 <port>`
-7. **移动端输入体验**：默认竖屏单栏；软键盘弹起时底部虚拟按键栏会自动隐藏，避免遮挡输入区
-8. **IP 变更通知与自动重连**：当电脑网络切换导致服务 IP 变化时，手机端会显示 `IP已变更` 提示，并自动切换到新 IP 发起重连（同时保留”复制新地址”按钮用于手动打开）
-9. **动态 resize 主控切换**：手机连接时自动接管 PTY 尺寸控制（PC 终端 resize 暂停），所有手机断开后 PC 自动恢复主控并同步当前终端尺寸
-
-> **CLI 模式**：运行 `claude-remote` 时终端保持干净（只有 Claude CLI 交互界面），连接信息写入 `logs/connection.txt`。查看命令：`cat logs/connection.txt`
 
 ### 停止服务
 
-PC 终端处于 raw mode，单次 Ctrl+C 会直接发给 Claude Code（用于取消当前任务）。**连按两次 Ctrl+C（间隔 < 500ms）停止当前代理实例**。
+- 单次 Ctrl+C：发送给 Claude Code（取消当前任务）
+- **两次 Ctrl+C（间隔 < 500ms）**：停止代理层
 
-如需一键停止本机所有已注册实例，执行：
+停止所有实例：
 
 ```bash
 pnpm stop
 ```
 
-`pnpm stop` 会读取多实例注册表（`~/.claude-remote/instances.json`），按实例逐个发送 `SIGTERM`，超时后自动兜底强制终止；当所有实例停止成功时返回码为 `0`，存在失败实例时返回非 `0` 并输出失败列表。
-
-## 配置
-
-所有配置通过环境变量设置，或写入 `.env` 文件：
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `PORT` | `3000` | 首选端口（被占用时自动递增）|
-| `HOST` | 自动检测 LAN IP | 绑定地址 |
-| `AUTH_TOKEN` | 共享 Token | 覆盖共享 Token（设置后所有实例使用此值）|
-| `INSTANCE_NAME` | 工作目录名 | 实例名称（等同 `--name`）|
-| `CLAUDE_COMMAND` | `claude` | Claude Code CLI 命令路径 |
-| `CLAUDE_ARGS` | `[]` | CLI 额外参数（JSON 数组）|
-
-示例 `.env` 文件：
-
-```env
-PORT=8080
-AUTH_TOKEN=my-secret-token
-CLAUDE_ARGS=["--no-telemetry"]
-```
+---
 
 ## 安全
 
-- **Token 认证**：首次启动时生成 32 字节随机 Token，持久化到 `~/.claude-remote/token`
-- **Session Cookie**：HttpOnly + SameSite=Lax，24 小时有效期
-- **网络隔离**：服务仅绑定局域网 IP，无 LAN IP 时退回 `127.0.0.1`
+- **Token 认证**：32 字节随机 Token，首次启动生成
+- **Session Cookie**：HttpOnly + SameSite=Lax，24 小时有效
+- **网络隔离**：仅绑定局域网 IP，无公网暴露
 - **速率限制**：认证接口 5 次/分钟/IP
-- **Hook 安全**：`/api/hook` 仅接受 localhost 请求
+- **Hook 安全**：仅接受 localhost 请求
 
 ---
 
-# 开发者指南
+## 配置文件
 
-## 工作原理
+配置文件位于 `~/.claude-remote/config.json`，支持以下字段：
 
-```
-PC Terminal ─── stdin/stdout ───► Proxy Server ─── PTY ───► Claude Code CLI
-                                       │
-                                  WebSocket
-                                       │
-                                 手机浏览器
-```
-
-`claude-remote` 命令通过 PTY 伪终端启动 Claude Code：
-- PC 终端体验与直接运行 `claude` 完全一致（raw mode 透传）
-- PTY 输出同时广播到手机 WebSocket 客户端
-- "等待输入"提示通过 Claude Code 内置的 [Notification Hook](https://docs.anthropic.com/en/docs/claude-code/hooks) 触发
-- 交互式选择题通过 [PreToolUse Hook](https://docs.anthropic.com/en/docs/claude-code/hooks) 拦截 `AskUserQuestion` 工具调用，获取结构化问题/选项数据推送到手机端
-
-## 开发命令
-
-```bash
-# 启动前后端 dev server（热重载）
-pnpm dev
-
-# 后端测试
-cd backend && pnpm test -- tests/unit/pty/output-buffer.test.ts
-
-# 前端测试
-cd frontend && pnpm test -- tests/components/VirtualKeyBar.test.tsx
-
-# 类型检查
-cd backend && npx tsc --noEmit
-cd frontend && npx tsc --noEmit
+```json
+{
+  "port": 3000,           // 服务端口（被占用自动递增）
+  "host": "0.0.0.0",      // 绑定地址
+  "token": "your-token",  // 固定 Token（默认自动生成共享 Token）
+  "instanceName": "api",  // 实例名称（默认工作目录名）
+  "claudeCommand": "claude",  // Claude CLI 命令路径
+  "claudeCwd": "/path/to/project",  // Claude 工作目录
+  "claudeArgs": ["--no-telemetry"],  // Claude CLI 额外参数
+  "maxBufferLines": 10000  // 输出缓冲区行数
+}
 ```
 
-## E2E 测试
+**优先级**：CLI 参数 > 配置文件 > 默认值
 
-E2E 测试是独立包（不在 pnpm workspace 内）：
+**示例**：使用固定 Token
 
-```bash
-cd e2e && npm install && npx playwright install chromium
-
-cd e2e && npx playwright test                    # 全部运行
-cd e2e && npx playwright test tests/01-auth.spec.ts  # 单个文件
-cd e2e && npx playwright test --headed           # 可视化运行
-cd e2e && npx playwright show-report             # 查看 HTML 报告
+```json
+{
+  "token": "my-secret-token-123"
+}
 ```
 
-## 项目结构
+配置文件首次启动时会自动创建，包含自动生成的 Token。
 
-```
-claude-code-remote/
-├── shared/                  # 前后端共享 TypeScript 类型
-├── backend/                 # Node.js + Express + ws + node-pty
-│   └── src/
-│       ├── cli.ts           # CLI 入口
-│       ├── index.ts         # 服务入口
-│       ├── api/             # REST API 路由
-│       ├── auth/            # Token 验证、Session Cookie
-│       ├── hooks/           # Claude Code Hook 接收器
-│       ├── pty/             # PTY 进程管理
-│       ├── registry/        # 多实例注册表、共享 Token、端口分配
-│       ├── session/         # SessionController 协调器
-│       ├── terminal/        # PC 终端 raw mode 透传
-│       └── ws/              # WebSocket 服务端
-├── frontend/                # React 19 + Vite + xterm.js
-│   └── src/
-│       ├── pages/           # AuthPage / ConsolePage
-│       ├── components/      # UI 组件
-│       ├── hooks/           # React hooks
-│       └── stores/          # Zustand 状态管理
-└── e2e/                     # Playwright 端到端测试
-```
+---
 
-## 技术栈
+## 前置条件
 
-| 层 | 技术 |
-|----|------|
-| 后端 | Node.js, TypeScript, Express, ws, node-pty, pino |
-| 前端 | React 19, Vite, xterm.js, Zustand |
-| 测试 | vitest, @testing-library/react, Playwright |
-| 包管理 | pnpm workspace |
+- Node.js >= 20
+- pnpm >= 9
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 已安装
+
+---
+
+## 开发者文档
+
+参见 [ARCHITECTURE.md](./ARCHITECTURE.md)，包含：
+- 技术栈详情
+- 架构分层
+- 数据流图
+- API 路由
+- 部署说明
+
+---
 
 ## License
 

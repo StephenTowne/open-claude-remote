@@ -1,13 +1,13 @@
 import { createServer } from 'node:http';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
-import { CLAUDE_REMOTE_DIR } from '@claude-remote/shared';
-import { loadConfig, createSessionCookieName, createClaudeSettings, extractSettingsFromArgs, saveClaudeSettings } from './config.js';
+import { CLAUDE_REMOTE_DIR, SETTINGS_DIR } from '@claude-remote/shared';
+import { loadConfig, createSessionCookieName, createClaudeSettings, extractSettingsFromArgs, saveClaudeSettings, type CliOverrides } from './config.js';
 import { AuthModule } from './auth/auth-middleware.js';
 import { PtyManager } from './pty/pty-manager.js';
 import { WsServer } from './ws/ws-server.js';
@@ -16,21 +16,22 @@ import { SessionController } from './session/session-controller.js';
 import { TerminalRelay } from './terminal/terminal-relay.js';
 import { createApiRouter } from './api/router.js';
 import { PushService } from './push/push-service.js';
-import { logger } from './logger/logger.js';
+import { logger, setInstanceContext } from './logger/logger.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { findAvailablePort } from './registry/port-finder.js';
 import { InstanceRegistryManager } from './registry/instance-registry.js';
 import { IpMonitor } from './utils/ip-monitor.js';
+import { printQRCode } from './utils/qrcode-banner.js';
 
-async function main() {
+export async function startServer(cliOverrides: CliOverrides = {}): Promise<void> {
   // 1. Load configuration
-  const config = loadConfig();
+  const config = loadConfig(cliOverrides);
 
   const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
   // 2. Shared config directory and token
   const sharedConfigDir = resolve(homedir(), CLAUDE_REMOTE_DIR);
-  const { token, source: tokenSource } = getOrCreateSharedToken(sharedConfigDir);
+  const { token, source: tokenSource } = getOrCreateSharedToken(sharedConfigDir, config.token ?? undefined);
 
   // 3. Instance ID and registry
   const instanceId = randomUUID();
@@ -49,6 +50,9 @@ async function main() {
       sessionCookieName: config.sessionCookieName,
     }, 'Config updated for actual port');
   }
+
+  // 设置日志实例上下文，后续所有日志自动包含 instancePort 字段
+  setInstanceContext(actualPort);
 
   // 5. Create Express app
   const app = express();
@@ -91,7 +95,7 @@ async function main() {
   const hookReceiver = new HookReceiver();
 
   // 9. Setup Push service
-  const pushService = new PushService();
+  const pushService = new PushService(sharedConfigDir);
 
   // 10. Session controller reference (set after PTY spawn)
   let sessionController: SessionController | null = null;
@@ -176,7 +180,31 @@ async function main() {
     startedAt: new Date().toISOString(),
   });
 
-  // 18.5. Start IP monitor
+  // 18.5. Clean up stale settings files for dead instances
+  try {
+    const settingsDir = resolve(sharedConfigDir, SETTINGS_DIR);
+    if (existsSync(settingsDir)) {
+      const alivePorts = new Set((await registry.list()).map(i => i.port));
+      for (const file of readdirSync(settingsDir)) {
+        const match = file.match(/^(\d+)\.json$/);
+        if (match) {
+          const port = parseInt(match[1], 10);
+          if (!alivePorts.has(port)) {
+            try {
+              unlinkSync(resolve(settingsDir, file));
+              logger.info({ file, port }, 'Cleaned up stale settings file');
+            } catch {
+              // 静默处理：清理失败不影响启动
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    logger.debug({ err }, 'Settings cleanup skipped');
+  }
+
+  // 18.6. Start IP monitor
   const ipMonitor = new IpMonitor((newIp, oldIp) => {
     const newUrl = `http://${newIp}:${actualPort}`;
     logger.info({ oldIp, newIp, newUrl }, 'IP change detected');
@@ -270,7 +298,17 @@ async function main() {
     });
   }
 
-  // 20. Start listening
+  // 20. Handle port collision (TOCTOU between findAvailablePort and listen)
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error({ port: actualPort, host: config.host }, 'Port is already in use (TOCTOU race). Another process claimed it between port check and listen.');
+      process.exit(1);
+    }
+    logger.error({ err }, 'HTTP server error');
+    process.exit(1);
+  });
+
+  // 21. Start listening
   httpServer.listen(actualPort, config.host, () => {
     const url = `http://${config.displayIp}:${actualPort}`;
     const isCli = process.env.CLI_MODE === 'true';
@@ -280,7 +318,7 @@ async function main() {
       const logDir = resolve(projectRoot, 'logs');
       mkdirSync(logDir, { recursive: true });
       const connectionInfo = `URL: ${url}\nToken: ${token}\nInstanceId: ${instanceId}\nName: ${config.instanceName}\n`;
-      writeFileSync(resolve(logDir, 'connection.txt'), connectionInfo);
+      writeFileSync(resolve(logDir, `connection-p${actualPort}.txt`), connectionInfo);
       logger.info({ url, instanceName: config.instanceName }, 'Server started');
     } else {
       // Dev/production mode: print banner to stderr
@@ -308,6 +346,13 @@ async function main() {
       }
 
       process.stderr.write('╚══════════════════════════════════════════════════╝\n');
+
+      // 首次启动时显示二维码，方便手机扫码连接
+      if (isFirstInstance) {
+        const qrUrl = `${url}?token=${token}`;
+        printQRCode(qrUrl);
+      }
+
       process.stderr.write('\n');
 
       logger.info({ url, host: config.host, port: actualPort, instanceName: config.instanceName, tokenSource }, 'Server started');
@@ -315,7 +360,11 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  logger.error({ err }, 'Failed to start');
-  process.exit(1);
-});
+// Auto-start when run directly (non-CLI mode)
+// CLI mode: cli.ts imports startServer() directly
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  startServer().catch((err) => {
+    logger.error({ err }, 'Failed to start');
+    process.exit(1);
+  });
+}

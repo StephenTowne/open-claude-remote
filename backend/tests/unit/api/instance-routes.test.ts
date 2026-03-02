@@ -48,7 +48,7 @@ describe('instance-routes', () => {
       cookieName: 'session_id_test_instances',
     });
 
-    listFn = vi.fn().mockReturnValue([]);
+    listFn = vi.fn().mockResolvedValue([]);
     app.use('/api', createInstanceRoutes(authModule, listFn, currentInstanceId));
 
     server = createServer(app);
@@ -85,7 +85,7 @@ describe('instance-routes', () => {
       makeInstance({ instanceId: 'id-current', port: 3000 }),
       makeInstance({ instanceId: 'id-other', port: 3001 }),
     ];
-    listFn.mockReturnValue(instances);
+    listFn.mockResolvedValue(instances);
 
     const cookie = await authenticate();
     const res = await fetch(`${baseUrl}/api/instances`, {
@@ -103,7 +103,7 @@ describe('instance-routes', () => {
   });
 
   it('should return empty array when no instances', async () => {
-    listFn.mockReturnValue([]);
+    listFn.mockResolvedValue([]);
     const cookie = await authenticate();
 
     const res = await fetch(`${baseUrl}/api/instances`, {

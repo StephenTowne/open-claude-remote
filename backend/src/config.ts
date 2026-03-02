@@ -4,6 +4,7 @@ import {
   DEFAULT_AUTH_RATE_LIMIT,
   DEFAULT_MAX_BUFFER_LINES,
   SETTINGS_DIR,
+  CLAUDE_REMOTE_DIR,
 } from '@claude-remote/shared';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,47 @@ import { homedir } from 'node:os';
 import { detectLanIp, detectNonLoopbackIp } from './utils/network.js';
 import { logger } from './logger/logger.js';
 
+/**
+ * 用户配置文件结构 (~/.claude-remote/config.json)
+ * 这些是用户可以持久化的配置项
+ */
+export interface UserConfig {
+  // === 服务配置 ===
+  /** 服务端口 (默认: 3000) */
+  port?: number;
+  /** 绑定地址 (默认: 0.0.0.0) */
+  host?: string;
+  /** 认证 Token (默认: 自动生成共享 Token) */
+  token?: string;
+
+  // === Claude CLI 配置 ===
+  /** Claude CLI 命令路径 (默认: claude) */
+  claudeCommand?: string;
+  /** Claude CLI 额外参数 */
+  claudeArgs?: string[];
+  /** Claude 工作目录 (默认: 当前目录) */
+  claudeCwd?: string;
+
+  // === 运行时配置 ===
+  /** Session TTL 毫秒数 (默认: 24小时) */
+  sessionTtlMs?: number;
+  /** 认证速率限制 (每分钟每 IP 次数, 默认: 5) */
+  authRateLimit?: number;
+  /** 输出缓冲区最大行数 (默认: 10000) */
+  maxBufferLines?: number;
+  /** 实例名称 (默认: 工作目录名) */
+  instanceName?: string;
+
+  // === 用户偏好 ===
+  /** 快捷输入列表 */
+  shortcuts?: Array<{ label: string; data: string; enabled: boolean; desc?: string }>;
+  /** 自定义命令列表 */
+  commands?: Array<{ label: string; command: string; enabled: boolean; desc?: string }>;
+}
+
+/**
+ * 运行时配置结构 (融合用户配置 + CLI 参数 + 默认值)
+ */
 export interface AppConfig {
   port: number;
   host: string; // Server bind address (usually 0.0.0.0)
@@ -28,15 +70,105 @@ export interface AppConfig {
   sessionCookieName: string;
 }
 
-function parseJsonArray(value: string | undefined): string[] {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value);
-    if (Array.isArray(parsed)) return parsed.map(String);
-  } catch {
-    logger.warn({ value }, 'Failed to parse JSON array from env');
+/** 配置文件名 */
+const CONFIG_FILENAME = 'config.json';
+
+/**
+ * 获取用户配置目录路径 (~/.claude-remote/)
+ */
+export function getUserConfigDir(): string {
+  return resolve(homedir(), CLAUDE_REMOTE_DIR);
+}
+
+/**
+ * 获取用户配置文件路径 (~/.claude-remote/config.json)
+ */
+export function getUserConfigPath(): string {
+  return resolve(getUserConfigDir(), CONFIG_FILENAME);
+}
+
+/**
+ * 加载用户配置文件
+ * @param configDir 配置目录路径 (默认: ~/.claude-remote/)
+ * @returns 用户配置对象，文件不存在或解析失败返回空对象
+ */
+export function loadUserConfig(configDir?: string): UserConfig {
+  const dir = configDir ?? getUserConfigDir();
+  const configPath = resolve(dir, CONFIG_FILENAME);
+
+  if (!existsSync(configPath)) {
+    logger.debug({ configPath }, 'User config file not found, using defaults');
+    return {};
   }
-  return [];
+
+  try {
+    const content = readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(content) as UserConfig;
+    logger.info({ configPath, keys: Object.keys(config) }, 'User config loaded');
+    return config;
+  } catch (err) {
+    logger.warn({ configPath, err }, 'Failed to parse user config, using defaults');
+    return {};
+  }
+}
+
+/**
+ * CLI 覆盖参数 (优先级最高)
+ */
+export interface CliOverrides {
+  port?: number;
+  host?: string;
+  token?: string;
+  instanceName?: string;
+  claudeArgs?: string[];
+}
+
+/**
+ * 加载运行时配置
+ * 优先级: CLI 参数 > 用户配置文件 > 默认值
+ *
+ * @param cliOverrides CLI 传入的覆盖参数
+ * @param configDir 配置目录路径 (默认: ~/.claude-remote/)
+ */
+export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string): AppConfig {
+  const userConfig = loadUserConfig(configDir);
+
+  // Detect IP for display (try private IP first, then any non-loopback)
+  const displayIp = detectLanIp() ?? detectNonLoopbackIp() ?? '127.0.0.1';
+
+  // 优先级: CLI > 用户配置 > 默认值
+  const port = cliOverrides.port ?? userConfig.port ?? DEFAULT_PORT;
+  const claudeCwd = userConfig.claudeCwd ?? process.cwd();
+
+  const config: AppConfig = {
+    port,
+    host: cliOverrides.host ?? userConfig.host ?? '0.0.0.0',
+    displayIp,
+    claudeCommand: userConfig.claudeCommand ?? 'claude',
+    claudeArgs: cliOverrides.claudeArgs ?? userConfig.claudeArgs ?? [],
+    claudeCwd,
+    token: cliOverrides.token ?? userConfig.token ?? null,
+    sessionTtlMs: userConfig.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS,
+    authRateLimit: userConfig.authRateLimit ?? DEFAULT_AUTH_RATE_LIMIT,
+    maxBufferLines: userConfig.maxBufferLines ?? DEFAULT_MAX_BUFFER_LINES,
+    instanceName: cliOverrides.instanceName ?? userConfig.instanceName ?? basename(claudeCwd),
+    logDir: resolve(dirname(fileURLToPath(import.meta.url)), '../..', 'logs'),
+    sessionCookieName: createSessionCookieName(port),
+  };
+
+  logger.info({
+    port: config.port,
+    host: config.host,
+    displayIp: config.displayIp,
+    claudeCommand: config.claudeCommand,
+    sessionCookieName: config.sessionCookieName,
+    configSource: {
+      cli: Object.keys(cliOverrides).filter(k => cliOverrides[k as keyof CliOverrides] !== undefined),
+      user: Object.keys(userConfig).filter(k => userConfig[k as keyof UserConfig] !== undefined),
+    },
+  }, 'Configuration loaded');
+
+  return config;
 }
 
 export function createSessionCookieName(port: number): string {
@@ -110,36 +242,6 @@ export function saveClaudeSettings(
 
   logger.info({ settingsPath, port }, 'Claude settings saved to file');
   return settingsPath;
-}
-
-export function loadConfig(): AppConfig {
-  // Detect IP for display (try private IP first, then any non-loopback)
-  const displayIp = process.env.DISPLAY_IP ?? detectLanIp() ?? detectNonLoopbackIp() ?? '127.0.0.1';
-  const port = parseInt(process.env.PORT ?? String(DEFAULT_PORT), 10);
-  const config: AppConfig = {
-    port,
-    host: process.env.HOST ?? '0.0.0.0', // Default: bind to all interfaces for remote access
-    displayIp,
-    claudeCommand: process.env.CLAUDE_COMMAND ?? 'claude',
-    claudeArgs: parseJsonArray(process.env.CLAUDE_ARGS),
-    claudeCwd: process.env.CLAUDE_CWD ?? process.cwd(),
-    token: process.env.AUTH_TOKEN ?? null,
-    sessionTtlMs: parseInt(process.env.SESSION_TTL ?? String(DEFAULT_SESSION_TTL_MS), 10),
-    authRateLimit: parseInt(process.env.AUTH_RATE_LIMIT ?? String(DEFAULT_AUTH_RATE_LIMIT), 10),
-    maxBufferLines: parseInt(process.env.MAX_BUFFER_LINES ?? String(DEFAULT_MAX_BUFFER_LINES), 10),
-    instanceName: process.env.INSTANCE_NAME ?? basename(process.env.CLAUDE_CWD ?? process.cwd()),
-    logDir: process.env.LOG_DIR ?? resolve(dirname(fileURLToPath(import.meta.url)), '../..', 'logs'),
-    sessionCookieName: process.env.SESSION_COOKIE_NAME ?? createSessionCookieName(port),
-  };
-
-  logger.info({
-    port: config.port,
-    host: config.host,
-    displayIp: config.displayIp,
-    claudeCommand: config.claudeCommand,
-    sessionCookieName: config.sessionCookieName,
-  }, 'Configuration loaded');
-  return config;
 }
 
 /**

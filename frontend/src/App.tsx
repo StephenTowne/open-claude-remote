@@ -5,6 +5,20 @@ import { ConsolePage } from './pages/ConsolePage.js';
 import { getStatus, authenticate } from './services/api-client.js';
 import { loadToken, clearToken } from './services/token-storage.js';
 
+/**
+ * 从 URL 提取 token 参数并清理 URL
+ */
+function extractUrlToken(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+  if (token) {
+    // 清理 URL（安全考虑，避免 token 泄露）
+    const cleanUrl = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, '', cleanUrl);
+  }
+  return token;
+}
+
 export function App() {
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
   const isCheckingAuth = useAppStore((s) => s.isCheckingAuth);
@@ -13,6 +27,30 @@ export function App() {
   const setCachedToken = useAppStore((s) => s.setCachedToken);
 
   useEffect(() => {
+    // 检查 URL 中是否有 token 参数（扫码连接）
+    const urlToken = extractUrlToken();
+
+    if (urlToken) {
+      // URL token 优先，直接尝试认证
+      authenticate(urlToken)
+        .then((ok) => {
+          if (ok) {
+            setAuthenticated(true);
+            setCachedToken(urlToken);
+          } else {
+            // 认证失败，存储预填充 token 供登录页使用
+            sessionStorage.setItem('prefill_token', urlToken);
+            setCheckingAuth(false);
+          }
+        })
+        .catch(() => {
+          // 认证失败，存储预填充 token 供登录页使用
+          sessionStorage.setItem('prefill_token', urlToken);
+          setCheckingAuth(false);
+        });
+      return;
+    }
+
     // Check if existing session cookie is still valid
     getStatus()
       .then(() => {

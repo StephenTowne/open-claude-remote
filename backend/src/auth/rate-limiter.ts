@@ -8,6 +8,10 @@ interface RateLimitEntry {
 /**
  * Simple in-memory rate limiter per IP.
  * Window: 1 minute. Configurable max attempts.
+ *
+ * 多实例限制：各实例独立计数，不共享状态。
+ * 在多实例场景下，同一 IP 的有效总尝试次数 = maxAttempts × 实例数。
+ * 这在实际场景中可接受：token 为 256 位（64 hex chars），暴力破解不可行。
  */
 export class RateLimiter {
   private entries: Map<string, RateLimitEntry> = new Map();

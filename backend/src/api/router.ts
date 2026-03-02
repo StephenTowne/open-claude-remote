@@ -17,7 +17,7 @@ export interface ApiRouterOptions {
   hookReceiver: HookReceiver;
   getController: () => SessionController | null;
   pushService?: PushService;
-  listInstances?: () => InstanceInfo[];
+  listInstances?: () => Promise<InstanceInfo[]>;
   currentInstanceId?: string;
 }
 

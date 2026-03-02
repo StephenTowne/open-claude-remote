@@ -5,7 +5,7 @@ import { createAuthRoutes } from './auth-routes.js';
 
 export function createInstanceRoutes(
   authModule: AuthModule,
-  listInstances: () => InstanceInfo[],
+  listInstances: () => Promise<InstanceInfo[]>,
   currentInstanceId: string,
 ): Router {
   const router = Router();
@@ -13,8 +13,8 @@ export function createInstanceRoutes(
   // 复用 auth 路由以支持 supertest 认证
   router.use(createAuthRoutes(authModule));
 
-  router.get('/instances', authModule.requireAuth, (_req, res) => {
-    const instances = listInstances();
+  router.get('/instances', authModule.requireAuth, async (_req, res) => {
+    const instances = await listInstances();
     const result: InstanceListItem[] = instances.map(inst => ({
       ...inst,
       isCurrent: inst.instanceId === currentInstanceId,

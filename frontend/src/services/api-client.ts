@@ -53,3 +53,18 @@ export async function getUserConfig(): Promise<{ config: UserConfig | null; conf
 
   return res.json();
 }
+
+export async function updateUserConfig(config: UserConfig): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(config),
+  });
+
+  if (res.status === 401) {
+    throw new Error('Unauthorized');
+  }
+
+  return res.ok;
+}

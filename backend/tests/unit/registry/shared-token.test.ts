@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -19,21 +19,17 @@ describe('shared-token', () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `shared-token-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(testDir, { recursive: true });
-    // Clear env
-    delete process.env.AUTH_TOKEN;
   });
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true });
-    delete process.env.AUTH_TOKEN;
   });
 
-  it('should return AUTH_TOKEN env var if set', async () => {
-    process.env.AUTH_TOKEN = 'env-token-123';
+  it('should return CLI token if provided', async () => {
     const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
-    const result = getOrCreateSharedToken(testDir);
-    expect(result.token).toBe('env-token-123');
-    expect(result.source).toBe('env');
+    const result = getOrCreateSharedToken(testDir, 'cli-token-123');
+    expect(result.token).toBe('cli-token-123');
+    expect(result.source).toBe('cli');
   });
 
   it('should read existing token from config.json', async () => {
@@ -89,8 +85,7 @@ describe('shared-token', () => {
 
     const config = JSON.parse(readFileSync(configPath, 'utf-8'));
     expect(config.token).toBe(result.token);
-    expect(config.shortcuts).toEqual([]);
-    expect(config.commands).toEqual([]);
+    // shortcuts 和 commands 现在是可选的，生成 token 时不会创建空数组
   });
 
   it('should preserve existing config fields when adding token', async () => {
@@ -111,16 +106,15 @@ describe('shared-token', () => {
     expect(config.commands).toEqual(existingConfig.commands);
   });
 
-  it('should prioritize AUTH_TOKEN env over config.json', async () => {
-    process.env.AUTH_TOKEN = 'env-wins';
+  it('should prioritize CLI token over config.json', async () => {
     const configPath = join(testDir, 'config.json');
     const config = { token: 'config-loses', shortcuts: [], commands: [] };
     writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
 
     const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
-    const result = getOrCreateSharedToken(testDir);
-    expect(result.token).toBe('env-wins');
-    expect(result.source).toBe('env');
+    const result = getOrCreateSharedToken(testDir, 'cli-wins');
+    expect(result.token).toBe('cli-wins');
+    expect(result.source).toBe('cli');
   });
 
   it('should create directory with 0o700 if not exists', async () => {
@@ -149,6 +143,26 @@ describe('shared-token', () => {
     const result = getOrCreateSharedToken(testDir);
     expect(result.source).toBe('generated');
     expect(result.token.length).toBe(64);
+  });
+
+  it('should return same token on consecutive calls (second from file)', async () => {
+    const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
+    const first = getOrCreateSharedToken(testDir);
+    expect(first.source).toBe('generated');
+
+    const second = getOrCreateSharedToken(testDir);
+    expect(second.token).toBe(first.token);
+    expect(second.source).toBe('file');
+  });
+
+  it('should not leave lock directory after operation', async () => {
+    const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
+    getOrCreateSharedToken(testDir);
+
+    // 检查没有残留的 .lock 目录
+    const files = readdirSync(testDir);
+    const lockDirs = files.filter(f => f.endsWith('.lock'));
+    expect(lockDirs).toHaveLength(0);
   });
 
   it('should prioritize config.json token over old token file', async () => {

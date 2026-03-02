@@ -86,4 +86,12 @@ function createLogger() {
   });
 }
 
-export const logger = createLogger();
+export let logger = createLogger();
+
+/**
+ * 设置实例上下文，使后续所有日志自动包含 instancePort 字段。
+ * 在端口确定后调用一次。ESM live binding 确保所有 importer 自动获取新值。
+ */
+export function setInstanceContext(port: number): void {
+  logger = logger.child({ instancePort: port });
+}

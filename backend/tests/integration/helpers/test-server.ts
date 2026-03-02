@@ -64,7 +64,7 @@ export async function startTestServer(options?: TestServerOptions): Promise<Test
   const hookReceiver = new HookReceiver();
 
   let sessionController: SessionController | null = null;
-  const pushService = new PushService();
+  const pushService = new PushService('/tmp/test-push-integration');
 
   app.use('/api', createApiRouter(authModule, hookReceiver, () => sessionController, pushService));
 

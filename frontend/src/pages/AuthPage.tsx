@@ -1,9 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth.js';
 
 export function AuthPage() {
   const [token, setToken] = useState('');
   const { login, error, loading } = useAuth();
+
+  // 从 sessionStorage 读取预填充 token（来自扫码连接）
+  useEffect(() => {
+    const prefillToken = sessionStorage.getItem('prefill_token');
+    if (prefillToken) {
+      setToken(prefillToken);
+      sessionStorage.removeItem('prefill_token');
+    }
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
