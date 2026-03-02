@@ -1,0 +1,26 @@
+{
+  "port": 3000,
+  "host": "0.0.0.0",
+  "token": "my-token",
+
+  "claudeCommand": "claude",
+  "claudeArgs": [],
+
+  "sessionTtlMs": 86400000,
+  "authRateLimit": 20,
+  "maxBufferLines": 10000,
+  "instanceName": null,
+
+  "shortcuts": [
+    { "label": "确认", "data": "y", "enabled": true, "desc": "确认操作" },
+    { "label": "取消", "data": "\u001b", "enabled": true, "desc": "取消操作 (ESC)" },
+    { "label": "继续", "data": "\r", "enabled": true, "desc": "继续执行 (Enter)" }
+  ],
+
+  "commands": [
+    { "label": "Git Status", "command": "git status", "enabled": true, "desc": "查看仓库状态" }
+  ],
+
+  "defaultClaudeArgs": [],
+  "workspaces": []
+}
