@@ -32,6 +32,8 @@ const mockWrite = vi.fn((_data: string, callback?: () => void) => {
 });
 const mockReset = vi.fn();
 const mockScrollToBottom = vi.fn();
+const mockScrollToTop = vi.fn();
+const mockSetOnScrollPositionChange = vi.fn();
 const mockAdaptToPtyCols = vi.fn();
 
 vi.mock('../../src/hooks/useTerminal.js', () => ({
@@ -39,6 +41,8 @@ vi.mock('../../src/hooks/useTerminal.js', () => ({
     write: mockWrite,
     reset: mockReset,
     scrollToBottom: mockScrollToBottom,
+    scrollToTop: mockScrollToTop,
+    setOnScrollPositionChange: mockSetOnScrollPositionChange,
     adaptToPtyCols: mockAdaptToPtyCols,
   }),
 }));
@@ -76,6 +80,10 @@ vi.mock('../../src/components/terminal/TerminalView.js', () => ({
   TerminalView: () => <div>TerminalView</div>,
 }));
 
+vi.mock('../../src/components/terminal/ScrollButtons.js', () => ({
+  ScrollButtons: () => <div>ScrollButtons</div>,
+}));
+
 vi.mock('../../src/services/instance-api.js', () => ({
   authenticateToInstance: vi.fn(),
   buildInstanceWsUrl: vi.fn(() => 'ws://mock-instance/ws'),
@@ -99,6 +107,8 @@ describe('ConsolePage', () => {
     capturedOnSwitch = null;
     viewportState.keyboardHeight = 0;
     mockScrollToBottom.mockClear();
+    mockScrollToTop.mockClear();
+    mockSetOnScrollPositionChange.mockClear();
     mockShowNotification.mockClear();
 
     useAppStore.setState({

@@ -22,9 +22,12 @@
 - SettingsModal.tsx: 设置模态框，Tab 切换（快捷键/命令），加载/保存用户配置
 - ShortcutSettings.tsx: 快捷键设置面板，按键录制转换为 ANSI 序列
 - CommandSettings.tsx: 命令设置面板，编辑/删除/重置命令列表
+- SortableItemShell.tsx: 可排序列表项外壳，集成拖拽手柄/toggle开关/删除按钮，用于设置项行布局
+- useDndSensors.ts: dnd-kit 拖拽传感器配置 hook，PointerSensor + KeyboardSensor，激活约束 8px
 
 ## onboarding/
 - OnboardingGuide.tsx: 首次使用引导组件，分步展示功能介绍，localStorage 记录完成状态
 
 ## terminal/
 - TerminalView.tsx: xterm.js 挂载容器，disableStdin 只读模式，外部通过 containerRef 注入
+- ScrollButtons.tsx: 终端悬浮滚动按钮（顶部/底部），滚动后显示，淡入淡出动画过渡

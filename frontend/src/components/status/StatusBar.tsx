@@ -46,12 +46,35 @@ export function StatusBar() {
         paddingTop: 'var(--safe-top)',
         flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          minWidth: 0,
+          overflow: 'hidden',
+          flex: '1 1 auto',
+        }}>
+          <span style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            flexShrink: 0,
+          }}>
             Claude Remote
           </span>
           {instanceName && (
-            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            <span
+              title={instanceName}
+              style={{
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                minWidth: 0,
+                maxWidth: '200px',
+              }}
+            >
               / {instanceName}
             </span>
           )}

@@ -20,17 +20,28 @@ const mockTermResize = vi.fn();
 const mockTermReset = vi.fn();
 const mockTermClear = vi.fn();
 const mockTermScrollToBottom = vi.fn();
+const mockTermScrollToLine = vi.fn();
+const mockTermOnScroll = vi.fn(() => ({ dispose: vi.fn() }));
+const mockBuffer = {
+  active: {
+    viewportY: 0,
+    length: 100,
+  },
+};
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: vi.fn(() => ({
     get cols() { return mockTermState.cols; },
     get rows() { return mockTermState.rows; },
+    get buffer() { return mockBuffer; },
     options: mockTermOptions,
     unicode: mockUnicodeState,
     write: mockTermWrite,
     clear: mockTermClear,
     reset: mockTermReset,
     scrollToBottom: mockTermScrollToBottom,
+    scrollToLine: mockTermScrollToLine,
+    onScroll: mockTermOnScroll,
     resize: mockTermResize,
     open: mockTermOpen,
     dispose: mockTermDispose,
@@ -99,6 +110,10 @@ describe('useTerminal', () => {
     mockTermReset.mockReset();
     mockTermClear.mockReset();
     mockTermScrollToBottom.mockReset();
+    mockTermScrollToLine.mockReset();
+    mockTermOnScroll.mockReset();
+    mockTermOnScroll.mockReturnValue({ dispose: vi.fn() });
+    mockBuffer.active.viewportY = 0;
   });
 
   afterEach(() => {
@@ -163,13 +178,15 @@ describe('useTerminal', () => {
     expect(onResize).toHaveBeenCalledWith(60, 22);
   });
 
-  it('should return write, clear, reset, scrollToBottom functions', () => {
+  it('should return write, clear, reset, scrollToBottom, scrollToTop, setOnScrollPositionChange functions', () => {
     const { result } = renderUseTerminal();
 
     expect(typeof result.current.write).toBe('function');
     expect(typeof result.current.clear).toBe('function');
     expect(typeof result.current.reset).toBe('function');
     expect(typeof result.current.scrollToBottom).toBe('function');
+    expect(typeof result.current.scrollToTop).toBe('function');
+    expect(typeof result.current.setOnScrollPositionChange).toBe('function');
   });
 
   it('reset should call terminal.reset()', () => {
