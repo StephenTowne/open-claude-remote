@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import type { SessionStatus } from '@claude-remote/shared';
 import { PtyManager } from '../pty/pty-manager.js';
 import { OutputBuffer } from '../pty/output-buffer.js';
-import { WsServer } from '../ws/ws-server.js';
+import { WsServer, type ClientType } from '../ws/ws-server.js';
 import { HookReceiver, type HookNotification } from '../hooks/hook-receiver.js';
 import { handleWsMessage } from '../ws/ws-handler.js';
 import { logger } from '../logger/logger.js';
@@ -176,25 +176,48 @@ export class SessionController {
    * Wire WS messages → PTY input
    */
   private setupWsHandlers(): void {
-    this.wsServer.onMessage((ws: WebSocket, data: string) => {
+    this.wsServer.onMessage((ws: WebSocket, data: string, clientType: ClientType) => {
       handleWsMessage(ws, data, {
         onUserInput: (input: string) => {
-          logger.debug({ length: input.length }, 'User input from mobile');
+          logger.debug({ length: input.length }, 'User input from client');
           this.ptyManager.write(input);
         },
         onResize: (cols: number, rows: number) => {
-          logger.info({ cols, rows }, 'Resize request from web client, applying to PTY');
+          // attach 在线时忽略 webapp 的 resize（attach 是主控端）
+          if (clientType === 'webapp') {
+            const counts = this.wsServer.getClientCounts();
+            if (counts.attach > 0) {
+              logger.debug({ cols, rows }, 'Ignoring webapp resize, attach is master');
+              return;
+            }
+          }
+          logger.info({ cols, rows, clientType }, 'Resize request from client, applying to PTY');
           this.ptyManager.resize(cols, rows);
         },
       });
     });
 
-    // Send history sync on new connection + pause PC resize when first mobile client connects
-    this.wsServer.onConnect((ws: WebSocket) => {
-      if (this.terminalRelay && this.wsServer.clientCount === 1) {
-        this.terminalRelay.pauseResize();
-        logger.info('First web client connected, PC resize paused');
+    // 处理客户端连接：区分主控端（attach）和从控端（webapp）
+    this.wsServer.onConnect((ws: WebSocket, clientType: ClientType) => {
+      if (clientType === 'attach') {
+        // attach 客户端连接：作为主控端
+        // 暂停 PC 端 resize，让 attach 客户端接管尺寸控制
+        if (this.terminalRelay) {
+          this.terminalRelay.pauseResize();
+        }
+        logger.info('attach client connected (master mode)');
+      } else {
+        // WebApp 客户端连接：作为从控端
+        // 只有第一个 WebApp 客户端连接时才暂停 PC 端 resize
+        const counts = this.wsServer.getClientCounts();
+        if (this.terminalRelay && counts.attach === 0 && counts.webapp === 1) {
+          this.terminalRelay.pauseResize();
+          logger.info('First WebApp client connected, PC resize paused');
+        }
+        logger.info('WebApp client connected (slave mode)');
       }
+
+      // 发送历史数据
       this.wsServer.sendTo(ws, {
         type: 'history_sync',
         data: this.buffer.getFullContent(),
@@ -205,12 +228,31 @@ export class SessionController {
       });
     });
 
-    // Resume PC resize when last mobile client disconnects
-    this.wsServer.onDisconnect(() => {
-      if (this.terminalRelay && this.wsServer.clientCount === 0) {
-        this.terminalRelay.resumeResize();
-        logger.info('All web clients disconnected, PC resize resumed');
+    // 处理客户端断开：根据剩余客户端类型决定是否恢复 PC 端 resize
+    this.wsServer.onDisconnect((clientCounts: { attach: number; webapp: number }) => {
+      const { attach, webapp } = clientCounts;
+
+      if (attach === 0 && webapp === 0) {
+        // 所有客户端断开：恢复 PC 端 resize
+        if (this.terminalRelay) {
+          this.terminalRelay.resumeResize();
+          logger.info('All clients disconnected, PC resize resumed');
+        }
+      } else if (attach === 0 && webapp > 0) {
+        // attach 断开，但 WebApp 还在：
+        // 不恢复 PC 端 resize（WebApp 继续控制尺寸）
+        logger.info({ webappCount: webapp }, 'attach disconnected, WebApp still connected');
+      } else if (attach > 0 && webapp === 0) {
+        // WebApp 全部断开，attach 仍在：
+        // 广播当前 PTY 尺寸，触发 attach 客户端的 scheduleResizeSync 恢复自身尺寸
+        this.wsServer.broadcast({
+          type: 'terminal_resize',
+          cols: this.ptyManager.cols,
+          rows: this.ptyManager.rows,
+        });
+        logger.info('All WebApps disconnected, broadcast PTY size to trigger attach re-sync');
       }
+      // attach 还在且 webapp 也在：保持当前状态
     });
   }
 

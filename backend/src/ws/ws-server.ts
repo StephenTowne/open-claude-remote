@@ -5,9 +5,13 @@ import type { ServerMessage } from '@claude-remote/shared';
 import { AuthModule } from '../auth/auth-middleware.js';
 import { logger } from '../logger/logger.js';
 
+/** 客户端类型：attach（主控端）或 webapp（从控端） */
+export type ClientType = 'attach' | 'webapp';
+
 interface ClientInfo {
   ws: WebSocket;
   alive: boolean;
+  clientType: ClientType;
 }
 
 /**
@@ -20,9 +24,10 @@ export class WsServer {
   private wss: WebSocketServer;
   private clients: Set<ClientInfo> = new Set();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  private messageHandler: ((ws: WebSocket, data: string) => void) | null = null;
-  private connectHandler: ((ws: WebSocket) => void) | null = null;
-  private disconnectHandler: (() => void) | null = null;
+  private messageHandler: ((ws: WebSocket, data: string, clientType: ClientType) => void) | null = null;
+  private connectHandler: ((ws: WebSocket, clientType: ClientType) => void) | null = null;
+  private disconnectHandler: ((clientCounts: { attach: number; webapp: number }) => void) | null = null;
+  private upgradeClientTypes = new WeakMap<IncomingMessage, ClientType>();
 
   constructor(
     private httpServer: HttpServer,
@@ -37,21 +42,21 @@ export class WsServer {
   /**
    * Set a handler for incoming messages from clients.
    */
-  onMessage(handler: (ws: WebSocket, data: string) => void): void {
+  onMessage(handler: (ws: WebSocket, data: string, clientType: ClientType) => void): void {
     this.messageHandler = handler;
   }
 
   /**
    * Set a handler for new client connections.
    */
-  onConnect(handler: (ws: WebSocket) => void): void {
+  onConnect(handler: (ws: WebSocket, clientType: ClientType) => void): void {
     this.connectHandler = handler;
   }
 
   /**
    * Set a handler for client disconnections (after client is removed from set).
    */
-  onDisconnect(handler: () => void): void {
+  onDisconnect(handler: (clientCounts: { attach: number; webapp: number }) => void): void {
     this.disconnectHandler = handler;
   }
 
@@ -71,7 +76,7 @@ export class WsServer {
         return;
       }
 
-      // 方式 1: 检查 URL 参数中的 token
+      // 方式 1: 检查 URL 参数中的 token（attach 客户端）
       const tokenParam = url.searchParams.get('token');
       if (tokenParam) {
         if (!this.authModule.verifyToken(tokenParam)) {
@@ -83,8 +88,11 @@ export class WsServer {
           socket.destroy();
           return;
         }
+        // 标记为 attach 客户端（主控端）
+        this.upgradeClientTypes.set(req, 'attach');
         logger.info({
           remoteAddress: req.socket.remoteAddress,
+          clientType: 'attach',
         }, 'WS upgrade accepted via token param');
         this.wss.handleUpgrade(req, socket, head, (ws) => {
           this.wss.emit('connection', ws, req);
@@ -92,7 +100,7 @@ export class WsServer {
         return;
       }
 
-      // 方式 2: 检查 Cookie Session
+      // 方式 2: 检查 Cookie Session（WebApp 客户端）
       const cookieHeader = req.headers.cookie ?? '';
       const sessionId = this.authModule.getSessionFromCookieHeader(cookieHeader);
 
@@ -109,6 +117,8 @@ export class WsServer {
         return;
       }
 
+      // 标记为 WebApp 客户端（从控端）
+      this.upgradeClientTypes.set(req, 'webapp');
       this.wss.handleUpgrade(req, socket, head, (ws) => {
         this.wss.emit('connection', ws, req);
       });
@@ -119,10 +129,12 @@ export class WsServer {
    * Handle new WebSocket connections.
    */
   private setupConnection(): void {
-    this.wss.on('connection', (ws: WebSocket) => {
-      const clientInfo: ClientInfo = { ws, alive: true };
+    this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+      // 从 WeakMap 读取客户端类型（由 setupUpgrade 设置）
+      const clientType = this.upgradeClientTypes.get(req) ?? 'webapp';
+      const clientInfo: ClientInfo = { ws, alive: true, clientType };
       this.clients.add(clientInfo);
-      logger.info({ clientCount: this.clients.size }, 'WebSocket client connected');
+      logger.info({ clientCount: this.clients.size, clientType }, 'WebSocket client connected');
 
       ws.on('pong', () => {
         clientInfo.alive = true;
@@ -131,29 +143,31 @@ export class WsServer {
       ws.on('message', (rawData) => {
         const data = rawData.toString();
         if (this.messageHandler) {
-          this.messageHandler(ws, data);
+          this.messageHandler(ws, data, clientInfo.clientType);
         }
       });
 
       ws.on('close', () => {
         this.clients.delete(clientInfo);
-        logger.info({ clientCount: this.clients.size }, 'WebSocket client disconnected');
+        const counts = this.getClientCounts();
+        logger.info({ clientCount: this.clients.size, ...counts }, 'WebSocket client disconnected');
         if (this.disconnectHandler) {
-          this.disconnectHandler();
+          this.disconnectHandler(counts);
         }
       });
 
       ws.on('error', (err) => {
-        logger.error({ err }, 'WebSocket client error');
+        logger.error({ err, clientType }, 'WebSocket client error');
         this.clients.delete(clientInfo);
+        const counts = this.getClientCounts();
         if (this.disconnectHandler) {
-          this.disconnectHandler();
+          this.disconnectHandler(counts);
         }
       });
 
-      // Notify connect handler
+      // Notify connect handler with client type
       if (this.connectHandler) {
-        this.connectHandler(ws);
+        this.connectHandler(ws, clientType);
       }
     });
   }
@@ -206,6 +220,22 @@ export class WsServer {
    */
   get clientCount(): number {
     return this.clients.size;
+  }
+
+  /**
+   * Get client counts by type.
+   */
+  getClientCounts(): { attach: number; webapp: number } {
+    let attach = 0;
+    let webapp = 0;
+    for (const client of this.clients) {
+      if (client.clientType === 'attach') {
+        attach++;
+      } else {
+        webapp++;
+      }
+    }
+    return { attach, webapp };
   }
 
   /**

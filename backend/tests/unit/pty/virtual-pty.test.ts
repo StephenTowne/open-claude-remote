@@ -206,6 +206,78 @@ describe('VirtualPtyManager', () => {
 
       expect(dataHandler).not.toHaveBeenCalled();
     });
+
+    it('should sync local size on history_sync when server size differs', async () => {
+      const connectPromise = virtualPty.connect('ws://localhost:3000', 'test-token');
+      const ws = getLastMockWs();
+      ws?.emit('open');
+      await connectPromise;
+
+      // Set local size first (simulating PC terminal size)
+      virtualPty.resize(100, 30);
+      expect(ws?.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'resize', cols: 100, rows: 30 })
+      );
+
+      // Clear mock for next assertion
+      (ws?.send as ReturnType<typeof vi.fn>).mockClear();
+
+      // Server sends history_sync with different size (from WebApp)
+      ws?.emit('message', Buffer.from(JSON.stringify({
+        type: 'history_sync',
+        data: 'history data',
+        cols: 80,
+        rows: 24,
+      })));
+
+      // Should have sent local size to override server size
+      expect(ws?.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'resize', cols: 100, rows: 30 })
+      );
+    });
+
+    it('should NOT sync local size on history_sync when server size matches', async () => {
+      const connectPromise = virtualPty.connect('ws://localhost:3000', 'test-token');
+      const ws = getLastMockWs();
+      ws?.emit('open');
+      await connectPromise;
+
+      // Set local size first
+      virtualPty.resize(100, 30);
+      (ws?.send as ReturnType<typeof vi.fn>).mockClear();
+
+      // Server sends history_sync with matching size
+      ws?.emit('message', Buffer.from(JSON.stringify({
+        type: 'history_sync',
+        data: 'history data',
+        cols: 100,
+        rows: 30,
+      })));
+
+      // Should NOT have sent resize again
+      expect(ws?.send).not.toHaveBeenCalled();
+    });
+
+    it('should ignore terminal_resize message (as master controller)', async () => {
+      const connectPromise = virtualPty.connect('ws://localhost:3000', 'test-token');
+      const ws = getLastMockWs();
+      ws?.emit('open');
+      await connectPromise;
+
+      // Set local size first
+      virtualPty.resize(100, 30);
+      (ws?.send as ReturnType<typeof vi.fn>).mockClear();
+
+      // Server sends terminal_resize with different size (from WebApp or echo)
+      ws?.emit('message', Buffer.from(JSON.stringify({
+        type: 'terminal_resize',
+        cols: 80,
+        rows: 24,
+      })));
+
+      // Should NOT have sent resize (master ignores terminal_resize)
+      expect(ws?.send).not.toHaveBeenCalled();
+    });
   });
 
   describe('destroy', () => {

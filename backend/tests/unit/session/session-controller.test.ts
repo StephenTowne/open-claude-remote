@@ -17,19 +17,22 @@ function createMockPtyManager() {
 
 function createMockWsServer() {
   const emitter = new EventEmitter();
-  const messageHandlers: Array<(ws: unknown, data: string) => void> = [];
-  const connectHandlers: Array<(ws: unknown) => void> = [];
-  const disconnectHandlers: Array<() => void> = [];
+  const messageHandlers: Array<(ws: unknown, data: string, clientType: 'attach' | 'webapp') => void> = [];
+  const connectHandlers: Array<(ws: unknown, clientType: 'attach' | 'webapp') => void> = [];
+  const disconnectHandlers: Array<(clientCounts: { attach: number; webapp: number }) => void> = [];
+  let _clientCounts = { attach: 0, webapp: 0 };
   return Object.assign(emitter, {
     clientCount: 0,
     broadcast: vi.fn(),
     sendTo: vi.fn(),
+    getClientCounts: vi.fn(() => ({ ..._clientCounts })),
+    setClientCounts: (counts: { attach: number; webapp: number }) => { _clientCounts = counts; },
     onMessage: vi.fn((handler) => { messageHandlers.push(handler); }),
     onConnect: vi.fn((handler) => { connectHandlers.push(handler); }),
-    onDisconnect: vi.fn((handler: () => void) => { disconnectHandlers.push(handler); }),
-    _triggerMessage: (ws: unknown, data: string) => messageHandlers.forEach(h => h(ws, data)),
-    _triggerConnect: (ws: unknown) => connectHandlers.forEach(h => h(ws)),
-    _triggerDisconnect: () => disconnectHandlers.forEach(h => h()),
+    onDisconnect: vi.fn((handler: (clientCounts: { attach: number; webapp: number }) => void) => { disconnectHandlers.push(handler); }),
+    _triggerMessage: (ws: unknown, data: string, clientType: 'attach' | 'webapp' = 'webapp') => messageHandlers.forEach(h => h(ws, data, clientType)),
+    _triggerConnect: (ws: unknown, clientType: 'attach' | 'webapp' = 'webapp') => connectHandlers.forEach(h => h(ws, clientType)),
+    _triggerDisconnect: (clientCounts: { attach: number; webapp: number } = { attach: 0, webapp: 0 }) => disconnectHandlers.forEach(h => h(clientCounts)),
   });
 }
 
@@ -97,6 +100,41 @@ describe('SessionController', () => {
 
       const mockWs = { readyState: 1, send: vi.fn() };
       wsServer._triggerMessage(mockWs, JSON.stringify({ type: 'resize', cols: 120, rows: 40 }));
+
+      expect(ptyManager.resize).toHaveBeenCalledWith(120, 40);
+    });
+
+    it('should ignore webapp resize when attach client is connected', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      // attach 客户端在线
+      wsServer.getClientCounts.mockReturnValue({ attach: 1, webapp: 1 });
+
+      const mockWs = { readyState: 1, send: vi.fn() };
+      wsServer._triggerMessage(mockWs, JSON.stringify({ type: 'resize', cols: 80, rows: 24 }), 'webapp');
+
+      expect(ptyManager.resize).not.toHaveBeenCalled();
+    });
+
+    it('should apply webapp resize when no attach client is connected', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      // 无 attach 客户端
+      wsServer.getClientCounts.mockReturnValue({ attach: 0, webapp: 1 });
+
+      const mockWs = { readyState: 1, send: vi.fn() };
+      wsServer._triggerMessage(mockWs, JSON.stringify({ type: 'resize', cols: 80, rows: 24 }), 'webapp');
+
+      expect(ptyManager.resize).toHaveBeenCalledWith(80, 24);
+    });
+
+    it('should always apply attach resize regardless of other clients', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      wsServer.getClientCounts.mockReturnValue({ attach: 1, webapp: 2 });
+
+      const mockWs = { readyState: 1, send: vi.fn() };
+      wsServer._triggerMessage(mockWs, JSON.stringify({ type: 'resize', cols: 120, rows: 40 }), 'attach');
 
       expect(ptyManager.resize).toHaveBeenCalledWith(120, 40);
     });
@@ -179,55 +217,100 @@ describe('SessionController', () => {
   });
 
   describe('dynamic master switch (pauseResize / resumeResize)', () => {
-    it('should call pauseResize when first client connects (clientCount=1)', () => {
+    it('should call pauseResize when first WebApp client connects', () => {
       const relay = createMockTerminalRelay();
-      wsServer.clientCount = 1;
+      wsServer.setClientCounts({ attach: 0, webapp: 1 });
+      wsServer.getClientCounts.mockReturnValueOnce({ attach: 0, webapp: 1 }); // 连接时的计数
       new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000, relay as any);
 
       const mockWs = { readyState: 1, send: vi.fn() };
-      wsServer._triggerConnect(mockWs);
+      wsServer._triggerConnect(mockWs, 'webapp');
 
       expect(relay.pauseResize).toHaveBeenCalledOnce();
     });
 
-    it('should NOT call pauseResize when second client connects (clientCount=2)', () => {
+    it('should call pauseResize when attach client connects', () => {
       const relay = createMockTerminalRelay();
-      wsServer.clientCount = 2;
+      // attach 客户端连接时， getClientCounts 返回 attach: 1
+      wsServer.getClientCounts.mockReturnValueOnce({ attach: 1, webapp: 0 });
       new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000, relay as any);
 
       const mockWs = { readyState: 1, send: vi.fn() };
-      wsServer._triggerConnect(mockWs);
+      wsServer._triggerConnect(mockWs, 'attach');
+
+      expect(relay.pauseResize).toHaveBeenCalledOnce();
+    });
+
+    it('should NOT call pauseResize when second WebApp client connects', () => {
+      const relay = createMockTerminalRelay();
+      // 第二个 WebApp 连接时，已有 1 个 webapp
+      wsServer.getClientCounts.mockReturnValueOnce({ attach: 0, webapp: 2 });
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000, relay as any);
+
+      const mockWs = { readyState: 1, send: vi.fn() };
+      wsServer._triggerConnect(mockWs, 'webapp');
 
       expect(relay.pauseResize).not.toHaveBeenCalled();
     });
 
-    it('should call resumeResize when last client disconnects (clientCount=0)', () => {
+    it('should call resumeResize when all clients disconnect', () => {
       const relay = createMockTerminalRelay();
-      wsServer.clientCount = 0;
       new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000, relay as any);
 
-      wsServer._triggerDisconnect();
+      wsServer._triggerDisconnect({ attach: 0, webapp: 0 });
 
       expect(relay.resumeResize).toHaveBeenCalledOnce();
     });
 
-    it('should NOT call resumeResize when one client remains (clientCount=1)', () => {
+    it('should NOT call resumeResize when WebApp clients remain after attach disconnects', () => {
       const relay = createMockTerminalRelay();
-      wsServer.clientCount = 1;
       new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000, relay as any);
 
-      wsServer._triggerDisconnect();
+      wsServer._triggerDisconnect({ attach: 0, webapp: 1 });
 
       expect(relay.resumeResize).not.toHaveBeenCalled();
     });
 
+    it('should NOT call resumeResize when attach client remains', () => {
+      const relay = createMockTerminalRelay();
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000, relay as any);
+
+      wsServer._triggerDisconnect({ attach: 1, webapp: 0 });
+
+      expect(relay.resumeResize).not.toHaveBeenCalled();
+    });
+
+    it('should broadcast PTY size when all WebApps disconnect and attach remains', () => {
+      ptyManager.cols = 100;
+      ptyManager.rows = 30;
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      wsServer._triggerDisconnect({ attach: 1, webapp: 0 });
+
+      expect(wsServer.broadcast).toHaveBeenCalledWith({
+        type: 'terminal_resize',
+        cols: 100,
+        rows: 30,
+      });
+    });
+
+    it('should NOT broadcast PTY size when attach disconnects and WebApp remains', () => {
+      new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      wsServer._triggerDisconnect({ attach: 0, webapp: 1 });
+
+      expect(wsServer.broadcast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'terminal_resize' }),
+      );
+    });
+
     it('should not throw when relay is not provided (backward compatibility)', () => {
-      wsServer.clientCount = 1;
+      wsServer.getClientCounts.mockReturnValueOnce({ attach: 0, webapp: 1 });
       new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
 
       const mockWs = { readyState: 1, send: vi.fn() };
-      expect(() => wsServer._triggerConnect(mockWs)).not.toThrow();
-      expect(() => wsServer._triggerDisconnect()).not.toThrow();
+      expect(() => wsServer._triggerConnect(mockWs, 'webapp')).not.toThrow();
+      expect(() => wsServer._triggerDisconnect({ attach: 0, webapp: 0 })).not.toThrow();
     });
   });
 
