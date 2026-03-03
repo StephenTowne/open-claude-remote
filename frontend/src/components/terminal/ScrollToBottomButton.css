@@ -1,0 +1,81 @@
+.scroll-to-bottom-btn {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--inputbar-height, 56px) + var(--safe-bottom, 0px) + 16px);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent-primary, #3b82f6);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1000;
+  font-size: 20px;
+  touch-action: manipulation;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.scroll-to-bottom-btn:hover {
+  background: var(--accent-hover, #2563eb);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.scroll-to-bottom-btn:active {
+  transform: scale(0.95);
+}
+
+.scroll-to-bottom-btn:focus-visible {
+  outline: 2px solid var(--accent-primary, #3b82f6);
+  outline-offset: 2px;
+}
+
+.scroll-to-bottom-btn.visible {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.scroll-to-bottom-btn.hidden {
+  animation: fadeOut 0.2s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-to-bottom-btn {
+    animation: none;
+    transition: none;
+  }
+
+  .scroll-to-bottom-btn.visible {
+    animation: none;
+    opacity: 1;
+  }
+
+  .scroll-to-bottom-btn.hidden {
+    animation: none;
+    opacity: 0;
+  }
+}

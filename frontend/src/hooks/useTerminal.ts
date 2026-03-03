@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -29,6 +29,10 @@ export function useTerminal(
   const pendingResizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingResizeValueRef = useRef<{ cols: number; rows: number } | null>(null);
   const lastReportedResizeRef = useRef<{ cols: number; rows: number } | null>(null);
+
+  const autoFollowRef = useRef(true);
+  const isAtBottomRef = useRef(true);
+  const [showScrollHint, setShowScrollHint] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -159,6 +163,21 @@ export function useTerminal(
     });
     resizeObserver.observe(containerRef.current);
 
+    // 监听滚动事件，实现智能 auto-follow
+    term.onScroll(() => {
+      const buffer = term.buffer.active;
+      const atBottom = buffer.viewportY === buffer.length - term.rows;
+      isAtBottomRef.current = atBottom;
+
+      // 用户向上滚动且不在底部时，自动关闭 auto-follow
+      if (!atBottom && autoFollowRef.current) {
+        autoFollowRef.current = false;
+      }
+
+      // 驱动 UI 按钮显隐（ref → state 桥接）
+      setShowScrollHint(!autoFollowRef.current && !atBottom);
+    });
+
     return () => {
       resizeObserver.disconnect();
       if (pendingResizeTimeoutRef.current) {
@@ -182,6 +201,25 @@ export function useTerminal(
     };
   }, [containerRef]);
 
+  // 智能 auto-scroll：auto-follow 开启时滚动到底部，否则检测按钮显隐
+  const autoScrollIfNeeded = useCallback(() => {
+    const term = termRef.current;
+    if (!term) return;
+
+    if (autoFollowRef.current) {
+      term.scrollToBottom();
+      return;
+    }
+
+    // auto-follow 关闭时，检测新内容是否将用户推离底部
+    const buffer = term.buffer.active;
+    const atBottom = buffer.viewportY === buffer.length - term.rows;
+    if (atBottom !== isAtBottomRef.current) {
+      isAtBottomRef.current = atBottom;
+      setShowScrollHint(!atBottom);
+    }
+  }, []);
+
   const write = useCallback((data: string, callback?: () => void) => {
     if (!data) {
       callback?.();
@@ -192,6 +230,7 @@ export function useTerminal(
 
     if (queuedWriteBytesRef.current >= WRITE_MAX_QUEUED_BYTES) {
       flushWriteQueueRef.current?.();
+      autoScrollIfNeeded();
       callback?.();
       return;
     }
@@ -204,6 +243,7 @@ export function useTerminal(
           writeFlushTimeoutRef.current = null;
         }
         flushWriteQueueRef.current?.();
+        autoScrollIfNeeded();
       });
     }
 
@@ -211,6 +251,7 @@ export function useTerminal(
       writeFlushTimeoutRef.current = setTimeout(() => {
         writeFlushTimeoutRef.current = null;
         flushWriteQueueRef.current?.();
+        autoScrollIfNeeded();
       }, WRITE_FLUSH_INTERVAL_MS);
     }
 
@@ -229,6 +270,13 @@ export function useTerminal(
     termRef.current?.scrollToBottom();
   }, []);
 
+  const setAutoFollow = useCallback((enabled: boolean) => {
+    autoFollowRef.current = enabled;
+    if (enabled) {
+      setShowScrollHint(false);
+    }
+  }, []);
+
   const adaptToPtyCols = useCallback((ptyCols: number, ptyRows?: number) => {
     adaptFnRef.current?.(ptyCols, ptyRows);
   }, []);
@@ -238,6 +286,8 @@ export function useTerminal(
     clear,
     reset,
     scrollToBottom,
+    setAutoFollow,
+    showScrollHint,
     adaptToPtyCols,
     terminal: termRef,
   };

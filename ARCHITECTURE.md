@@ -102,6 +102,9 @@ sequenceDiagram
 | GET | `/api/instances` | Session | instance-routes.ts → 注册表实例列表 + isCurrent 标记 |
 | GET | `/api/instances/config` | Session | instance-routes.ts → 工作目录列表 + 默认 Claude 参数 |
 | POST | `/api/instances/create` | Session | instance-routes.ts → 通过 InstanceSpawner 创建 headless 实例 |
+| GET | `/api/push/vapid-key` | Session | push-routes.ts → Web Push VAPID 公钥（可选功能） |
+| POST | `/api/push/subscribe` | Session | push-routes.ts → 注册 Web Push 订阅（可选功能） |
+| DELETE | `/api/push/subscribe` | Session | push-routes.ts → 注销 Web Push 订阅（可选功能） |
 
 ### Backend WebSocket
 | Direction | Path | Auth |
@@ -111,39 +114,108 @@ sequenceDiagram
 ### Frontend Pages
 | Path | Component | 说明 |
 |------|-----------|------|
-| / | ConsolePage | 主控制台（需认证，否则显示 AuthPage）|
+| / | ConsolePage | 主控制台（已认证），AuthPage（未认证）|
 
 ## 6. Domain Map
 
 ### PTY 代理
-- backend: `pty/types.ts` (IPtyManager 接口), `pty/pty-manager.ts`, `pty/output-buffer.ts`, `pty/virtual-pty.ts`, `terminal/terminal-relay.ts`
-- backend: `session/session-controller.ts`
-- backend: `attach.ts` (attach 命令入口)
+**Backend** (`backend/src/pty/INDEX.md`):
+- types.ts: IPtyManager 接口定义
+- pty-manager.ts: 本地 PTY 进程管理
+- output-buffer.ts: 环形缓冲区
+- virtual-pty.ts: 远程 PTY 代理（attach 命令）
+
+**Backend** (其他):
+- terminal/terminal-relay.ts: PC 终端 stdin/stdout 透传
+- session/session-controller.ts: 核心协调器
+- attach.ts: attach 命令入口
 
 ### Hook 通知
-- backend: `hooks/hook-receiver.ts`, `api/hook-routes.ts`
-- backend: `session/session-controller.ts` (notification → status broadcast)
-- 权限审批通过 xterm 终端直接交互，无专属前端 UI
+**Backend**:
+- hooks/hook-receiver.ts: Hook 接收器
+- api/hook-routes.ts: `/api/hook` 端点
+- session/session-controller.ts: notification → status broadcast
+
+权限审批通过 xterm 终端直接交互，无专属前端 UI
 
 ### 认证
-- backend: `auth/token-generator.ts`, `auth/auth-middleware.ts`, `auth/rate-limiter.ts`
-- backend: `api/auth-routes.ts`
-- frontend: `pages/AuthPage.tsx`, `hooks/useAuth.ts`, `services/api-client.ts`, `services/token-storage.ts`
+**Backend** (`backend/src/auth/INDEX.md`):
+- auth-middleware.ts: AuthModule 类（Token 验证 + Session Cookie）
+- rate-limiter.ts: 速率限制
+- token-generator.ts: 安全随机 Token 生成
+
+**Backend**:
+- api/auth-routes.ts: `/api/auth` 端点
+
+**Frontend** (`frontend/src/services/INDEX.md`, `frontend/src/hooks/INDEX.md`):
+- pages/AuthPage.tsx: 认证页面
+- hooks/useAuth.ts: 认证 hook
+- services/api-client.ts: API 客户端
+- services/token-storage.ts: Token 持久化
 
 ### 实时终端
-- backend: `ws/ws-server.ts`, `ws/ws-handler.ts`
-- frontend: `components/terminal/TerminalView.tsx`, `hooks/useTerminal.ts`, `hooks/useWebSocket.ts`
-- frontend: `components/input/InputBar.tsx`, `components/status/StatusBar.tsx`
+**Backend** (`backend/src/ws/`):
+- ws-server.ts: WebSocket 服务端
+- ws-handler.ts: 消息处理器
+
+**Frontend** (`frontend/src/components/INDEX.md`, `frontend/src/hooks/INDEX.md`):
+- components/terminal/TerminalView.tsx: xterm.js 容器
+- hooks/useTerminal.ts: Terminal 生命周期
+- hooks/useWebSocket.ts: WS 连接管理
+- components/input/InputBar.tsx: 输入栏
+- components/status/StatusBar.tsx: 状态栏
 
 ### 多实例管理
-- backend: `registry/shared-token.ts`, `registry/port-finder.ts`, `registry/instance-registry.ts`, `registry/instance-spawner.ts`, `registry/stop-instances.ts`
-- backend: `utils/ip-monitor.ts` (IP 变化检测 + 注册表更新)
-- backend: `api/instance-routes.ts`
-- frontend: `components/instances/InstanceTabs.tsx`, `components/instances/CreateInstanceModal.tsx`, `hooks/useInstances.ts`, `stores/instance-store.ts`, `services/instance-api.ts`, `services/instance-create-api.ts`
-- shared: `instance.ts` (类型定义 + 常量)
+**Backend** (`backend/src/registry/INDEX.md`):
+- shared-token.ts: 共享 Token
+- port-finder.ts: 端口自动分配
+- instance-registry.ts: 实例注册表
+- instance-spawner.ts: 子进程启动器
+- stop-instances.ts: 实例停止工具
+
+**Backend** (`backend/src/utils/INDEX.md`):
+- utils/ip-monitor.ts: IP 变化检测 + 注册表更新
+
+**Backend**:
+- api/instance-routes.ts: 实例 API 端点
+
+**Frontend** (`frontend/src/components/INDEX.md`, `frontend/src/hooks/INDEX.md`, `frontend/src/services/INDEX.md`):
+- components/instances/InstanceTabs.tsx: 实例切换栏
+- components/instances/CreateInstanceModal.tsx: 创建实例对话框
+- hooks/useInstances.ts: 实例轮询
+- stores/instance-store.ts: 实例状态
+- services/instance-api.ts: 实例 API
+- services/instance-create-api.ts: 创建实例 API
+
+**Shared** (`shared/src/INDEX.md`):
+- instance.ts: 类型定义 + 常量
+
+### 推送通知
+**Backend**:
+- push/push-service.ts: Web Push 服务
+
+**Frontend** (`frontend/src/hooks/INDEX.md`):
+- hooks/usePushNotification.ts: Web Push 订阅
+- hooks/useLocalNotification.ts: 本地通知
 
 ### 共享协议
-- shared: `ws-protocol.ts`, `constants.ts`, `instance.ts`
+**Shared** (`shared/src/INDEX.md`):
+- ws-protocol.ts: WebSocket 消息协议
+- constants.ts: 共享常量
+- instance.ts: 实例类型
+- defaults.ts: 默认快捷键/命令
+
+### API 路由
+**Backend** (`backend/src/api/INDEX.md`):
+- router.ts: 路由聚合器
+- auth-routes.ts, config-routes.ts, health-routes.ts, hook-routes.ts
+- instance-routes.ts, push-routes.ts, status-routes.ts
+
+### E2E 测试
+**E2E** (`e2e/INDEX.md`):
+- fixtures/: 全局启动/停止基座
+- helpers/: 截图、选择器、等待工具
+- tests/: 6 个核心场景回归测试
 
 ## 7. Key Decisions
 

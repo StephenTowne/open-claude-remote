@@ -20,6 +20,8 @@ const mockTermResize = vi.fn();
 const mockTermReset = vi.fn();
 const mockTermClear = vi.fn();
 const mockTermScrollToBottom = vi.fn();
+const mockTermScrollToTop = vi.fn();
+const mockTermOnScroll = vi.fn();
 const mockBuffer = {
   active: {
     viewportY: 0,
@@ -38,10 +40,12 @@ vi.mock('@xterm/xterm', () => ({
     clear: mockTermClear,
     reset: mockTermReset,
     scrollToBottom: mockTermScrollToBottom,
+    scrollToTop: mockTermScrollToTop,
     resize: mockTermResize,
     open: mockTermOpen,
     dispose: mockTermDispose,
     loadAddon: mockTermLoadAddon,
+    onScroll: mockTermOnScroll,
   })),
 }));
 
@@ -106,6 +110,8 @@ describe('useTerminal', () => {
     mockTermReset.mockReset();
     mockTermClear.mockReset();
     mockTermScrollToBottom.mockReset();
+    mockTermScrollToTop.mockReset();
+    mockTermOnScroll.mockReset();
     mockBuffer.active.viewportY = 0;
   });
 
@@ -171,14 +177,16 @@ describe('useTerminal', () => {
     expect(onResize).toHaveBeenCalledWith(60, 22);
   });
 
-  it('should return write, clear, reset, scrollToBottom, adaptToPtyCols functions', () => {
+  it('should return write, clear, reset, scrollToBottom, setAutoFollow, showScrollHint, adaptToPtyCols', () => {
     const { result } = renderUseTerminal();
 
     expect(typeof result.current.write).toBe('function');
     expect(typeof result.current.clear).toBe('function');
     expect(typeof result.current.reset).toBe('function');
     expect(typeof result.current.scrollToBottom).toBe('function');
+    expect(typeof result.current.setAutoFollow).toBe('function');
     expect(typeof result.current.adaptToPtyCols).toBe('function');
+    expect(result.current.showScrollHint).toBe(false);
   });
 
   it('reset should call terminal.reset()', () => {
@@ -260,6 +268,127 @@ describe('useTerminal', () => {
       vi.useRealTimers();
     });
 
+  // ---- Auto-follow feature tests ----
+
+  describe('auto-follow feature', () => {
+    it('should initialize with showScrollHint false', () => {
+      const { result } = renderUseTerminal();
+
+      expect(result.current.showScrollHint).toBe(false);
+    });
+
+    it('should auto-scroll when autoFollow is true and data is written', async () => {
+      const { result } = renderUseTerminal();
+
+      // 模拟写入数据
+      act(() => {
+        result.current.write('test data');
+      });
+
+      // 等待 RAF 执行
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // scrollToBottom 应该被调用（因为 autoFollow 默认为 true）
+      expect(mockTermScrollToBottom).toHaveBeenCalled();
+    });
+
+    it('should not auto-scroll when autoFollow is false', async () => {
+      const { result } = renderUseTerminal();
+
+      // 关闭 auto-follow
+      act(() => {
+        result.current.setAutoFollow(false);
+      });
+
+      // 清空之前的调用记录
+      mockTermScrollToBottom.mockClear();
+
+      // 写入数据
+      act(() => {
+        result.current.write('test data');
+      });
+
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // scrollToBottom 不应该被调用
+      expect(mockTermScrollToBottom).not.toHaveBeenCalled();
+    });
+
+    it('should show scroll hint when user scrolls up', () => {
+      const { result } = renderUseTerminal();
+
+      expect(mockTermOnScroll).toHaveBeenCalled();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      // 模拟用户向上滚动（viewportY 变小,不在底部）
+      mockBuffer.active.viewportY = 50;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback();
+      });
+
+      // showScrollHint 应该为 true
+      expect(result.current.showScrollHint).toBe(true);
+    });
+
+    it('should hide scroll hint when setAutoFollow(true) is called', () => {
+      const { result } = renderUseTerminal();
+
+      // 模拟用户滚动上去，触发 showScrollHint
+      expect(mockTermOnScroll).toHaveBeenCalled();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+      mockBuffer.active.viewportY = 50;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback();
+      });
+
+      expect(result.current.showScrollHint).toBe(true);
+
+      // 重新开启 auto-follow
+      act(() => {
+        result.current.setAutoFollow(true);
+      });
+
+      expect(result.current.showScrollHint).toBe(false);
+    });
+
+    it('should update showScrollHint based on scroll position', () => {
+      const { result } = renderUseTerminal();
+
+      expect(mockTermOnScroll).toHaveBeenCalled();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      // 模拟不在底部 → showScrollHint = true
+      mockBuffer.active.viewportY = 50;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback();
+      });
+
+      expect(result.current.showScrollHint).toBe(true);
+
+      // 模拟回到底部 → showScrollHint = false（autoFollow 已关闭，但 atBottom 为 true）
+      mockBuffer.active.viewportY = 76; // length - rows = 100 - 24 = 76
+
+      act(() => {
+        scrollCallback();
+      });
+
+      expect(result.current.showScrollHint).toBe(false);
+    });
+  });
+
     it('should deduplicate identical resize events', () => {
       const onResize = vi.fn();
       renderUseTerminal(onResize);
@@ -317,6 +446,30 @@ describe('useTerminal', () => {
   });
 
   // ---- adaptToPtyCols tests (read-only mode: no font shrinking, no forced rows) ----
+
+  it('adaptToPtyCols should ignore PTY cols/rows params and emit actual terminal size', () => {
+    // 测试场景：history_sync 返回 PC 端尺寸(120x40)，但移动端实际是小屏(46x24)
+    // adaptToPtyCols 应该发送移动端的实际尺寸，而不是 PC 端尺寸
+    const onResize = vi.fn();
+
+    // 模拟移动端小屏尺寸
+    mockFitAddonFit.mockImplementation(() => {
+      mockTermState.cols = 46;
+      mockTermState.rows = 24;
+    });
+
+    const { result } = renderUseTerminal(onResize);
+    onResize.mockClear();
+
+    // 传入 PC 端的大尺寸参数（来自 history_sync）
+    act(() => {
+      result.current.adaptToPtyCols(120, 40); // PC 端尺寸
+    });
+
+    // 应该发送移动端的实际尺寸，而不是 PC 端尺寸
+    expect(onResize).toHaveBeenCalledWith(46, 24);
+    expect(onResize).not.toHaveBeenCalledWith(120, 40);
+  });
 
   it('adaptToPtyCols should NOT change font size regardless of ptyCols', () => {
     // 模拟窄屏手机（46 cols at font 14）

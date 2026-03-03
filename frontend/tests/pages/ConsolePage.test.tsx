@@ -529,12 +529,13 @@ describe('ConsolePage', () => {
     });
 
     expect(mockReset).toHaveBeenCalled(); // history_sync 应先重置终端
-    expect(mockAdaptToPtyCols).toHaveBeenCalledWith(208, 50);
+    // 无论 PTY 尺寸如何，始终调用 adaptToPtyCols(0,0) 让终端适配自己的可视区域
+    expect(mockAdaptToPtyCols).toHaveBeenCalledWith(0, 0);
     expect(mockWrite).toHaveBeenCalledWith('hello');
     expect(mockScrollToBottom).toHaveBeenCalled();
   });
 
-  it('should not call adaptToPtyCols when history_sync has no cols', async () => {
+  it('should call adaptToPtyCols(0,0) when history_sync has no cols (still adapt to viewport)', async () => {
     render(<ConsolePage />);
 
     await act(async () => {
@@ -547,7 +548,8 @@ describe('ConsolePage', () => {
     });
 
     expect(mockReset).toHaveBeenCalled(); // history_sync 应先重置终端
-    expect(mockAdaptToPtyCols).not.toHaveBeenCalled();
+    // 即使没有 cols，仍然调用 adaptToPtyCols 以确保终端适配自己的可视区域
+    expect(mockAdaptToPtyCols).toHaveBeenCalledWith(0, 0);
     expect(mockWrite).toHaveBeenCalledWith('hello');
     expect(mockScrollToBottom).toHaveBeenCalled();
   });

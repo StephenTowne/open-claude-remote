@@ -8,6 +8,7 @@ import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
 import { IpChangeToast } from '../components/common/IpChangeToast.js';
 import { InstanceTabs } from '../components/instances/InstanceTabs.js';
 import { OnboardingGuide } from '../components/onboarding/OnboardingGuide.js';
+import { ScrollToBottomButton } from '../components/terminal/ScrollToBottomButton.js';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useTerminal } from '../hooks/useTerminal.js';
 import { useViewport } from '../hooks/useViewport.js';
@@ -42,9 +43,9 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
       case 'history_sync':
         // 重置终端状态，避免重连时内容叠加
         resetRef.current();
-        if (msg.cols && msg.cols > 0) {
-          adaptToPtyColsRef.current(msg.cols, msg.rows);
-        }
+        // 始终适应自己的可视区域并上报尺寸，确保重连后恢复正确尺寸
+        // 不依赖 history_sync 中的 PTY 尺寸（可能是 PC 端的旧尺寸）
+        adaptToPtyColsRef.current(0, 0);
         writeRef.current(msg.data);
         setSessionStatus(msg.status);
         scrollToBottomRef.current();
@@ -88,7 +89,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
   const { connect, send } = useWebSocket(handleMessage, wsUrl, instanceId);
   sendRef.current = send;
 
-  const { write, reset, scrollToBottom, adaptToPtyCols } = useTerminal(
+  const { write, reset, scrollToBottom, setAutoFollow, showScrollHint, adaptToPtyCols } = useTerminal(
     containerRef,
     useCallback((cols: number, rows: number) => {
       return sendRef.current?.({ type: 'resize', cols, rows }) ?? false;
@@ -135,12 +136,19 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
     send({ type: 'user_input', data: '\r' });
   }, [send]);
 
+  // 处理"回到最新"按钮点击
+  const handleScrollToBottom = useCallback(() => {
+    scrollToBottom();
+    setAutoFollow(true);
+  }, [scrollToBottom, setAutoFollow]);
+
   return (
     <>
       <ConnectionBanner />
       <IpChangeToast />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <TerminalView containerRef={containerRef} />
+        <ScrollToBottomButton visible={showScrollHint} onClick={handleScrollToBottom} />
       </div>
       <CommandPicker
         onShortcut={handleKeyPress}
