@@ -245,7 +245,8 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
                 onBlur={() => setCapturingIndex(null)}
                 aria-label={`快捷键 ${index + 1}`}
                 style={{
-                  flex: 1,
+                  flex: '1 1 0',
+                  minWidth: 0,
                   height: 36,
                   padding: '0 12px',
                   borderRadius: 6,
@@ -265,7 +266,12 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
                 fontSize: 11,
                 color: 'var(--text-muted)',
                 fontFamily: 'monospace',
-                minWidth: 60,
+                flexShrink: 0,
+                marginLeft: 8,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: 80,
               }}>
                 {shortcut.data
                   ? shortcut.data.replace(/\x1b/g, 'ESC').replace(/\r/g, 'CR').replace(/\t/g, 'TAB')

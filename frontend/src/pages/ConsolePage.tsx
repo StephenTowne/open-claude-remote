@@ -139,7 +139,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
     <>
       <ConnectionBanner />
       <IpChangeToast />
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <TerminalView containerRef={containerRef} />
       </div>
       <CommandPicker

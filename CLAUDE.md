@@ -32,6 +32,7 @@
 
 # 架构原则（Arch style）
 **单一服务原则**：前端 `vite build` 后由后端 Express 静态文件服务
+**移动优先**：Web 前端设计以移动端为主要交互场景，核心操作均在移动端完成
 **核心架构**：PTY 代理层 — PC Terminal ↔ PTY (node-pty) ↔ Claude Code CLI
 **职责划分**：
 1. **API 层** (`backend/src/api/`)：参数验证、HTTP 响应、路由挂载
