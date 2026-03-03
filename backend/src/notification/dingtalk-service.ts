@@ -1,11 +1,42 @@
 import { logger } from '../logger/logger.js';
 
+/** 钉钉 Webhook 允许的域名 */
+const ALLOWED_HOSTS = ['oapi.dingtalk.com'];
+
+/** HTTP 请求超时时间（毫秒） */
+const REQUEST_TIMEOUT_MS = 5000;
+
 /**
  * 钉钉群机器人 Webhook 通知服务
  * 参考文档: https://open.dingtalk.com/document/robots/custom-robot-access
  */
 export class DingtalkService {
-  constructor(private webhookUrl: string) {}
+  private validatedUrl: string | null = null;
+
+  constructor(private webhookUrl: string) {
+    this.validatedUrl = this.validateWebhookUrl(webhookUrl);
+  }
+
+  /**
+   * 验证 webhook URL 是否为合法的钉钉域名
+   * 防止 SSRF 攻击
+   */
+  private validateWebhookUrl(url: string): string | null {
+    if (!url) return null;
+
+    try {
+      const parsed = new URL(url);
+      // 只允许钉钉官方域名
+      if (!ALLOWED_HOSTS.includes(parsed.hostname)) {
+        logger.warn({ hostname: parsed.hostname }, 'Invalid dingtalk webhook hostname, rejecting');
+        return null;
+      }
+      return url;
+    } catch {
+      logger.warn({ url }, 'Invalid webhook URL format, rejecting');
+      return null;
+    }
+  }
 
   /**
    * 发送钉钉通知
@@ -16,8 +47,8 @@ export class DingtalkService {
    * @param message 详细消息
    */
   async sendNotification(title: string, tool: string, message: string): Promise<void> {
-    if (!this.webhookUrl) {
-      logger.warn('Dingtalk webhook URL is empty, skipping notification');
+    if (!this.validatedUrl) {
+      logger.warn('Dingtalk webhook URL is empty or invalid, skipping notification');
       return;
     }
 
@@ -29,13 +60,17 @@ export class DingtalkService {
       },
     };
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
     try {
-      const response = await fetch(this.webhookUrl, {
+      const response = await fetch(this.validatedUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -47,7 +82,7 @@ export class DingtalkService {
         return;
       }
 
-      const result = await response.json() as { errcode?: number; errmsg?: string };
+      const result = (await response.json()) as { errcode?: number; errmsg?: string };
       if (result.errcode !== 0) {
         logger.error(
           { errcode: result.errcode, errmsg: result.errmsg },
@@ -58,7 +93,13 @@ export class DingtalkService {
 
       logger.info({ title, tool }, 'Dingtalk notification sent successfully');
     } catch (err) {
-      logger.error({ err, title, tool }, 'Dingtalk notification failed with exception');
+      if (err instanceof Error && err.name === 'AbortError') {
+        logger.error({ timeout: REQUEST_TIMEOUT_MS }, 'Dingtalk notification timed out');
+      } else {
+        logger.error({ err, title, tool }, 'Dingtalk notification failed with exception');
+      }
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

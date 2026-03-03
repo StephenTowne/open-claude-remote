@@ -212,7 +212,7 @@ describe('REST API Endpoints', () => {
         headers: { 'Content-Type': 'application/json', cookie },
         body: JSON.stringify({
           endpoint,
-          keys: { p256dh: 'key1', auth: 'auth1' },
+          keys: { p256dh: 'BEl62iUYfUZJshBh4y7n4mZ3Y4Z5Y6Y7Y8Y9Z0Z1Z2Z3Z4Z5Z6Z7Z8Z9Z0Z1Z2Z3Z4Z5Z6Y=', auth: 'auth1' },
         }),
       });
       expect(subRes.status).toBe(200);

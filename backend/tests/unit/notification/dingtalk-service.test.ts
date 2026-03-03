@@ -23,7 +23,7 @@ describe('DingtalkService', () => {
 
       await service.sendNotification('Test Title', 'Bash', 'Test message');
 
-      expect(mockFetch).toHaveBeenCalledWith(mockWebhookUrl, {
+      expect(mockFetch).toHaveBeenCalledWith(mockWebhookUrl, expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -33,7 +33,7 @@ describe('DingtalkService', () => {
             text: '### Test Title\n\n**工具**: Bash\n\n**消息**: Test message\n\n---\n请及时处理',
           },
         }),
-      });
+      }));
     });
 
     it('should handle API error response', async () => {
@@ -75,6 +75,40 @@ describe('DingtalkService', () => {
       await emptyService.sendNotification('Title', 'Tool', 'Message');
 
       expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should reject invalid hostname (SSRF protection)', async () => {
+      const maliciousService = new DingtalkService('https://evil.com/steal?data=sensitive');
+      const mockFetch = vi.fn();
+      global.fetch = mockFetch;
+
+      await maliciousService.sendNotification('Title', 'Tool', 'Message');
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should reject malformed URL', async () => {
+      const invalidService = new DingtalkService('not-a-valid-url');
+      const mockFetch = vi.fn();
+      global.fetch = mockFetch;
+
+      await invalidService.sendNotification('Title', 'Tool', 'Message');
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should handle request timeout', async () => {
+      const mockFetch = vi.fn().mockImplementation(() =>
+        new Promise((_, reject) => {
+          const error = new Error('Aborted');
+          error.name = 'AbortError';
+          reject(error);
+        })
+      );
+      global.fetch = mockFetch;
+
+      // 不应抛出异常
+      await expect(service.sendNotification('Title', 'Tool', 'Message')).resolves.toBeUndefined();
     });
   });
 });

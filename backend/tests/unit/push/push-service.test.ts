@@ -32,6 +32,12 @@ vi.mock('../../../src/utils/file-lock.js', () => ({
   withFileLockAsync: (_lockPath: string, fn: () => Promise<unknown>) => fn(),
 }));
 
+// 有效的 p256dh 测试数据（Base64 URL-safe 编码，65 字节 ECDH 公钥）
+const VALID_P256DH_1 = 'BEl62iUYfUZJshBh4y7n4mZ3Y4Z5Y6Y7Y8Y9Z0Z1Z2Z3Z4Z5Z6Z7Z8Z9Z0Z1Z2Z3Z4Z5Z6Y=';
+const VALID_P256DH_2 = 'BEl62iUYfUZJshBh4y7n4mZ3Y4Z5Y6Y7Y8Y9Z0Z1Z2Z3Z4Z5Z6Z7Z8Z9Z0Z1Z2Z3Z4Z5Z6X=';
+const VALID_P256DH_3 = 'BEl62iUYfUZJshBh4y7n4mZ3Y4Z5Y6Y7Y8Y9Z0Z1Z2Z3Z4Z5Z6Z7Z8Z9Z0Z1Z2Z3Z4Z5Z6W=';
+const VALID_P256DH_4 = 'BEl62iUYfUZJshBh4y7n4mZ3Y4Z5Y6Y7Y8Y9Z0Z1Z2Z3Z4Z5Z6Z7Z8Z9Z0Z1Z2Z3Z4Z5Z6V=';
+
 describe('PushService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -54,7 +60,7 @@ describe('PushService', () => {
     const service = new PushService('/tmp/test-push');
     const sub = {
       endpoint: 'https://push.example.com/sub1',
-      keys: { p256dh: 'key1', auth: 'auth1' },
+      keys: { p256dh: VALID_P256DH_1, auth: 'auth1' },
     };
 
     service.subscribe(sub);
@@ -105,11 +111,11 @@ describe('PushService', () => {
 
     service.subscribe({
       endpoint: 'https://push.example.com/sub1',
-      keys: { p256dh: 'key1', auth: 'auth1' },
+      keys: { p256dh: VALID_P256DH_1, auth: 'auth1' },
     });
     service.subscribe({
       endpoint: 'https://push.example.com/sub2',
-      keys: { p256dh: 'key2', auth: 'auth2' },
+      keys: { p256dh: VALID_P256DH_2, auth: 'auth2' },
     });
 
     await service.notifyAll({
@@ -137,8 +143,8 @@ describe('PushService', () => {
 
   it('should load subscriptions from file when available', async () => {
     const savedSubs = [
-      { endpoint: 'https://push.example.com/saved1', keys: { p256dh: 'k1', auth: 'a1' } },
-      { endpoint: 'https://push.example.com/saved2', keys: { p256dh: 'k2', auth: 'a2' } },
+      { endpoint: 'https://push.example.com/saved1', keys: { p256dh: VALID_P256DH_1, auth: 'a1' } },
+      { endpoint: 'https://push.example.com/saved2', keys: { p256dh: VALID_P256DH_2, auth: 'a2' } },
     ];
     mockReadFile.mockImplementation((filePath: string) => {
       if (filePath.includes('push-subscriptions.json')) {
@@ -161,7 +167,7 @@ describe('PushService', () => {
 
     service.subscribe({
       endpoint: 'https://push.example.com/expired',
-      keys: { p256dh: 'key1', auth: 'auth1' },
+      keys: { p256dh: VALID_P256DH_1, auth: 'auth1' },
     });
 
     // Clear mock to isolate the save call triggered by notifyAll cleanup
@@ -182,7 +188,7 @@ describe('PushService', () => {
 
     service.subscribe({
       endpoint: 'https://push.example.com/expired',
-      keys: { p256dh: 'key1', auth: 'auth1' },
+      keys: { p256dh: VALID_P256DH_1, auth: 'auth1' },
     });
 
     await service.notifyAll({ title: 'Test', body: 'Body' });
@@ -193,7 +199,7 @@ describe('PushService', () => {
   it('should merge subscriptions from file on subscribe (not overwrite)', async () => {
     // 模拟文件中已有另一个实例的订阅
     const existingSubs = [
-      { endpoint: 'https://push.example.com/other-instance', keys: { p256dh: 'ok1', auth: 'oa1' } },
+      { endpoint: 'https://push.example.com/other-instance', keys: { p256dh: VALID_P256DH_1, auth: 'oa1' } },
     ];
     mockReadFile.mockImplementation((filePath: string) => {
       if (filePath.includes('push-subscriptions.json')) {
@@ -208,7 +214,7 @@ describe('PushService', () => {
     // subscribe 应该执行读-合并-写
     service.subscribe({
       endpoint: 'https://push.example.com/new-sub',
-      keys: { p256dh: 'nk1', auth: 'na1' },
+      keys: { p256dh: VALID_P256DH_2, auth: 'na1' },
     });
 
     // 等待异步保存完成
@@ -234,13 +240,13 @@ describe('PushService', () => {
     // 只在内存中添加一个订阅
     service.subscribe({
       endpoint: 'https://push.example.com/local',
-      keys: { p256dh: 'lk1', auth: 'la1' },
+      keys: { p256dh: VALID_P256DH_1, auth: 'la1' },
     });
 
     // 模拟文件中有一个来自其他实例的订阅
     const fileSubs = [
-      { endpoint: 'https://push.example.com/local', keys: { p256dh: 'lk1', auth: 'la1' } },
-      { endpoint: 'https://push.example.com/remote', keys: { p256dh: 'rk1', auth: 'ra1' } },
+      { endpoint: 'https://push.example.com/local', keys: { p256dh: VALID_P256DH_1, auth: 'la1' } },
+      { endpoint: 'https://push.example.com/remote', keys: { p256dh: VALID_P256DH_2, auth: 'ra1' } },
     ];
     mockReadFile.mockImplementation((filePath: string) => {
       if (filePath.includes('push-subscriptions.json')) {
@@ -254,5 +260,60 @@ describe('PushService', () => {
 
     // 应该发送给两个订阅者（包括从文件加载的远程订阅）
     expect(mockSendNotification).toHaveBeenCalledTimes(2);
+  });
+
+  it('should skip subscriptions with invalid p256dh from file', async () => {
+    // 文件中包含无效的 p256dh 数据
+    const savedSubs = [
+      { endpoint: 'https://push.example.com/invalid', keys: { p256dh: 'short-key', auth: 'a1' } },
+      { endpoint: 'https://push.example.com/valid', keys: { p256dh: VALID_P256DH_1, auth: 'a2' } },
+    ];
+    mockReadFile.mockImplementation((filePath: string) => {
+      if (filePath.includes('push-subscriptions.json')) {
+        return Promise.resolve(JSON.stringify(savedSubs));
+      }
+      return Promise.reject(new Error('File not found'));
+    });
+
+    const service = new PushService('/tmp/test-push');
+    await service.waitForVapidPublicKey(1000);
+
+    // 只有有效的订阅被加载
+    await service.notifyAll({ title: 'Test', body: 'Body' });
+
+    // 只发送给有效订阅者
+    expect(mockSendNotification).toHaveBeenCalledTimes(1);
+    expect(mockSendNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ endpoint: 'https://push.example.com/valid' }),
+      expect.any(String),
+    );
+  });
+
+  it('should skip subscriptions with invalid p256dh in notifyAll loop', async () => {
+    const service = new PushService('/tmp/test-push');
+    await service.waitForVapidPublicKey(1000);
+
+    // 直接在内存中设置无效订阅（模拟绕过 API 验证的情况）
+    service.subscribe({
+      endpoint: 'https://push.example.com/valid',
+      keys: { p256dh: VALID_P256DH_1, auth: 'auth1' },
+    });
+
+    // 模拟文件返回包含无效订阅的数据
+    const fileSubs = [
+      { endpoint: 'https://push.example.com/valid', keys: { p256dh: VALID_P256DH_1, auth: 'auth1' } },
+      { endpoint: 'https://push.example.com/invalid', keys: { p256dh: 'bad', auth: 'auth2' } },
+    ];
+    mockReadFile.mockImplementation((filePath: string) => {
+      if (filePath.includes('push-subscriptions.json')) {
+        return Promise.resolve(JSON.stringify(fileSubs));
+      }
+      return Promise.reject(new Error('File not found'));
+    });
+
+    await service.notifyAll({ title: 'Test', body: 'Body' });
+
+    // 只发送给有效订阅
+    expect(mockSendNotification).toHaveBeenCalledTimes(1);
   });
 });

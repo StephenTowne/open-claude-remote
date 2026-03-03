@@ -24,6 +24,15 @@ export function createPushRoutes(authModule: AuthModule, pushService: PushServic
       return;
     }
 
+    // p256dh 是 65 字节的 ECDH 公钥，Base64 URL-safe 编码后约 87 字符
+    // 最小长度设为 64，允许不同编码的合理变化
+    const P256DH_MIN_LENGTH = 64;
+    if (keys.p256dh.length < P256DH_MIN_LENGTH) {
+      logger.warn({ p256dhLength: keys.p256dh.length }, 'Invalid p256dh key length');
+      res.status(400).json({ error: 'Invalid p256dh key format' });
+      return;
+    }
+
     pushService.subscribe({ endpoint, keys });
     logger.info({ endpoint }, 'Push subscription registered via API');
     res.json({ ok: true });

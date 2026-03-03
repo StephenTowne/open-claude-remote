@@ -273,6 +273,15 @@ export class PushService {
     return this.subscriptions.size;
   }
 
+  /**
+   * 验证订阅数据是否有效。
+   * p256dh 是 65 字节的 ECDH 公钥，Base64 URL-safe 编码后约 87 字符。
+   */
+  private isValidSubscription(sub: PushSubscriptionData): boolean {
+    const P256DH_MIN_LENGTH = 64;
+    return !!(sub.keys?.p256dh && sub.keys.p256dh.length >= P256DH_MIN_LENGTH);
+  }
+
   async notifyAll(payload: PushNotificationPayload): Promise<void> {
     if (!this.vapidPublicKey || !this.vapidPrivateKey) {
       logger.warn('VAPID keys not ready, skipping push notification');
@@ -283,7 +292,12 @@ export class PushService {
     const fileSubs = await this.readSubscriptionsFromFile();
     for (const sub of fileSubs) {
       if (!this.subscriptions.has(sub.endpoint)) {
-        this.subscriptions.set(sub.endpoint, sub);
+        // 只加载有效的订阅数据
+        if (this.isValidSubscription(sub)) {
+          this.subscriptions.set(sub.endpoint, sub);
+        } else {
+          logger.warn({ endpoint: sub.endpoint }, 'Skipping subscription with invalid p256dh from file');
+        }
       }
     }
 
@@ -307,6 +321,12 @@ export class PushService {
     const expiredEndpoints: string[] = [];
 
     for (const [endpoint, sub] of this.subscriptions) {
+      // 跳过无效订阅（防御性检查）
+      if (!this.isValidSubscription(sub)) {
+        logger.warn({ endpoint }, 'Skipping subscription with invalid p256dh');
+        continue;
+      }
+
       const p = webpush.sendNotification(
         { endpoint, keys: sub.keys },
         body,

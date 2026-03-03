@@ -4,6 +4,9 @@ import { CommandSettings } from './CommandSettings.js';
 import { getUserConfig, updateUserConfig } from '../../services/api-client.js';
 import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand, type SafeUserConfig } from '../../config/commands.js';
 
+/** 钉钉 Webhook URL 格式验证 */
+const DINGTALK_WEBHOOK_PATTERN = /^https:\/\/oapi\.dingtalk\.com\/robot\/send\?access_token=/;
+
 export type WithId<T> = T & { _id: string };
 
 interface SettingsModalProps {
@@ -90,14 +93,21 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         commands: commands.map(({ _id: _, ...rest }) => rest),
       };
       // 只有在用户输入了新的 webhook URL 时才更新钉钉配置
-      if (dingtalkWebhookUrl.trim()) {
-        config.dingtalk = { webhookUrl: dingtalkWebhookUrl.trim() };
+      const trimmedUrl = dingtalkWebhookUrl.trim();
+      if (trimmedUrl) {
+        // 验证 webhook URL 格式
+        if (!DINGTALK_WEBHOOK_PATTERN.test(trimmedUrl)) {
+          setError('请输入有效的钉钉 Webhook URL（以 https://oapi.dingtalk.com/robot/send?access_token= 开头）');
+          setSaving(false);
+          return;
+        }
+        config.dingtalk = { webhookUrl: trimmedUrl };
       }
       const ok = await updateUserConfig(config);
       if (ok) {
         setSuccess(true);
         // 更新已配置状态
-        if (dingtalkWebhookUrl.trim()) {
+        if (trimmedUrl) {
           setDingtalkConfigured(true);
           setDingtalkWebhookUrl(''); // 保存后清空输入框
         }
