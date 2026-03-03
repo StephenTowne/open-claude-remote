@@ -101,12 +101,16 @@ export class PtyManager extends EventEmitter {
   resize(cols: number, rows: number): void {
     if (!this.process) return;
     // 避免重复 resize，防止无限循环
-    if (cols === this._cols && rows === this._rows) return;
+    if (cols === this._cols && rows === this._rows) {
+      logger.info({ cols, rows }, 'PTY resize skipped (same size)');
+      return;
+    }
+    logger.info({ cols, rows, prevCols: this._cols, prevRows: this._rows }, 'PTY resize executing');
     try {
       this.process.resize(cols, rows);
       this._cols = cols;
       this._rows = rows;
-      logger.debug({ cols, rows }, 'PTY resized');
+      logger.info({ cols, rows }, 'PTY resized successfully');
       this.emit('resize', cols, rows);
     } catch (err) {
       logger.error({ err }, 'Failed to resize PTY');

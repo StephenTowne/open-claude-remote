@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, unlinkSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -16,6 +16,7 @@ import { SessionController } from './session/session-controller.js';
 import { TerminalRelay } from './terminal/terminal-relay.js';
 import { createApiRouter } from './api/router.js';
 import { PushService } from './push/push-service.js';
+import { DingtalkService } from './notification/dingtalk-service.js';
 import { logger, setInstanceContext } from './logger/logger.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { findAvailablePort } from './registry/port-finder.js';
@@ -101,6 +102,22 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 9. Setup Push service
   const pushService = new PushService(sharedConfigDir);
 
+  // 9.5. Setup Dingtalk service (if configured)
+  const userConfigPath = resolve(sharedConfigDir, 'config.json');
+  let dingtalkService: DingtalkService | null = null;
+  try {
+    if (existsSync(userConfigPath)) {
+      const userConfigContent = readFileSync(userConfigPath, 'utf-8');
+      const userConfig = JSON.parse(userConfigContent) as { dingtalk?: { webhookUrl: string } };
+      if (userConfig.dingtalk?.webhookUrl) {
+        dingtalkService = new DingtalkService(userConfig.dingtalk.webhookUrl);
+        logger.info('Dingtalk notification service initialized');
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to load dingtalk config, skipping');
+  }
+
   // 10. Session controller reference (set after PTY spawn)
   let sessionController: SessionController | null = null;
 
@@ -148,6 +165,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 16. Create Session Controller (with relay for dynamic master switch)
   sessionController = new SessionController(ptyManager, wsServer, hookReceiver, config.maxBufferLines, relay);
   sessionController.setPushService(pushService);
+  if (dingtalkService) {
+    sessionController.setDingtalkService(dingtalkService);
+  }
 
   // 17. Spawn Claude Code with instance-specific hook settings
   // 检查用户是否传了 --settings 参数，如果有则合并 hooks

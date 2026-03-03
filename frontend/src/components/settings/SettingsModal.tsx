@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ShortcutSettings } from './ShortcutSettings.js';
 import { CommandSettings } from './CommandSettings.js';
 import { getUserConfig, updateUserConfig } from '../../services/api-client.js';
-import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand } from '../../config/commands.js';
+import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand, type SafeUserConfig } from '../../config/commands.js';
 
 export type WithId<T> = T & { _id: string };
 
@@ -12,12 +12,14 @@ interface SettingsModalProps {
   onConfigSaved?: () => void;
 }
 
-type TabType = 'shortcuts' | 'commands';
+type TabType = 'shortcuts' | 'commands' | 'dingtalk';
 
 export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('shortcuts');
   const [shortcuts, setShortcuts] = useState<WithId<ConfigurableShortcut>[]>([]);
   const [commands, setCommands] = useState<WithId<ConfigurableCommand>[]>([]);
+  const [dingtalkWebhookUrl, setDingtalkWebhookUrl] = useState('');
+  const [dingtalkConfigured, setDingtalkConfigured] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -61,10 +63,14 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
       if (config) {
         setShortcuts(config.shortcuts.map(s => withId(s)));
         setCommands(config.commands.map(c => withId(c)));
+        setDingtalkConfigured(config.dingtalk?.configured ?? false);
+        setDingtalkWebhookUrl(''); // 不暴露已有 URL，用户需要重新输入才能更改
       } else {
         // 使用默认配置
         setShortcuts(DEFAULT_SHORTCUTS.map(s => withId({ ...s, enabled: true })));
         setCommands(DEFAULT_COMMANDS.map(c => withId({ ...c, enabled: true })));
+        setDingtalkConfigured(false);
+        setDingtalkWebhookUrl('');
       }
     } catch (err) {
       setError('加载配置失败');
@@ -83,9 +89,18 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         shortcuts: shortcuts.map(({ _id: _, ...rest }) => rest),
         commands: commands.map(({ _id: _, ...rest }) => rest),
       };
+      // 只有在用户输入了新的 webhook URL 时才更新钉钉配置
+      if (dingtalkWebhookUrl.trim()) {
+        config.dingtalk = { webhookUrl: dingtalkWebhookUrl.trim() };
+      }
       const ok = await updateUserConfig(config);
       if (ok) {
         setSuccess(true);
+        // 更新已配置状态
+        if (dingtalkWebhookUrl.trim()) {
+          setDingtalkConfigured(true);
+          setDingtalkWebhookUrl(''); // 保存后清空输入框
+        }
         onConfigSaved?.();
         setTimeout(() => setSuccess(false), 2000);
       } else {
@@ -167,7 +182,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
           display: 'flex',
           borderBottom: '1px solid var(--border-color)',
         }}>
-          {(['shortcuts', 'commands'] as TabType[]).map((tab) => (
+          {(['shortcuts', 'commands', 'dingtalk'] as TabType[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -183,7 +198,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
                 fontWeight: activeTab === tab ? 600 : 400,
               }}
             >
-              {tab === 'shortcuts' ? '快捷键' : '命令'}
+              {tab === 'shortcuts' ? '快捷键' : tab === 'commands' ? '命令' : '钉钉'}
             </button>
           ))}
         </div>
@@ -199,11 +214,75 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
               shortcuts={shortcuts}
               onChange={setShortcuts}
             />
-          ) : (
+          ) : activeTab === 'commands' ? (
             <CommandSettings
               commands={commands}
               onChange={setCommands}
             />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{
+                padding: 12,
+                background: 'var(--bg-tertiary)',
+                borderRadius: 8,
+                fontSize: 13,
+                color: 'var(--text-secondary)',
+              }}>
+                配置钉钉群机器人 Webhook 后，当 Claude Code 需要输入时会发送通知到钉钉群。
+              </div>
+              <div>
+                <label style={{
+                  display: 'block',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  marginBottom: 8,
+                  color: 'var(--text-primary)',
+                }}>
+                  Webhook URL
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
+                  value={dingtalkWebhookUrl}
+                  onChange={(e) => setDingtalkWebhookUrl(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
+                    fontSize: 14,
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              {dingtalkConfigured && !dingtalkWebhookUrl && (
+                <div style={{
+                  padding: 10,
+                  background: 'rgba(46, 204, 113, 0.1)',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  color: 'var(--status-running)',
+                }}>
+                  ✓ 已配置，输入新的 URL 可更新配置
+                </div>
+              )}
+              <div style={{
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                marginTop: 8,
+              }}>
+                <a
+                  href="https://open.dingtalk.com/document/robots/custom-robot-access"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--status-running)' }}
+                >
+                  如何获取钉钉群机器人 Webhook？
+                </a>
+              </div>
+            </div>
           )}
         </div>
 

@@ -1,4 +1,4 @@
-import type { UserConfig } from '../config/commands.js';
+import type { UserConfig, SafeUserConfig } from '../config/commands.js';
 
 const API_BASE = '/api';
 
@@ -38,7 +38,7 @@ export async function healthCheck(): Promise<boolean> {
   }
 }
 
-export async function getUserConfig(): Promise<{ config: UserConfig | null; configPath: string }> {
+export async function getUserConfig(): Promise<{ config: SafeUserConfig | null; configPath: string }> {
   const res = await fetch(`${API_BASE}/config`, {
     credentials: 'include',
   });

@@ -70,6 +70,13 @@ function validateConfigStructure(config: unknown): config is UserConfig {
     }
   }
 
+  // dingtalk 可选，如果存在必须是对象且包含 webhookUrl
+  if ('dingtalk' in cfg && cfg.dingtalk !== undefined) {
+    if (typeof cfg.dingtalk !== 'object' || cfg.dingtalk === null) return false;
+    const dt = cfg.dingtalk as Record<string, unknown>;
+    if (typeof dt.webhookUrl !== 'string') return false;
+  }
+
   return true;
 }
 
@@ -131,8 +138,16 @@ export function createConfigRoutes(authModule: AuthModule): Router {
         filledConfig = fillDefaultCommands(filledConfig);
       }
 
-      const { token: _, ...safeConfig } = filledConfig;
-      res.json({ config: safeConfig, configPath: CONFIG_FILE });
+      // 安全处理：不暴露完整 webhook URL，只返回是否已配置
+      const { token: _, dingtalk: dtConfig, ...safeConfig } = filledConfig;
+      const responseConfig = {
+        ...safeConfig,
+        dingtalk: {
+          configured: !!(dtConfig?.webhookUrl),
+        },
+      };
+
+      res.json({ config: responseConfig, configPath: CONFIG_FILE });
     } catch (error) {
       logger.error({ error }, 'Failed to get config');
       res.status(500).json({ error: 'Failed to load config' });

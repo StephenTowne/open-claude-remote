@@ -59,6 +59,13 @@ export interface UserConfig {
   // === 实例创建配置 ===
   /** 预设工作目录列表 */
   workspaces?: string[];
+
+  // === 钉钉通知配置 ===
+  /** 钉钉群机器人 Webhook 配置 */
+  dingtalk?: {
+    /** Webhook URL */
+    webhookUrl: string;
+  };
 }
 
 /**

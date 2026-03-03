@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 import {
-  type UserConfig,
+  type SafeUserConfig,
   type ShortcutKey,
   type CommandItem,
   DEFAULT_SHORTCUTS,
@@ -43,7 +43,7 @@ export function notifyConfigChanged() {
  * 所有实例共享全局版本号，任意实例 reload 会触发全部重新加载
  */
 export function useUserConfig(): UseUserConfigResult {
-  const [config, setConfig] = useState<UserConfig | null>(null);
+  const [config, setConfig] = useState<SafeUserConfig | null>(null);
   const [configPath, setConfigPath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 

@@ -44,6 +44,20 @@ export interface ConfigurableCommand extends CommandItem {
 export interface UserConfig {
   shortcuts: ConfigurableShortcut[];
   commands: ConfigurableCommand[];
+  dingtalk?: {
+    webhookUrl: string;
+  };
+}
+
+/**
+ * 用于 API 返回的安全配置（不包含敏感字段）
+ */
+export interface SafeUserConfig {
+  shortcuts: ConfigurableShortcut[];
+  commands: ConfigurableCommand[];
+  dingtalk?: {
+    configured: boolean;
+  };
 }
 
 /**

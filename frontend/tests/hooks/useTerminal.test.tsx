@@ -387,6 +387,44 @@ describe('useTerminal', () => {
 
       expect(result.current.showScrollHint).toBe(false);
     });
+
+    it('should show scroll hint even after rapid auto-scrolls (counter mechanism)', async () => {
+      // 测试场景：PTY 持续输出时，用户滚动应能正常触发按钮显示
+      // 计数器机制确保只跳过一个程序滚动事件，后续用户滚动不受影响
+      const { result } = renderUseTerminal();
+
+      expect(mockTermOnScroll).toHaveBeenCalled();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      // 模拟 PTY 输出触发 auto-scroll
+      act(() => {
+        result.current.write('output 1');
+      });
+
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // 程序滚动触发的 onScroll 事件应该被跳过（计数器从 1 减到 0）
+      // 此时 autoFollow 仍为 true，showScrollHint 应为 false
+      act(() => {
+        scrollCallback(); // 程序滚动事件
+      });
+
+      expect(result.current.showScrollHint).toBe(false);
+
+      // 模拟用户滚动（计数器已为 0，不再跳过）
+      mockBuffer.active.viewportY = 50;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback(); // 用户滚动事件
+      });
+
+      // 用户滚动应该正常触发按钮显示
+      expect(result.current.showScrollHint).toBe(true);
+    });
   });
 
     it('should deduplicate identical resize events', () => {

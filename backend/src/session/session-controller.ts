@@ -8,6 +8,7 @@ import { handleWsMessage } from '../ws/ws-handler.js';
 import { logger } from '../logger/logger.js';
 import type { PushService } from '../push/push-service.js';
 import type { TerminalRelay } from '../terminal/terminal-relay.js';
+import type { DingtalkService } from '../notification/dingtalk-service.js';
 
 const WS_FLUSH_INTERVAL_MS = 16;
 const WS_MAX_CHUNK_BYTES = 32 * 1024;
@@ -20,6 +21,7 @@ export class SessionController {
   private _status: SessionStatus = 'idle';
   private buffer: OutputBuffer;
   private pushService: PushService | null = null;
+  private dingtalkService: DingtalkService | null = null;
 
   private wsPendingChunks: string[] = [];
   private wsPendingBytes = 0;
@@ -57,6 +59,13 @@ export class SessionController {
    */
   setPushService(pushService: PushService): void {
     this.pushService = pushService;
+  }
+
+  /**
+   * Inject DingtalkService for hook-triggered notifications.
+   */
+  setDingtalkService(dingtalkService: DingtalkService): void {
+    this.dingtalkService = dingtalkService;
   }
 
   /**
@@ -191,8 +200,9 @@ export class SessionController {
               return;
             }
           }
-          logger.info({ cols, rows, clientType }, 'Resize request from client, applying to PTY');
+          logger.info({ cols, rows, clientType, currentPtyCols: this.ptyManager.cols, currentPtyRows: this.ptyManager.rows }, 'Resize request from client, applying to PTY');
           this.ptyManager.resize(cols, rows);
+          logger.info({ ptyCols: this.ptyManager.cols, ptyRows: this.ptyManager.rows }, 'PTY resize after client request');
         },
       });
     });
@@ -278,6 +288,17 @@ export class SessionController {
           renotify: true,
         }).catch((err) => {
           logger.error({ err }, 'Failed to send push notification');
+        });
+      }
+
+      // Send dingtalk notification if service is available
+      if (this.dingtalkService) {
+        this.dingtalkService.sendNotification(
+          'Claude Code 需要输入',
+          notification.tool,
+          notification.message
+        ).catch((err) => {
+          logger.error({ err }, 'Failed to send dingtalk notification');
         });
       }
 

@@ -35,7 +35,8 @@ export function useTerminal(
 
   const autoFollowRef = useRef(true);
   const isAtBottomRef = useRef(true);
-  const isProgrammaticScrollRef = useRef(false);
+  // 计数器机制：只跳过指定数量的程序滚动事件，避免持续输出时用户滚动被忽略
+  const scrollEventSkipCountRef = useRef(0);
   const [showScrollHint, setShowScrollHint] = useState(false);
 
   useEffect(() => {
@@ -169,8 +170,11 @@ export function useTerminal(
 
     // 监听滚动事件，实现智能 auto-follow
     term.onScroll(() => {
-      // 跳过程序触发的滚动事件，避免 scrollToBottom 打断用户操作
-      if (isProgrammaticScrollRef.current) {
+      // 计数器机制：跳过程序触发的滚动事件
+      // 每次 scrollToBottom 调用前设置 count = 1，只跳过一个 onScroll 事件
+      // 避免 PTY 持续输出时用户滚动被忽略的问题
+      if (scrollEventSkipCountRef.current > 0) {
+        scrollEventSkipCountRef.current--;
         return;
       }
 
@@ -222,9 +226,10 @@ export function useTerminal(
     if (autoFollowRef.current) {
       scrollRafIdRef.current = requestAnimationFrame(() => {
         scrollRafIdRef.current = null;
-        isProgrammaticScrollRef.current = false;
+        // RAF 后自动重置计数器，确保下次用户滚动能正常响应
       });
-      isProgrammaticScrollRef.current = true;
+      // 设置计数器为 1，只跳过一个 onScroll 事件
+      scrollEventSkipCountRef.current = 1;
       term.scrollToBottom();
       return;
     }
@@ -290,9 +295,10 @@ export function useTerminal(
 
     scrollRafIdRef.current = requestAnimationFrame(() => {
       scrollRafIdRef.current = null;
-      isProgrammaticScrollRef.current = false;
+      // RAF 后自动重置计数器，确保下次用户滚动能正常响应
     });
-    isProgrammaticScrollRef.current = true;
+    // 设置计数器为 1，只跳过一个 onScroll 事件
+    scrollEventSkipCountRef.current = 1;
     term.scrollToBottom();
   }, []);
 
