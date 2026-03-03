@@ -95,7 +95,8 @@ sequenceDiagram
 | Method | Path | Auth | Handler |
 |--------|------|------|---------|
 | POST | `/api/auth` | No | auth-routes.ts → AuthModule.handleAuth |
-| GET | `/api/config` | Session | config-routes.ts → 用户配置（快捷键/命令） |
+| GET | `/api/config` | Session | config-routes.ts → 用户配置（快捷键/命令/钉钉） |
+| PUT | `/api/config` | Session | config-routes.ts → 更新用户配置（含钉钉 Webhook） |
 | GET | `/api/status` | Session | status-routes.ts → SessionController 状态 |
 | GET | `/api/health` | No | health-routes.ts → 健康检查 |
 | POST | `/api/hook` | Localhost only | hook-routes.ts → HookReceiver.processHook |
@@ -160,6 +161,7 @@ sequenceDiagram
 
 **Frontend** (`frontend/src/components/INDEX.md`, `frontend/src/hooks/INDEX.md`):
 - components/terminal/TerminalView.tsx: xterm.js 容器
+- components/terminal/ScrollToBottomButton.tsx: 滚动到底部按钮
 - hooks/useTerminal.ts: Terminal 生命周期
 - hooks/useWebSocket.ts: WS 连接管理
 - components/input/InputBar.tsx: 输入栏
@@ -189,6 +191,17 @@ sequenceDiagram
 
 **Shared** (`shared/src/INDEX.md`):
 - instance.ts: 类型定义 + 常量
+
+### 钉钉通知
+**Backend** (`backend/src/notification/`):
+- dingtalk-service.ts: 钉钉群机器人 Webhook 通知服务
+
+**Backend**:
+- api/config-routes.ts: 钉钉配置 API（配置读取/更新）
+- session/session-controller.ts: 需要输入时触发钉钉通知
+
+**Frontend**:
+- components/settings/SettingsModal.tsx: 钉钉配置 Tab
 
 ### 推送通知
 **Backend**:
@@ -291,6 +304,7 @@ claude-code-remote/
 │       ├── api/             # REST API 路由
 │       ├── auth/            # Token 验证、Session Cookie
 │       ├── hooks/           # Claude Code Hook 接收器
+│       ├── notification/    # 钉钉等外部通知服务
 │       ├── pty/             # PTY 进程管理
 │       ├── registry/        # 多实例注册表、共享 Token、端口分配
 │       ├── session/         # SessionController 协调器

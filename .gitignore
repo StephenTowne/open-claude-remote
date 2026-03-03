@@ -7,3 +7,10 @@ logs/
 .idea/
 *.tsbuildinfo
 frontend/dist/
+
+# npm pack artifacts
+*.tgz
+
+# prepack build outputs
+backend/frontend-dist/
+backend/shared-dist/

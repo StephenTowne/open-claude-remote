@@ -1,14 +1,14 @@
 {
-  "name": "claude-code-remote",
-  "version": "0.1.0",
-  "private": true,
+  "name": "open-claude-remote",
+  "version": "0.1.1",
   "description": "Remote control proxy for Claude Code CLI over LAN",
   "scripts": {
-    "dev": "concurrently --kill-others --handle-input -n backend,frontend -c blue,green \"pnpm --filter backend dev\" \"pnpm --filter frontend dev\"",
-    "build": "pnpm --filter shared build && pnpm --filter frontend build && pnpm --filter backend build",
+    "dev": "pnpm copy-frontend-dist && concurrently --kill-others --handle-input -n backend,frontend -c blue,green \"pnpm --filter ./backend dev\" \"pnpm --filter ./frontend dev\"",
+    "build": "pnpm --filter ./shared build && pnpm --filter ./frontend build && pnpm --filter ./backend build && pnpm copy-frontend-dist",
+    "copy-frontend-dist": "node scripts/copy-frontend-dist.js",
     "start": "node backend/dist/index.js",
-    "test": "pnpm --filter backend test",
-    "stop": "pnpm --filter backend exec tsx src/registry/stop-instances.ts",
+    "test": "pnpm --filter ./backend test",
+    "stop": "pnpm --filter ./backend exec tsx src/registry/stop-instances.ts",
     "clean": "pnpm -r exec rm -rf dist"
   },
   "devDependencies": {

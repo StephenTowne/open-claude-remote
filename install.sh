@@ -251,6 +251,20 @@ echo ""
 # ── 6. 全局链接命令 ────────────────────────────────────────
 
 info "全局链接 claude-remote 命令..."
+
+# 检查 pnpm 全局目录是否配置，未配置则自动初始化
+GLOBAL_BIN_DIR=$(pnpm config get global-bin-dir 2>/dev/null)
+if [ -z "$GLOBAL_BIN_DIR" ] || [ "$GLOBAL_BIN_DIR" = "undefined" ]; then
+  info "初始化 pnpm 全局目录..."
+  pnpm setup 2>/dev/null || true
+  # 将 pnpm 全局目录添加到当前进程的 PATH
+  if [ -f "$HOME/.zshrc" ] || [ -f "$HOME/.bashrc" ]; then
+    export PATH="$HOME/Library/pnpm:$PATH"
+  fi
+fi
+
+# 切换到 backend 目录执行全局链接（bin 字段定义在 backend/package.json）
+cd backend
 if ! pnpm link -g; then
   error "全局链接失败
 
@@ -258,6 +272,7 @@ ${CYAN}[解决方法]${NC}
 1. 检查 pnpm 全局目录权限
 2. 或使用相对路径运行: ${GREEN}node backend/dist/cli.js${NC}"
 fi
+cd ..
 ok "claude-remote 命令已注册"
 
 echo ""
