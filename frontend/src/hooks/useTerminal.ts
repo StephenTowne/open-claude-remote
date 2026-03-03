@@ -30,8 +30,12 @@ export function useTerminal(
   const pendingResizeValueRef = useRef<{ cols: number; rows: number } | null>(null);
   const lastReportedResizeRef = useRef<{ cols: number; rows: number } | null>(null);
 
+  // 用于取消程序滚动的 RAF 回调
+  const scrollRafIdRef = useRef<number | null>(null);
+
   const autoFollowRef = useRef(true);
   const isAtBottomRef = useRef(true);
+  const isProgrammaticScrollRef = useRef(false);
   const [showScrollHint, setShowScrollHint] = useState(false);
 
   useEffect(() => {
@@ -165,6 +169,11 @@ export function useTerminal(
 
     // 监听滚动事件，实现智能 auto-follow
     term.onScroll(() => {
+      // 跳过程序触发的滚动事件，避免 scrollToBottom 打断用户操作
+      if (isProgrammaticScrollRef.current) {
+        return;
+      }
+
       const buffer = term.buffer.active;
       const atBottom = buffer.viewportY === buffer.length - term.rows;
       isAtBottomRef.current = atBottom;
@@ -192,6 +201,10 @@ export function useTerminal(
         clearTimeout(writeFlushTimeoutRef.current);
         writeFlushTimeoutRef.current = null;
       }
+      if (scrollRafIdRef.current !== null) {
+        cancelAnimationFrame(scrollRafIdRef.current);
+        scrollRafIdRef.current = null;
+      }
       flushWriteQueue();
       term.dispose();
       termRef.current = null;
@@ -207,6 +220,11 @@ export function useTerminal(
     if (!term) return;
 
     if (autoFollowRef.current) {
+      scrollRafIdRef.current = requestAnimationFrame(() => {
+        scrollRafIdRef.current = null;
+        isProgrammaticScrollRef.current = false;
+      });
+      isProgrammaticScrollRef.current = true;
       term.scrollToBottom();
       return;
     }
@@ -267,7 +285,15 @@ export function useTerminal(
   }, []);
 
   const scrollToBottom = useCallback(() => {
-    termRef.current?.scrollToBottom();
+    const term = termRef.current;
+    if (!term) return;
+
+    scrollRafIdRef.current = requestAnimationFrame(() => {
+      scrollRafIdRef.current = null;
+      isProgrammaticScrollRef.current = false;
+    });
+    isProgrammaticScrollRef.current = true;
+    term.scrollToBottom();
   }, []);
 
   const setAutoFollow = useCallback((enabled: boolean) => {

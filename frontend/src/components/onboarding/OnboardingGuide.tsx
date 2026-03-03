@@ -21,28 +21,20 @@ const STEPS: Step[] = [
     description: '在底部输入框中输入命令或消息，按 Enter 发送。Claude 会根据你的输入继续工作。',
   },
   {
-    title: '快捷按键栏 (1/2)',
-    description: '底部横栏提供常用快捷键：Esc 取消操作、Enter 继续执行、Tab 补全。点击即可发送，无需在手机键盘上输入复杂按键组合。',
+    title: '快捷按键栏',
+    description: '底部横栏提供常用快捷键：Esc 取消操作、Enter 继续执行、Tab 补全、方向键移动、Ctrl+C 中断。点击即可发送，无需在手机键盘上输入复杂按键组合。',
   },
   {
-    title: '快捷按键栏 (2/2)',
-    description: '方向键用于在选项间移动，Ctrl+C 可中断当前操作。这些按键让远程操作更便捷。',
+    title: '命令按钮',
+    description: '快捷栏右侧显示预设命令，点击可直接发送（如 /clear 清屏）。部分命令会先填入输入框供你编辑后再发送，方便自定义参数。',
   },
   {
-    title: '斜杠命令',
-    description: '输入 /help 查看 Claude 帮助，/clear 清空终端，/compact 压缩对话上下文。还有 /review、/init 等命令可用。',
+    title: '状态指示器与工具审批',
+    description: '顶部状态栏显示当前会话状态：Idle（空闲）、Running（执行中）、Waiting Input（等待审批）。当 Claude 需要使用敏感工具时，状态变黄，输入 y 确认或按 Esc 拒绝。',
   },
   {
-    title: '状态指示器',
-    description: '顶部状态栏显示当前会话状态：Idle（空闲）、Running（执行中）、Waiting Input（等待审批）。理解状态帮助你把握 Claude 的工作进度。',
-  },
-  {
-    title: '工具审批',
-    description: '当 Claude 需要使用敏感工具时，会请求你的批准。此时状态变为黄色，在输入框输入 y 确认或按 Esc 拒绝。',
-  },
-  {
-    title: '多实例与设置',
-    description: '如果你运行多个 Claude Code 实例，可通过顶部标签页切换。点击状态栏的 ⚙️ 按钮可以自定义快捷键和命令。',
+    title: '多实例、设置与通知',
+    description: '运行多个实例时通过顶部标签页切换。点击 ⚙️ 按钮自定义快捷键和命令。开启通知权限后，Claude 等待输入时会收到本地通知。若 PC 局域网 IP 变化，会自动提示新地址。',
   },
 ];
 
