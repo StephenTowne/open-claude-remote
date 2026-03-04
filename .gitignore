@@ -16,3 +16,10 @@ backend/shared-dist/
 
 # Internal project files (not published to GitHub)
 test-results/
+
+# Open source exclusions
+.claude/
+.aci/
+CLAUDE.md
+ARCHITECTURE.md
+LEGAL.md
