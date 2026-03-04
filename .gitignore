@@ -15,9 +15,4 @@ frontend-dist/
 backend/shared-dist/
 
 # Internal project files (not published to GitHub)
-.aci/
-.claude/
-docs/
 test-results/
-CLAUDE.md
-ARCHITECTURE.md
