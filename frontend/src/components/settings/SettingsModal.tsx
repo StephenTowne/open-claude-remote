@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { ShortcutSettings } from './ShortcutSettings.js';
 import { CommandSettings } from './CommandSettings.js';
+import { NotificationSettings } from './NotificationSettings.js';
 import { getUserConfig, updateUserConfig } from '../../services/api-client.js';
 import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand, type SafeUserConfig } from '../../config/commands.js';
-
-/** 钉钉 Webhook URL 格式验证 */
-const DINGTALK_WEBHOOK_PATTERN = /^https:\/\/oapi\.dingtalk\.com\/robot\/send\?access_token=/;
+import { DINGTALK_WEBHOOK_PATTERN, type SafeNotificationConfigs } from '#shared';
 
 export type WithId<T> = T & { _id: string };
 
@@ -15,14 +14,14 @@ interface SettingsModalProps {
   onConfigSaved?: () => void;
 }
 
-type TabType = 'shortcuts' | 'commands' | 'dingtalk';
+type TabType = 'shortcuts' | 'commands' | 'notifications';
 
 export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('shortcuts');
   const [shortcuts, setShortcuts] = useState<WithId<ConfigurableShortcut>[]>([]);
   const [commands, setCommands] = useState<WithId<ConfigurableCommand>[]>([]);
   const [dingtalkWebhookUrl, setDingtalkWebhookUrl] = useState('');
-  const [dingtalkConfigured, setDingtalkConfigured] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState<SafeNotificationConfigs>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -66,13 +65,17 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
       if (config) {
         setShortcuts(config.shortcuts.map(s => withId(s)));
         setCommands(config.commands.map(c => withId(c)));
-        setDingtalkConfigured(config.dingtalk?.configured ?? false);
+        // 优先使用新版 notifications 结构，回退到旧版 dingtalk
+        const status: SafeNotificationConfigs = config.notifications || {
+          dingtalk: config.dingtalk,
+        };
+        setNotificationStatus(status);
         setDingtalkWebhookUrl(''); // 不暴露已有 URL，用户需要重新输入才能更改
       } else {
         // 使用默认配置
         setShortcuts(DEFAULT_SHORTCUTS.map(s => withId({ ...s, enabled: true })));
         setCommands(DEFAULT_COMMANDS.map(c => withId({ ...c, enabled: true })));
-        setDingtalkConfigured(false);
+        setNotificationStatus({});
         setDingtalkWebhookUrl('');
       }
     } catch (err) {
@@ -92,24 +95,32 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         shortcuts: shortcuts.map(({ _id: _, ...rest }) => rest),
         commands: commands.map(({ _id: _, ...rest }) => rest),
       };
-      // 只有在用户输入了新的 webhook URL 时才更新钉钉配置
+      // 更新通知配置
       const trimmedUrl = dingtalkWebhookUrl.trim();
-      if (trimmedUrl) {
-        // 验证 webhook URL 格式
-        if (!DINGTALK_WEBHOOK_PATTERN.test(trimmedUrl)) {
+      // 如果用户输入了新的 webhook URL，或者用户清空了输入框且之前已配置，则更新配置
+      if (trimmedUrl || notificationStatus?.dingtalk?.configured) {
+        if (trimmedUrl && !DINGTALK_WEBHOOK_PATTERN.test(trimmedUrl)) {
           setError('Please enter a valid DingTalk Webhook URL (starting with https://oapi.dingtalk.com/robot/send?access_token=)');
           setSaving(false);
           return;
         }
-        config.dingtalk = { webhookUrl: trimmedUrl };
+        // 使用新版 notifications 结构
+        config.notifications = {
+          dingtalk: { webhookUrl: trimmedUrl },
+        };
       }
       const ok = await updateUserConfig(config);
       if (ok) {
         setSuccess(true);
         // 更新已配置状态
-        if (trimmedUrl) {
-          setDingtalkConfigured(true);
-          setDingtalkWebhookUrl(''); // 保存后清空输入框
+        if (trimmedUrl || notificationStatus?.dingtalk?.configured) {
+          setNotificationStatus({
+            ...notificationStatus,
+            dingtalk: { configured: !!trimmedUrl },
+          });
+          if (trimmedUrl) {
+            setDingtalkWebhookUrl(''); // 保存后清空输入框
+          }
         }
         onConfigSaved?.();
         setTimeout(() => setSuccess(false), 2000);
@@ -192,7 +203,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
           display: 'flex',
           borderBottom: '1px solid var(--border-color)',
         }}>
-          {(['shortcuts', 'commands', 'dingtalk'] as TabType[]).map((tab) => (
+          {(['shortcuts', 'commands', 'notifications'] as TabType[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -208,7 +219,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
                 fontWeight: activeTab === tab ? 600 : 400,
               }}
             >
-              {tab === 'shortcuts' ? 'Shortcuts' : tab === 'commands' ? 'Commands' : 'DingTalk'}
+              {tab === 'shortcuts' ? 'Shortcuts' : tab === 'commands' ? 'Commands' : 'Notifications'}
             </button>
           ))}
         </div>
@@ -230,69 +241,11 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
               onChange={setCommands}
             />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{
-                padding: 12,
-                background: 'var(--bg-tertiary)',
-                borderRadius: 8,
-                fontSize: 13,
-                color: 'var(--text-secondary)',
-              }}>
-                Configure DingTalk group bot Webhook to receive notifications when Claude Code needs input.
-              </div>
-              <div>
-                <label style={{
-                  display: 'block',
-                  fontSize: 14,
-                  fontWeight: 500,
-                  marginBottom: 8,
-                  color: 'var(--text-primary)',
-                }}>
-                  Webhook URL
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
-                  value={dingtalkWebhookUrl}
-                  onChange={(e) => setDingtalkWebhookUrl(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 6,
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--bg-tertiary)',
-                    color: 'var(--text-primary)',
-                    fontSize: 14,
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-              {dingtalkConfigured && !dingtalkWebhookUrl && (
-                <div style={{
-                  padding: 10,
-                  background: 'rgba(46, 204, 113, 0.1)',
-                  borderRadius: 6,
-                  fontSize: 13,
-                  color: 'var(--status-running)',
-                }}>
-                  ✓ Configured. Enter a new URL to update.
-                </div>
-              )}
-              <div style={{
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                marginTop: 8,
-              }}>
-                <a
-                  href="https://open.dingtalk.com/document/robots/custom-robot-access"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'var(--status-running)' }}
-                >
-                  How to get DingTalk group bot Webhook?
-                </a>
-              </div>
-            </div>
+            <NotificationSettings
+              notificationStatus={notificationStatus}
+              dingtalkWebhookUrl={dingtalkWebhookUrl}
+              onDingtalkWebhookChange={setDingtalkWebhookUrl}
+            />
           )}
         </div>
 

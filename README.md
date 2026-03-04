@@ -83,11 +83,15 @@ Get notified when Claude is waiting for input:
 
 ```json
 {
-  "dingtalk": {
-    "webhookUrl": "https://oapi.dingtalk.com/robot/send?access_token=your-token"
+  "notifications": {
+    "dingtalk": {
+      "webhookUrl": "https://oapi.dingtalk.com/robot/send?access_token=your-token"
+    }
   }
 }
 ```
+
+> **Note**: The legacy `dingtalk` field is still supported for backward compatibility. Both formats will be automatically migrated.
 
 **Setup steps:**
 1. Open DingTalk group → Group Settings → Smart Group Assistant → Add Robot → Custom
@@ -145,7 +149,7 @@ Config file: `~/.claude-remote/config.json`
 | `shortcuts` | array | see below | Quick-input buttons |
 | `commands` | array | see below | Custom command buttons |
 | `workspaces` | string[] | [] | Allowed working directories for web-spawned instances |
-| `dingtalk` | object | — | DingTalk notification config |
+| `notifications` | object | — | Notification channels config (DingTalk, etc.) |
 
 **Priority**: CLI args > config file > defaults
 
@@ -272,7 +276,13 @@ If not configured, web-spawned instances can only select projects from existed c
   "workspaces": [
     "/home/user/projects/api",
     "/home/user/projects/web"
-  ]
+  ],
+
+  "notifications": {
+    "dingtalk": {
+      "webhookUrl": "https://oapi.dingtalk.com/robot/send?access_token=your-token"
+    }
+  }
 }
 ```
 

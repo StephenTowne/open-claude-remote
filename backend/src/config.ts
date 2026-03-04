@@ -9,6 +9,9 @@ import {
   DEFAULT_COMMANDS as SHARED_DEFAULT_COMMANDS,
   type ConfigurableShortcut,
   type ConfigurableCommand,
+  type NotificationConfigs,
+  type DingtalkConfig,
+  mergeNotificationConfigs,
 } from '#shared';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,12 +63,13 @@ export interface UserConfig {
   /** 预设工作目录列表 */
   workspaces?: string[];
 
-  // === 钉钉通知配置 ===
-  /** 钉钉群机器人 Webhook 配置 */
-  dingtalk?: {
-    /** Webhook URL */
-    webhookUrl: string;
-  };
+  // === 钉钉通知配置（旧版，向后兼容）===
+  /** 钉钉群机器人 Webhook 配置（旧版字段，向后兼容） */
+  dingtalk?: DingtalkConfig;
+
+  // === 多渠道通知配置（新版）===
+  /** 多渠道通知配置 */
+  notifications?: NotificationConfigs;
 }
 
 /**

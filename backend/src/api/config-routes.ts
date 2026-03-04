@@ -12,6 +12,13 @@ import {
   fillDefaultShortcuts,
   fillDefaultCommands,
 } from '../config.js';
+import {
+  type NotificationConfigs,
+  type SafeNotificationConfigs,
+  mergeNotificationConfigs,
+  getNotificationStatus,
+  type DingtalkConfig,
+} from '#shared';
 
 const CONFIG_DIR = join(homedir(), '.claude-remote');
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
@@ -70,11 +77,24 @@ function validateConfigStructure(config: unknown): config is UserConfig {
     }
   }
 
-  // dingtalk 可选，如果存在必须是对象且包含 webhookUrl
+  // dingtalk 可选，如果存在必须是对象且包含 webhookUrl（旧版字段，向后兼容）
   if ('dingtalk' in cfg && cfg.dingtalk !== undefined) {
     if (typeof cfg.dingtalk !== 'object' || cfg.dingtalk === null) return false;
     const dt = cfg.dingtalk as Record<string, unknown>;
     if (typeof dt.webhookUrl !== 'string') return false;
+  }
+
+  // notifications 可选，如果存在必须是对象
+  if ('notifications' in cfg && cfg.notifications !== undefined) {
+    if (typeof cfg.notifications !== 'object' || cfg.notifications === null) return false;
+    const notif = cfg.notifications as Record<string, unknown>;
+
+    // notifications.dingtalk 可选，如果存在必须是对象且包含 webhookUrl
+    if (notif.dingtalk !== undefined) {
+      if (typeof notif.dingtalk !== 'object' || notif.dingtalk === null) return false;
+      const dt = notif.dingtalk as Record<string, unknown>;
+      if (typeof dt.webhookUrl !== 'string') return false;
+    }
   }
 
   return true;
@@ -138,13 +158,24 @@ export function createConfigRoutes(authModule: AuthModule): Router {
         filledConfig = fillDefaultCommands(filledConfig);
       }
 
-      // 安全处理：不暴露完整 webhook URL，只返回是否已配置
-      const { token: _, dingtalk: dtConfig, ...safeConfig } = filledConfig;
+      // 合并通知配置：新版优先，回退旧版
+      const mergedNotifications = mergeNotificationConfigs(
+        filledConfig.notifications,
+        filledConfig.dingtalk
+      );
+
+      // 安全处理：不暴露敏感字段（token、webhook URL 等）
+      const { token: _, dingtalk: _dt, notifications: _notif, ...safeConfig } = filledConfig;
+
+      // 构建通知配置的安全视图
+      const safeNotifications: SafeNotificationConfigs = getNotificationStatus(mergedNotifications);
+
       const responseConfig = {
         ...safeConfig,
-        dingtalk: {
-          configured: !!(dtConfig?.webhookUrl),
-        },
+        // 返回新版 notifications 结构
+        notifications: safeNotifications,
+        // 保留 dingtalk 字段向后兼容（旧版前端）
+        dingtalk: safeNotifications.dingtalk ?? { configured: false },
       };
 
       res.json({ config: responseConfig, configPath: CONFIG_FILE });
@@ -159,7 +190,7 @@ export function createConfigRoutes(authModule: AuthModule): Router {
    */
   router.put('/config', authModule.requireAuth.bind(authModule), async (req, res) => {
     try {
-      const newConfig = req.body;
+      const newConfig = req.body as UserConfig & { notifications?: NotificationConfigs };
 
       // 验证配置结构
       if (!validateConfigStructure(newConfig)) {
@@ -170,10 +201,29 @@ export function createConfigRoutes(authModule: AuthModule): Router {
       // 文件锁保护 read-modify-write，防止与其他模块并发写入冲突
       await withFileLockAsync(CONFIG_LOCK, async () => {
         // 合并现有配置和新配置（前端可能只发送部分字段）
-        const existingConfig = await loadUserConfig();
-        const mergedConfig = { ...existingConfig, ...newConfig };
+        const existingConfig = (await loadUserConfig()) ?? {};
+        const mergedConfig: UserConfig & { notifications?: NotificationConfigs } = { ...existingConfig, ...newConfig };
 
-        await saveUserConfig(mergedConfig);
+        // 处理通知配置：
+        // 1. 如果请求包含 notifications.dingtalk，写入新版结构
+        // 2. 如果请求包含 dingtalk（旧版），同时写入新旧两个字段（双写兼容）
+        if (newConfig.notifications?.dingtalk) {
+          mergedConfig.notifications = {
+            ...existingConfig.notifications,
+            ...newConfig.notifications,
+          };
+          // 同时更新旧版 dingtalk 字段（向后兼容）
+          mergedConfig.dingtalk = newConfig.notifications.dingtalk;
+        } else if (newConfig.dingtalk?.webhookUrl) {
+          // 旧版前端只发送 dingtalk，写入两个字段
+          mergedConfig.dingtalk = newConfig.dingtalk;
+          mergedConfig.notifications = {
+            ...existingConfig.notifications,
+            dingtalk: newConfig.dingtalk,
+          };
+        }
+
+        await saveUserConfig(mergedConfig as UserConfig);
       });
 
       logger.info({ configPath: CONFIG_FILE }, 'User config updated');
