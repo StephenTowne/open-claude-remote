@@ -8,6 +8,8 @@ export interface InstanceInfo {
   startedAt: string;    // ISO
   /** 是否为无终端模式（web 创建的实例） */
   headless?: boolean;
+  /** 创建时的 Claude 参数（可选，包含 --settings 等） */
+  claudeArgs?: string[];
 }
 
 export interface InstanceRegistry {

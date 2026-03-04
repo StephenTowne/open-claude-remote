@@ -214,6 +214,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     cwd: config.claudeCwd,
     startedAt: new Date().toISOString(),
     headless: noTerminal,
+    claudeArgs: config.claudeArgs.length > 0 ? config.claudeArgs : undefined,
   });
 
   // 18.5. Clean up stale settings files for dead instances

@@ -2,54 +2,50 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 /**
  * Detects software keyboard height on mobile using the Visual Viewport API.
- * Returns the keyboard offset in pixels.
+ * Returns the visual viewport height and offset.
  *
  * 检测逻辑：
- * - 使用 visualViewport.offsetTop 作为键盘高度（键盘将 viewport 推上去的距离）
- * - offsetTop 不包含华为输入法工具栏空白区域，避免 InputBar 被推得过高
+ * - 追踪 visualViewport 的 height 和 offsetTop
+ * - 页面可以使用 fixed 定位，绑定在 visualViewport 上，避免键盘遮挡
  * - 同时监听 resize 和 scroll 事件，捕获工具栏变化
- * - 使用防抖避免高频事件导致性能问题
+ * - 使用较长防抖（150ms）跳过键盘动画中间状态，避免跳动
  */
 export function useViewport() {
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // 默认使用 window.innerHeight
+  const [height, setHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
+  const [offsetTop, setOffsetTop] = useState(0);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const updateKeyboardHeight = useCallback(() => {
+  const updateViewport = useCallback(() => {
     const vv = window.visualViewport;
-    if (!vv) return;
-
-    const viewportHeight = vv.height;
-    const windowHeight = window.innerHeight;
-    const offsetTop = vv.offsetTop;
-
-    // 使用阈值判断：只有 viewport 明显小于 window 高度时才认为键盘弹出
-    // 阈值设为 100px，避免地址栏等 UI 变化的误判
-    const THRESHOLD = 100;
-
-    if (windowHeight - viewportHeight > THRESHOLD) {
-      // 使用 offsetTop 作为 keyboardHeight
-      // offsetTop 是键盘真正将 viewport 推上去的距离，不含工具栏空白
-      setKeyboardHeight(offsetTop);
-    } else {
-      // 键盘收起
-      setKeyboardHeight(0);
+    if (!vv) {
+      if (typeof window !== 'undefined') {
+        setHeight(window.innerHeight);
+      }
+      setOffsetTop(0);
+      return;
     }
+
+    setHeight(vv.height);
+    setOffsetTop(vv.offsetTop);
   }, []);
 
-  // 防抖处理：16ms 约 60fps
+  // 防抖处理：150ms 跳过键盘动画中间状态
+  // 键盘弹起动画通常 100-300ms，150ms 防抖可以跳过大部分中间状态
   const debouncedUpdate = useCallback(() => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
-    debounceTimerRef.current = setTimeout(updateKeyboardHeight, 16);
-  }, [updateKeyboardHeight]);
+    debounceTimerRef.current = setTimeout(updateViewport, 150);
+  }, [updateViewport]);
 
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
 
-    // 初始化时调用一次（立即执行，不防抖）
-    updateKeyboardHeight();
+    // 初始化时立即更新状态（不防抖）
+    setHeight(vv.height);
+    setOffsetTop(vv.offsetTop);
 
     // 同时监听 resize 和 scroll 事件
     // scroll 事件捕获华为工具栏变化场景
@@ -62,7 +58,7 @@ export function useViewport() {
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [debouncedUpdate, updateKeyboardHeight]);
+  }, [debouncedUpdate]);
 
-  return { keyboardHeight };
+  return { height, offsetTop };
 }

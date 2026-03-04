@@ -56,6 +56,7 @@ Scan the QR code shown in your terminal with your phone. The auth token is auto-
 - Browser tab bar for switching — no re-authentication needed
 - Auto-switch when an instance goes offline
 - Spawn new instances from the web UI ("+" button)
+- Copy instance via long-press/right-click tab — pre-fills working directory, settings, and arguments
 - `claude-remote attach <port|name>` to take over a web-spawned instance
 
 ### Window Resize Priority

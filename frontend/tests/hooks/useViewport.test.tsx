@@ -54,20 +54,23 @@ describe('useViewport', () => {
     vi.restoreAllMocks();
   });
 
-  it('should return 0 when visualViewport is unavailable', () => {
+  it('should return window.innerHeight and 0 offsetTop when visualViewport is unavailable', () => {
     Object.defineProperty(window, 'visualViewport', {
       configurable: true,
       value: undefined,
     });
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 900,
+    });
 
     const { result } = renderHook(() => useViewport());
 
-    expect(result.current.keyboardHeight).toBe(0);
+    expect(result.current.height).toBe(900);
+    expect(result.current.offsetTop).toBe(0);
   });
 
-  it('should update keyboardHeight using offsetTop when visual viewport shrinks', () => {
-    vi.useFakeTimers();
-
+  it('should return visualViewport height and offsetTop', () => {
     const vv = createVisualViewportMock(800, 0);
 
     Object.defineProperty(window, 'innerHeight', {
@@ -82,105 +85,50 @@ describe('useViewport', () => {
 
     const { result } = renderHook(() => useViewport());
 
-    // 模拟键盘弹出：offsetTop = 150（键盘将 viewport 推上去的距离）
+    expect(result.current.height).toBe(800);
+    expect(result.current.offsetTop).toBe(0);
+  });
+
+  it('should update height and offsetTop when visual viewport changes via resize', () => {
+    vi.useFakeTimers();
+
+    const vv = createVisualViewportMock(900, 0);
+
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 900,
+    });
+
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: vv,
+    });
+
+    const { result } = renderHook(() => useViewport());
+
+    // 初始状态
+    expect(result.current.height).toBe(900);
+    expect(result.current.offsetTop).toBe(0);
+
+    // 模拟键盘弹出：viewport height 缩小，offsetTop 增加
     act(() => {
       vv.height = 700;
-      vv.offsetTop = 150;
+      vv.offsetTop = 200;
       vv.triggerResize();
-      vi.advanceTimersByTime(20);
+      vi.advanceTimersByTime(160); // 150ms 防抖 + 余量
     });
 
-    // keyboardHeight 应该等于 offsetTop，而不是 windowHeight - viewportHeight
-    expect(result.current.keyboardHeight).toBe(150);
+    // 返回原始的 visualViewport 值，不做阈值判断
+    expect(result.current.height).toBe(700);
+    expect(result.current.offsetTop).toBe(200);
 
     vi.useRealTimers();
-  });
-
-  it('should return 0 when offsetTop is exactly at threshold (100px)', () => {
-    const vv = createVisualViewportMock(800, 100);
-
-    Object.defineProperty(window, 'innerHeight', {
-      configurable: true,
-      value: 900,
-    });
-
-    Object.defineProperty(window, 'visualViewport', {
-      configurable: true,
-      value: vv,
-    });
-
-    const { result } = renderHook(() => useViewport());
-
-    // 初始 offsetTop = 100，恰好等于阈值，应返回 0
-    expect(result.current.keyboardHeight).toBe(0);
-  });
-
-  it('should detect keyboard when offsetTop exceeds threshold (101px)', () => {
-    // viewportHeight = 799，windowHeight = 900，差值 = 101 > 阈值
-    const vv = createVisualViewportMock(799, 101);
-
-    Object.defineProperty(window, 'innerHeight', {
-      configurable: true,
-      value: 900,
-    });
-
-    Object.defineProperty(window, 'visualViewport', {
-      configurable: true,
-      value: vv,
-    });
-
-    const { result } = renderHook(() => useViewport());
-
-    // offsetTop = 101 > 阈值，应返回 offsetTop 值
-    expect(result.current.keyboardHeight).toBe(101);
-  });
-
-  it('should return 0 when offsetTop is below threshold (50px)', () => {
-    const vv = createVisualViewportMock(850, 50);
-
-    Object.defineProperty(window, 'innerHeight', {
-      configurable: true,
-      value: 900,
-    });
-
-    Object.defineProperty(window, 'visualViewport', {
-      configurable: true,
-      value: vv,
-    });
-
-    const { result } = renderHook(() => useViewport());
-
-    // offsetTop = 50px < 阈值，不应误判为键盘弹出
-    expect(result.current.keyboardHeight).toBe(0);
-  });
-
-  it('should clamp keyboardHeight to 0 when offsetTop is 0', () => {
-    const vv = createVisualViewportMock(1000, 0);
-
-    Object.defineProperty(window, 'innerHeight', {
-      configurable: true,
-      value: 900,
-    });
-
-    Object.defineProperty(window, 'visualViewport', {
-      configurable: true,
-      value: vv,
-    });
-
-    const { result } = renderHook(() => useViewport());
-
-    act(() => {
-      vv.triggerResize();
-    });
-
-    expect(result.current.keyboardHeight).toBe(0);
   });
 
   it('should respond to scroll events (captures toolbar changes)', () => {
     vi.useFakeTimers();
 
-    // 初态：viewportHeight = 800，windowHeight = 900，差值 = 100，等于阈值，不触发键盘
-    const vv = createVisualViewportMock(800, 0);
+    const vv = createVisualViewportMock(900, 0);
 
     Object.defineProperty(window, 'innerHeight', {
       configurable: true,
@@ -194,24 +142,25 @@ describe('useViewport', () => {
 
     const { result } = renderHook(() => useViewport());
 
-    // 初值为 0（差值 = 100 未超过阈值）
-    expect(result.current.keyboardHeight).toBe(0);
+    // 初始状态
+    expect(result.current.height).toBe(900);
+    expect(result.current.offsetTop).toBe(0);
 
     // 通过 scroll 事件更新（模拟华为工具栏变化场景）
-    // 同时更新 height 和 offsetTop，让差值超过阈值
     act(() => {
       vv.height = 700;
       vv.offsetTop = 150;
       vv.triggerScroll();
-      vi.advanceTimersByTime(20);
+      vi.advanceTimersByTime(160); // 150ms 防抖 + 余量
     });
 
-    expect(result.current.keyboardHeight).toBe(150);
+    expect(result.current.height).toBe(700);
+    expect(result.current.offsetTop).toBe(150);
 
     vi.useRealTimers();
   });
 
-  it('should handle Huawei keyboard scenario: toolbar space vs actual keyboard', () => {
+  it('should handle Huawei keyboard scenario: return raw offsetTop without threshold filtering', () => {
     // 模拟华为手机场景：
     // - windowHeight = 900
     // - viewportHeight = 650（键盘 + 工具栏空白 = 250）
@@ -230,7 +179,29 @@ describe('useViewport', () => {
 
     const { result } = renderHook(() => useViewport());
 
-    // keyboardHeight 应该是 offsetTop (200)，而不是 windowHeight - viewportHeight (250)
-    expect(result.current.keyboardHeight).toBe(200);
+    // 返回原始值，不做阈值判断
+    expect(result.current.height).toBe(650);
+    expect(result.current.offsetTop).toBe(200);
+  });
+
+  it('should handle small offsetTop values (e.g., address bar changes)', () => {
+    // 模拟地址栏收缩等小变化
+    const vv = createVisualViewportMock(850, 50);
+
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 900,
+    });
+
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: vv,
+    });
+
+    const { result } = renderHook(() => useViewport());
+
+    // 返回原始值，让调用方决定如何处理
+    expect(result.current.height).toBe(850);
+    expect(result.current.offsetTop).toBe(50);
   });
 });

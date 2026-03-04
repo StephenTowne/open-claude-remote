@@ -183,8 +183,9 @@ function getAutoSwitchCandidates(instances: InstanceListItem[], currentInstanceI
 }
 
 export function ConsolePage() {
-  const { keyboardHeight } = useViewport();
-  const showCommandPicker = keyboardHeight === 0;
+  const { height, offsetTop } = useViewport();
+  const isKeyboardOpen = typeof window !== 'undefined' ? height < window.innerHeight - 50 : false;
+  const showCommandPicker = !isKeyboardOpen;
 
   usePushNotification();
   useInstances();
@@ -325,15 +326,49 @@ export function ConsolePage() {
     setCurrentHostOverride(newIp);
   }, [setCurrentHostOverride]);
 
+  // 复制成功后自动切换到新实例
+  // InstanceTabs.handleCreateSuccess 已轮询并更新了 store，这里直接读取切换
+  const handleCopySuccess = useCallback(async (newInstanceName: string) => {
+    const currentInstances = useInstanceStore.getState().instances;
+    // 按 startedAt 倒序找最新的同名实例，避免重名歧义
+    const found = [...currentInstances]
+      .filter(inst => inst.name === newInstanceName)
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+
+    if (!found) {
+      showToast('Instance created, but switch failed');
+      return;
+    }
+
+    // 认证到新实例
+    if (cachedToken) {
+      try {
+        if (found.isCurrent) {
+          await authenticate(cachedToken);
+        } else {
+          await authenticateToInstance(found.host, found.port, cachedToken);
+        }
+      } catch {
+        // 认证失败时仍然切换
+      }
+    }
+    setCurrentHostOverride(null);
+    setActiveInstanceId(found.instanceId);
+    showToast(`Created and switched to ${newInstanceName}`);
+  }, [cachedToken, setActiveInstanceId, setCurrentHostOverride, showToast]);
+
   return (
     <div data-testid="console-page" style={{
-      height: '100%',
+      position: 'fixed',
+      top: offsetTop,
+      left: 0,
+      right: 0,
+      height: height,
       display: 'flex',
       flexDirection: 'column',
-      paddingBottom: keyboardHeight > 0 ? keyboardHeight : undefined,
     }}>
       <StatusBar />
-      <InstanceTabs onSwitch={handleInstanceSwitch} />
+      <InstanceTabs onSwitch={handleInstanceSwitch} onCopySuccess={handleCopySuccess} />
       {/* key=activeInstanceId 强制 React 重建整个终端+WS */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <ConsoleContent
@@ -341,7 +376,7 @@ export function ConsolePage() {
           wsUrl={wsUrl}
           instanceId={activeInstanceId ?? undefined}
           showCommandPicker={showCommandPicker}
-          isKeyboardOpen={keyboardHeight > 0}
+          isKeyboardOpen={isKeyboardOpen}
           onIpChanged={activeInstance?.isCurrent ? handleCurrentInstanceIpChanged : undefined}
         />
       </div>

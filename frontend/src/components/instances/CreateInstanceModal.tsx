@@ -1,15 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getInstanceConfig, createInstance, type InstanceConfigResponse } from '../../services/instance-create-api.js';
 import { WorkspaceSelector } from '../common/WorkspaceSelector.js';
-import type { SettingsFile } from '../../types/index.js';
+import { SettingsFileSelector } from '../common/SettingsFileSelector.js';
+import type { SettingsFile, InstanceInfo } from '#shared';
 
 interface CreateInstanceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (newInstanceName: string) => void;
+  copySource?: InstanceInfo | null;
 }
 
-export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstanceModalProps) {
+export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: CreateInstanceModalProps) {
   const [config, setConfig] = useState<InstanceConfigResponse | null>(null);
   const [cwd, setCwd] = useState('');
   const [name, setName] = useState('');
@@ -17,26 +19,62 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
   const [claudeArgs, setClaudeArgs] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pendingSettingsPathRef = useRef<string | null>(null);
 
   // 加载配置
   useEffect(() => {
     if (isOpen) {
-      loadConfig();
+      loadConfig(!!copySource);
       // 重置表单
       setCwd('');
       setName('');
       setSettingsFile('');
       setClaudeArgs('');
       setError(null);
-    }
-  }, [isOpen]);
+      pendingSettingsPathRef.current = null;
 
-  const loadConfig = async () => {
+      // 复制模式：预填源实例参数
+      if (copySource) {
+        setCwd(copySource.cwd);
+        setName(`${copySource.name}-copy`);
+
+        // 解析 claudeArgs
+        if (copySource.claudeArgs && copySource.claudeArgs.length > 0) {
+          const args = [...copySource.claudeArgs];
+
+          // 找到 --settings 参数
+          const settingsIdx = args.indexOf('--settings');
+          if (settingsIdx !== -1 && settingsIdx + 1 < args.length) {
+            // 暂存路径，等 config 加载后再匹配 settingsFiles
+            pendingSettingsPathRef.current = args[settingsIdx + 1];
+            args.splice(settingsIdx, 2); // 移除 --settings 和路径
+          }
+
+          setClaudeArgs(args.join(' '));
+        }
+      }
+    }
+  }, [isOpen, copySource]);
+
+  // config 加载后匹配 pending settings path
+  useEffect(() => {
+    if (config && pendingSettingsPathRef.current) {
+      const matched = config.settingsFiles.find(
+        sf => `${sf.directoryPath}/${sf.filename}` === pendingSettingsPathRef.current
+      );
+      if (matched) {
+        setSettingsFile(matched.filename);
+      }
+      pendingSettingsPathRef.current = null;
+    }
+  }, [config]);
+
+  const loadConfig = async (isCopyMode: boolean) => {
     try {
       const cfg = await getInstanceConfig();
       setConfig(cfg);
-      // 设置默认 Claude 参数
-      if (cfg.claudeArgs.length > 0) {
+      // 复制模式下不覆盖已预填的 claudeArgs
+      if (!isCopyMode && cfg.claudeArgs.length > 0) {
         setClaudeArgs(cfg.claudeArgs.join(' '));
       }
     } catch (err) {
@@ -136,7 +174,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
           alignItems: 'center',
         }}>
           <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
-            Create New Instance
+            {copySource ? 'Copy Instance' : 'Create New Instance'}
           </h2>
           <button
             onClick={onClose}
@@ -238,29 +276,13 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               }}>
                 Settings File (optional)
               </label>
-              <select
+              <SettingsFileSelector
                 id="settings-select"
+                settingsFiles={config.settingsFiles}
                 value={settingsFile}
-                onChange={(e) => setSettingsFile(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--bg-tertiary)',
-                  color: 'var(--text-primary)',
-                  fontSize: 14,
-                  boxSizing: 'border-box',
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="">None</option>
-                {config.settingsFiles.map((sf: SettingsFile) => (
-                  <option key={sf.filename} value={sf.filename}>
-                    {sf.displayName} ({sf.directory})
-                  </option>
-                ))}
-              </select>
+                onChange={setSettingsFile}
+                placeholder="None"
+              />
               <p style={{
                 fontSize: 11,
                 color: 'var(--text-secondary)',
@@ -362,7 +384,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               opacity: loading || !hasWorkspaces ? 0.7 : 1,
             }}
           >
-            {loading ? 'Creating…' : 'Create'}
+            {loading ? (copySource ? 'Copying…' : 'Creating…') : (copySource ? 'Copy' : 'Create')}
           </button>
         </div>
       </div>
