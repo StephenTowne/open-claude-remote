@@ -59,7 +59,7 @@ describe('parseCliArgs', () => {
   });
 
   it('should throw error when attach has no target argument', () => {
-    expect(() => parseCliArgs(['node', 'cli.js', 'attach'])).toThrow('attach 命令需要指定目标实例');
+    expect(() => parseCliArgs(['node', 'cli.js', 'attach'])).toThrow('attach requires a target instance');
   });
 
   it('should parse --no-terminal flag', () => {

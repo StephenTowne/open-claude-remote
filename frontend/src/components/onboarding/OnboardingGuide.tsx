@@ -9,32 +9,32 @@ interface Step {
 
 const STEPS: Step[] = [
   {
-    title: '欢迎使用 Claude Code Remote',
-    description: '这是一个让你用手机远程掌控 PC 终端的工具。Claude Code 运行在你的 PC 上，你可以在任何地方通过手机访问它。支持 ANSI 颜色渲染，保持完整的终端体验。',
+    title: 'Welcome to Claude Code Remote',
+    description: 'This tool lets you remotely control your PC terminal from your phone. Claude Code runs on your PC, and you can access it from anywhere on your phone. Full ANSI color rendering support for a complete terminal experience.',
   },
   {
-    title: '终端显示区',
-    description: '这里实时显示 Claude Code 的输出内容，就像在 PC 终端里一样。右上角的 ↑↓ 按钮可以快速滚动到顶部或底部，支持 10,000 行历史记录回滚。',
+    title: 'Terminal Display',
+    description: 'This area shows Claude Code output in real-time, just like on your PC terminal. Use the ↑↓ buttons in the top right to quickly scroll to the top or bottom. Supports 10,000 lines of scrollback history.',
   },
   {
-    title: '命令输入框',
-    description: '在底部输入框中输入命令或消息，按 Enter 发送。Claude 会根据你的输入继续工作。',
+    title: 'Command Input',
+    description: 'Enter commands or messages in the bottom input box and press Enter to send. Claude will continue working based on your input.',
   },
   {
-    title: '快捷按键栏',
-    description: '底部横栏提供常用快捷键：Esc 取消操作、Enter 继续执行、Tab 补全、方向键移动、Ctrl+C 中断。点击即可发送，无需在手机键盘上输入复杂按键组合。',
+    title: 'Shortcut Bar',
+    description: 'The bottom bar provides common shortcuts: Esc to cancel, Enter to continue, Tab for completion, arrow keys for navigation, Ctrl+C to interrupt. Just tap to send - no need to type complex key combinations on your phone.',
   },
   {
-    title: '命令按钮',
-    description: '快捷栏右侧显示预设命令，点击可直接发送（如 /clear 清屏）。部分命令会先填入输入框供你编辑后再发送，方便自定义参数。',
+    title: 'Command Buttons',
+    description: 'Preset commands appear on the right side of the shortcut bar. Tap to send directly (e.g., /clear to clear screen). Some commands fill the input box first for editing before sending, making it easy to customize parameters.',
   },
   {
-    title: '状态指示器与工具审批',
-    description: '顶部状态栏显示当前会话状态：Idle（空闲）、Running（执行中）、Waiting Input（等待审批）。当 Claude 需要使用敏感工具时，状态变黄，输入 y 确认或按 Esc 拒绝。',
+    title: 'Status Indicator & Tool Approval',
+    description: 'The top status bar shows the current session state: Idle, Running, or Waiting Input. When Claude needs to use a sensitive tool, the status turns yellow. Type y to approve or press Esc to deny.',
   },
   {
-    title: '多实例、设置与通知',
-    description: '运行多个实例时通过顶部标签页切换。点击 ⚙️ 按钮自定义快捷键和命令。开启通知权限后，Claude 等待输入时会收到本地通知。若 PC 局域网 IP 变化，会自动提示新地址。',
+    title: 'Multi-Instance, Settings & Notifications',
+    description: 'Switch between multiple instances using the top tabs. Click the ⚙️ button to customize shortcuts and commands. Enable notification permissions to receive alerts when Claude is waiting for input. If your PC LAN IP changes, you\'ll be notified of the new address.',
   },
 ];
 
@@ -175,7 +175,7 @@ export function OnboardingGuide({ onComplete }: OnboardingGuideProps) {
               cursor: 'pointer',
             }}
           >
-            跳过
+            Skip
           </button>
 
           <div style={{ display: 'flex', gap: 8 }}>
@@ -192,7 +192,7 @@ export function OnboardingGuide({ onComplete }: OnboardingGuideProps) {
                   cursor: 'pointer',
                 }}
               >
-                上一步
+                Previous
               </button>
             )}
             <button
@@ -208,7 +208,7 @@ export function OnboardingGuide({ onComplete }: OnboardingGuideProps) {
                 cursor: 'pointer',
               }}
             >
-              {isLast ? '开始使用' : '下一步'}
+              {isLast ? 'Get Started' : 'Next'}
             </button>
           </div>
         </div>

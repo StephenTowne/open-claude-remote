@@ -38,7 +38,7 @@ export function IpChangeToast() {
       }}
     >
       <div style={{ fontWeight: 500 }}>
-        IP已变更
+        IP Address Changed
       </div>
       <div style={{ fontSize: '13px', opacity: 0.9 }}>
         {ipChangeInfo.oldIp} → {ipChangeInfo.newIp}
@@ -57,7 +57,7 @@ export function IpChangeToast() {
             fontSize: '13px',
           }}
         >
-          复制新地址
+          Copy New URL
         </button>
         <button
           onClick={handleClose}
@@ -71,7 +71,7 @@ export function IpChangeToast() {
             fontSize: '13px',
           }}
         >
-          关闭
+          Close
         </button>
       </div>
     </div>

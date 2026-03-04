@@ -10,3 +10,14 @@ frontend-dist/
 
 # npm pack artifacts
 *.tgz
+
+# Shared module build artifacts
+backend/shared-dist/
+
+# Internal project files (not published to GitHub)
+.aci/
+.claude/
+docs/
+test-results/
+CLAUDE.md
+ARCHITECTURE.md

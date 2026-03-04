@@ -88,23 +88,23 @@ export class HookReceiver extends EventEmitter {
     const toolName = payload.tool_name || 'unknown';
     const toolInput = payload.tool_input;
 
-    let message = `Claude 请求使用 ${toolName} 工具`;
+    let message = `Claude requests to use tool: ${toolName}`;
     const detail = this.formatToolInput(toolInput);
 
     // 根据工具类型生成更具体的消息
     if (toolName === 'Bash' && toolInput?.command) {
-      message = `Claude 请求执行命令: ${toolInput.command}`;
+      message = `Claude requests to execute command: ${toolInput.command}`;
     } else if (toolName === 'Write' && toolInput?.file_path) {
-      message = `Claude 请求写入文件: ${toolInput.file_path}`;
+      message = `Claude requests to write file: ${toolInput.file_path}`;
     } else if (toolName === 'Edit' && toolInput?.file_path) {
-      message = `Claude 请求编辑文件: ${toolInput.file_path}`;
+      message = `Claude requests to edit file: ${toolInput.file_path}`;
     }
 
     const notification: HookNotification = {
       eventType: HookEventType.PERMISSION_REQUEST,
       channels: ALL_CHANNELS,
       tool: toolName,
-      title: `权限审批: ${toolName}`,
+      title: `Approval Required: ${toolName}`,
       message,
       detail,
     };
@@ -136,16 +136,16 @@ export class HookReceiver extends EventEmitter {
     let notificationTitle: string;
     switch (notification_type) {
       case 'permission_prompt':
-        notificationTitle = title || '需要权限审批';
+        notificationTitle = title || 'Approval Required';
         break;
       case 'idle_prompt':
-        notificationTitle = title || 'Claude 等待输入';
+        notificationTitle = title || 'Claude Waiting for Input';
         break;
       case 'elicitation_dialog':
-        notificationTitle = title || '等待回答问题';
+        notificationTitle = title || 'Waiting for Your Response';
         break;
       default:
-        notificationTitle = title || 'Claude 通知';
+        notificationTitle = title || 'Claude Notification';
     }
 
     const notification: HookNotification = {
@@ -183,13 +183,13 @@ export class HookReceiver extends EventEmitter {
       | undefined;
     const questionText = questions
       ?.map(q => q.question)
-      .join('; ') || '等待回答问题';
+      .join('; ') || 'Waiting for your response';
 
     const notification: HookNotification = {
       eventType: HookEventType.NOTIFICATION,
       channels: ALL_CHANNELS,
       tool: 'AskUserQuestion',
-      title: '等待回答问题',
+      title: 'Waiting for Your Response',
       message: questionText,
     };
 
@@ -211,7 +211,7 @@ export class HookReceiver extends EventEmitter {
       eventType: HookEventType.SESSION_ENDED,
       channels: WEBSOCKET_ONLY,
       tool: 'session',
-      title: '会话已结束',
+      title: 'Session Ended',
       message: this.formatSessionEndReason(reason),
     };
 
@@ -255,11 +255,11 @@ export class HookReceiver extends EventEmitter {
     const parts: string[] = [];
     for (const [key, value] of Object.entries(toolInput)) {
       if (key === 'command' && typeof value === 'string') {
-        parts.push(`命令: ${value}`);
+        parts.push(`Command: ${value}`);
       } else if (key === 'file_path' && typeof value === 'string') {
-        parts.push(`文件: ${value}`);
+        parts.push(`File: ${value}`);
       } else if (key === 'pattern' && typeof value === 'string') {
-        parts.push(`模式: ${value}`);
+        parts.push(`Pattern: ${value}`);
       }
     }
 
@@ -271,13 +271,13 @@ export class HookReceiver extends EventEmitter {
    */
   private formatSessionEndReason(reason: string): string {
     const reasonMap: Record<string, string> = {
-      clear: '会话已清除 (/clear)',
-      logout: '用户已登出',
-      prompt_input_exit: '用户在输入提示时退出',
-      bypass_permissions_disabled: '绕过权限模式已禁用',
-      other: '会话结束',
+      clear: 'Session cleared (/clear)',
+      logout: 'User logged out',
+      prompt_input_exit: 'User exited during input prompt',
+      bypass_permissions_disabled: 'Bypass permissions mode disabled',
+      other: 'Session ended',
     };
 
-    return reasonMap[reason] || `会话已结束: ${reason}`;
+    return reasonMap[reason] || `Session ended: ${reason}`;
   }
 }

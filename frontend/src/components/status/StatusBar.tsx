@@ -79,7 +79,7 @@ export function StatusBar() {
           {/* 设置按钮 */}
           <button
             onClick={() => setSettingsOpen(true)}
-            aria-label="设置"
+            aria-label="Settings"
             style={{
               width: 32,
               height: 32,

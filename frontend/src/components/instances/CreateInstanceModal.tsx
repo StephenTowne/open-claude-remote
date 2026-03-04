@@ -38,13 +38,13 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
       }
     } catch (err) {
       console.error('Failed to load instance config:', err);
-      setError('加载配置失败');
+      setError('Failed to load configuration');
     }
   };
 
   const handleSubmit = async () => {
     if (!cwd) {
-      setError('请选择工作目录');
+      setError('Please select a working directory');
       return;
     }
 
@@ -68,7 +68,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
       onClose();
     } catch (err) {
       console.error('Failed to create instance:', err);
-      setError(err instanceof Error ? err.message : '创建实例失败');
+      setError(err instanceof Error ? err.message : 'Failed to create instance');
     } finally {
       setLoading(false);
     }
@@ -117,11 +117,11 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
           alignItems: 'center',
         }}>
           <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
-            创建新实例
+            Create New Instance
           </h2>
           <button
             onClick={onClose}
-            aria-label="关闭"
+            aria-label="Close"
             style={{
               width: 32,
               height: 32,
@@ -155,14 +155,14 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               marginBottom: 6,
               color: 'var(--text-secondary)',
             }}>
-              工作目录 *
+              Working Directory *
             </label>
             <WorkspaceSelector
               id="cwd-select"
               workspaces={config?.workspaces ?? []}
               value={cwd}
               onChange={setCwd}
-              placeholder="选择工作目录…"
+              placeholder="Select working directory…"
               disabled={!hasWorkspaces}
             />
             {!hasWorkspaces && (
@@ -172,7 +172,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
                 marginTop: 6,
                 opacity: 0.8,
               }}>
-                请先在配置文件中设置 workspaces，或通过 CLI 启动一个实例。
+                Please configure workspaces in the config file first, or start an instance via CLI.
               </p>
             )}
           </div>
@@ -186,14 +186,14 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               marginBottom: 6,
               color: 'var(--text-secondary)',
             }}>
-              实例名称（可选）
+              Instance Name (optional)
             </label>
             <input
               id="instance-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="默认为工作目录名"
+              placeholder="Defaults to working directory name"
               style={{
                 width: '100%',
                 padding: '10px 12px',
@@ -216,14 +216,14 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               marginBottom: 6,
               color: 'var(--text-secondary)',
             }}>
-              Claude 参数（可选）
+              Claude Arguments (optional)
             </label>
             <input
               id="claude-args"
               type="text"
               value={claudeArgs}
               onChange={(e) => setClaudeArgs(e.target.value)}
-              placeholder="例如: chat --model claude-sonnet-4-6"
+              placeholder="e.g., chat --model claude-sonnet-4-6"
               style={{
                 width: '100%',
                 padding: '10px 12px',
@@ -241,7 +241,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               marginTop: 4,
               opacity: 0.7,
             }}>
-              多个参数用空格分隔（不支持引号包裹含空格的参数）
+              Multiple arguments separated by spaces (quoted arguments with spaces not supported)
             </p>
           </div>
 
@@ -280,7 +280,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               cursor: 'pointer',
             }}
           >
-            取消
+            Cancel
           </button>
           <button
             onClick={handleSubmit}
@@ -297,7 +297,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               opacity: loading || !hasWorkspaces ? 0.7 : 1,
             }}
           >
-            {loading ? '创建中…' : '创建'}
+            {loading ? 'Creating…' : 'Create'}
           </button>
         </div>
       </div>

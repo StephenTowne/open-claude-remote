@@ -76,7 +76,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         setDingtalkWebhookUrl('');
       }
     } catch (err) {
-      setError('加载配置失败');
+      setError('Failed to load configuration');
       console.error(err);
     }
   };
@@ -97,7 +97,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
       if (trimmedUrl) {
         // 验证 webhook URL 格式
         if (!DINGTALK_WEBHOOK_PATTERN.test(trimmedUrl)) {
-          setError('请输入有效的钉钉 Webhook URL（以 https://oapi.dingtalk.com/robot/send?access_token= 开头）');
+          setError('Please enter a valid DingTalk Webhook URL (starting with https://oapi.dingtalk.com/robot/send?access_token=)');
           setSaving(false);
           return;
         }
@@ -114,10 +114,10 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         onConfigSaved?.();
         setTimeout(() => setSuccess(false), 2000);
       } else {
-        setError('保存失败');
+        setError('Failed to save');
       }
     } catch (err) {
-      setError('保存失败');
+      setError('Failed to save');
       console.error(err);
     } finally {
       setSaving(false);
@@ -167,11 +167,11 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
           alignItems: 'center',
         }}>
           <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
-            设置
+            Settings
           </h2>
           <button
             onClick={onClose}
-            aria-label="关闭"
+            aria-label="Close"
             style={{
               width: 32,
               height: 32,
@@ -208,7 +208,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
                 fontWeight: activeTab === tab ? 600 : 400,
               }}
             >
-              {tab === 'shortcuts' ? '快捷键' : tab === 'commands' ? '命令' : '钉钉'}
+              {tab === 'shortcuts' ? 'Shortcuts' : tab === 'commands' ? 'Commands' : 'DingTalk'}
             </button>
           ))}
         </div>
@@ -238,7 +238,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
                 fontSize: 13,
                 color: 'var(--text-secondary)',
               }}>
-                配置钉钉群机器人 Webhook 后，当 Claude Code 需要输入时会发送通知到钉钉群。
+                Configure DingTalk group bot Webhook to receive notifications when Claude Code needs input.
               </div>
               <div>
                 <label style={{
@@ -275,7 +275,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
                   fontSize: 13,
                   color: 'var(--status-running)',
                 }}>
-                  ✓ 已配置，输入新的 URL 可更新配置
+                  ✓ Configured. Enter a new URL to update.
                 </div>
               )}
               <div style={{
@@ -289,7 +289,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
                   rel="noopener noreferrer"
                   style={{ color: 'var(--status-running)' }}
                 >
-                  如何获取钉钉群机器人 Webhook？
+                  How to get DingTalk group bot Webhook?
                 </a>
               </div>
             </div>
@@ -307,7 +307,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         }}>
           <div style={{ fontSize: 13 }}>
             {error && <span style={{ color: 'var(--status-error)' }}>{error}</span>}
-            {success && <span style={{ color: 'var(--status-running)' }}>已保存</span>}
+            {success && <span style={{ color: 'var(--status-running)' }}>Saved</span>}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -322,7 +322,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
                 cursor: 'pointer',
               }}
             >
-              取消
+              Cancel
             </button>
             <button
               onClick={handleSave}
@@ -339,7 +339,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
                 opacity: saving ? 0.7 : 1,
               }}
             >
-              {saving ? '保存中…' : '保存'}
+              {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
         </div>

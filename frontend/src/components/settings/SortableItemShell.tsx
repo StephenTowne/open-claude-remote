@@ -71,7 +71,7 @@ export function SortableItemShell({
         <div
           {...attributes}
           {...listeners}
-          aria-label="拖拽排序"
+          aria-label="Drag to reorder"
           style={{
             width: 24,
             color: 'var(--text-muted)',
@@ -91,7 +91,7 @@ export function SortableItemShell({
         <button
           role="switch"
           aria-checked={enabled}
-          aria-label={enabled ? '已启用，点击禁用' : '已禁用，点击启用'}
+          aria-label={enabled ? 'Enabled, click to disable' : 'Disabled, click to enable'}
           onClick={onToggle}
           style={{
             width: 32,
@@ -122,7 +122,7 @@ export function SortableItemShell({
         {/* 展开按钮 */}
         {isExpandable && (
           <button
-            aria-label={isExpanded ? '收起详情' : '展开详情'}
+            aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
             aria-expanded={isExpanded}
             onClick={onToggleExpand}
             style={{
@@ -153,7 +153,7 @@ export function SortableItemShell({
 
         {/* 删除按钮 */}
         <button
-          aria-label="删除"
+          aria-label="Delete"
           onClick={onDelete}
           style={{
             width: 32,

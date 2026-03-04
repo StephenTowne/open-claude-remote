@@ -67,7 +67,7 @@ describe('HookReceiver', () => {
       });
 
       expect(result.type).toBe('notification');
-      expect(result.notification!.title).toBe('Claude 等待输入');
+      expect(result.notification!.title).toBe('Claude Waiting for Input');
       expect(handler).toHaveBeenCalled();
     });
 
@@ -83,7 +83,7 @@ describe('HookReceiver', () => {
       });
 
       expect(result.type).toBe('notification');
-      expect(result.notification!.title).toBe('等待回答问题');
+      expect(result.notification!.title).toBe('Waiting for Your Response');
       expect(handler).toHaveBeenCalled();
     });
 
@@ -150,7 +150,7 @@ describe('HookReceiver', () => {
       });
 
       expect(result.type).toBe('notification');
-      expect(result.notification!.message).toContain('编辑文件');
+      expect(result.notification!.message).toContain('edit file');
     });
 
     it('should handle unknown tool gracefully', () => {
@@ -230,7 +230,7 @@ describe('HookReceiver', () => {
       expect(result.type).toBe('notification');
       expect(result.notification!.eventType).toBe(HookEventType.SESSION_ENDED);
       expect(result.notification!.tool).toBe('session');
-      expect(result.notification!.message).toContain('登出');
+      expect(result.notification!.message).toContain('logged out');
       // SessionEnd 只发送 WebSocket 通知
       expect(result.notification!.channels).toEqual(['websocket']);
       expect(handler).toHaveBeenCalled();

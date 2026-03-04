@@ -303,7 +303,7 @@ export class SessionController {
         this.wsServer.broadcast({
           type: 'status_update',
           status: 'running',
-          detail: '任务继续执行中',
+          detail: 'Task resumed',
         });
         logger.info('Task resumed after user response');
       }

@@ -1,7 +1,7 @@
 /**
- * CLI 参数解析工具函数
+ * CLI argument parsing utilities.
  *
- * 从 cli.ts 提取出来，避免 cli.ts 有静态 import。
+ * Extracted from cli.ts to avoid static imports in the entry point.
  */
 
 export interface CliOptions {
@@ -12,7 +12,7 @@ export interface CliOptions {
   help: boolean;
   noTerminal: boolean;
   claudeArgs: string[];
-  /** attach 子命令 */
+  /** attach subcommand */
   attach?: string;
 }
 
@@ -36,12 +36,12 @@ export function parseCliArgs(argv: string[]): CliOptions {
 
   let i = 2; // Skip 'node' and script path
 
-  // 检查子命令
+  // Check subcommands
   if (argv.length > 2) {
     const firstArg = argv[2];
     if (firstArg === 'attach') {
       if (argv.length <= 3) {
-        throw new Error('attach 命令需要指定目标实例（端口或名称）');
+        throw new Error('attach requires a target instance (port or name)');
       }
       options.attach = argv[3];
       return options;
@@ -97,44 +97,57 @@ export function parseCliArgs(argv: string[]): CliOptions {
 
 export function showHelp(): void {
   console.log(`
-Claude Code Remote - 在局域网内通过手机远程控制 Claude Code
+Claude Code Remote - Control Claude Code from your mobile browser over LAN
 
-用法：
+Usage:
   claude-remote [options] [--] [claude args...]
-  claude-remote attach <port|name>  # 接管指定实例
+  claude-remote attach <port|name>
 
-代理层选项：
-  --port <number>      服务端口 (默认: 3000, 被占用时自动递增)
-  --host <ip>          绑定地址 (默认: 自动检测 LAN IP)
-  --token <string>     认证 Token (默认: 共享 Token)
-  --name <string>      实例名称 (默认: 工作目录名)
-  --no-terminal        无终端模式（web 创建的实例使用）
-  --help, -h           显示帮助信息
+Options:
+  --port <number>      Server port (default: 3000, auto-increments if busy)
+  --host <ip>          Bind address (default: auto-detect LAN IP)
+  --token <string>     Auth token (default: shared token)
+  --name <string>      Instance name (default: working directory name)
+  --no-terminal        Headless mode (internal: for web-spawned instances)
+  --help, -h           Show this help message
 
-配置文件：
-  ~/.claude-remote/config.json  用户配置文件 (JSON 格式)
+Config file:
+  ~/.claude-remote/config.json
 
-  可配置项：
-    port            服务端口
-    host            绑定地址
-    token           固定 Token (覆盖共享 Token)
-    instanceName    实例名称
-    claudeCommand   Claude CLI 命令路径 (默认: claude)
-    claudeCwd       Claude 工作目录 (默认: 当前目录)
-    claudeArgs      Claude CLI 额外参数 (数组)
-    maxBufferLines  输出缓冲区行数 (默认: 10000)
-    workspaces      预设工作目录列表 (数组)
-    defaultClaudeArgs 默认 Claude 参数 (数组)
+  Server options:
+    port            Server port (default: 3000)
+    host            Bind address (default: "0.0.0.0")
+    token           Auth token (default: auto-generated shared token)
+    sessionTtlMs    Session TTL in ms (default: 86400000 = 24h)
+    authRateLimit   Auth rate limit per min per IP (default: 20)
 
-示例：
-  claude-remote                    # 启动 Claude Code
-  claude-remote chat               # 启动 Claude Code 并进入 chat 模式
-  claude-remote --port 8080        # 使用端口 8080
-  claude-remote --name api         # 自定义实例名称
-  claude-remote -- --dangerously-skip-permissions  # 透传参数给 claude
-  claude-remote attach 3001        # 接管端口 3001 的实例
-  claude-remote attach myproject   # 接管名为 myproject 的实例
+  Claude CLI options:
+    claudeCommand   Claude CLI path (default: "claude")
+    claudeArgs      Extra Claude CLI arguments (array)
+    claudeCwd       Claude working directory (default: current dir)
 
-更多 Claude Code 选项请运行：claude --help
+  Instance options:
+    instanceName    Instance name (default: working dir name)
+    maxBufferLines  Output buffer max lines (default: 10000)
+    workspaces      Allowed working directories for web-spawned instances (array)
+
+  UI options:
+    shortcuts       Quick-input buttons (array, see README for format)
+    commands        Custom command buttons (array, see README for format)
+
+  Notification options:
+    dingtalk        DingTalk notification config (object)
+                   Example: { "webhookUrl": "https://oapi.dingtalk.com/..." }
+
+Examples:
+  claude-remote                    # Start Claude Code
+  claude-remote chat               # Start in chat mode
+  claude-remote --port 8080        # Use port 8080
+  claude-remote --name api         # Custom instance name
+  claude-remote -- --dangerously-skip-permissions  # Pass args to claude
+  claude-remote attach 3001        # Attach to instance on port 3001
+  claude-remote attach myproject   # Attach to instance named myproject
+
+For more Claude Code options, run: claude --help
 `);
 }

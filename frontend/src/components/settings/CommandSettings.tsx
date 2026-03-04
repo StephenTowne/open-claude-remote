@@ -144,7 +144,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
         marginBottom: 8,
       }}>
         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-          命令
+          Commands
         </span>
         <button
           onClick={addCommand}
@@ -158,7 +158,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
             cursor: 'pointer',
           }}
         >
-          + 添加
+          + Add
         </button>
       </div>
 
@@ -169,7 +169,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
           color: 'var(--text-secondary)',
           fontSize: 13,
         }}>
-          暂无命令，点击上方按钮添加
+          No commands yet. Click the button above to add one.
         </div>
       )}
 
@@ -197,7 +197,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                   <button
                     role="switch"
                     aria-checked={cmd.autoSend ?? true}
-                    aria-label={(cmd.autoSend ?? true) ? '自动发送已开启，点击关闭' : '自动发送已关闭，点击开启'}
+                    aria-label={(cmd.autoSend ?? true) ? 'Auto-send is on, click to turn off' : 'Auto-send is off, click to turn on'}
                     onClick={() => toggleAutoSend(index)}
                     style={{
                       width: 36,
@@ -222,7 +222,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                     }} />
                   </button>
                   <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    点击后自动发送
+                    Auto-send on click
                   </span>
                 </div>
               }
@@ -242,8 +242,8 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                     }
                   }}
                   onBlur={() => saveEdit(index)}
-                  placeholder="输入命令…"
-                  aria-label={`命令 ${index + 1}`}
+                  placeholder="Enter command…"
+                  aria-label={`Command ${index + 1}`}
                   style={{
                     flex: 1,
                     minWidth: 0,
@@ -260,7 +260,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                 <button
                   type="button"
                   onClick={() => startEdit(index)}
-                  aria-label={`编辑命令 ${cmd.label}`}
+                  aria-label={`Edit command ${cmd.label}`}
                   style={{
                     flex: 1,
                     minWidth: 0,
@@ -293,7 +293,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
         color: 'var(--text-muted)',
         marginTop: 8,
       }}>
-        提示：命令会自动补足 / 前缀（如 help → /help）
+        Tip: Commands are auto-prefixed with / (e.g., help → /help)
       </div>
     </div>
   );

@@ -57,8 +57,8 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
         onKeyDown={handleKeyDown}
         disabled={disabled}
         autoComplete="off"
-        placeholder="输入命令或数字选择…"
-        aria-label="命令输入框"
+        placeholder="Enter command or number to select…"
+        aria-label="Command input"
         style={{
           flex: 1,
           height: 40,

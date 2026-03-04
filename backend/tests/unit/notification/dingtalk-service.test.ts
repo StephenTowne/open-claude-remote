@@ -30,7 +30,7 @@ describe('DingtalkService', () => {
           msgtype: 'markdown',
           markdown: {
             title: 'Test Title',
-            text: '### Test Title\n\n**工具**: Bash\n\n**消息**: Test message\n\n---\n请及时处理',
+            text: '### Test Title\n\n**Tool**: Bash\n\n**Message**: Test message\n\n---\nPlease respond promptly',
           },
         }),
       }));

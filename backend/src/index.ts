@@ -137,7 +137,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
 
   // 12. Serve frontend static files (if built)
   const __dirname = dirname(fileURLToPath(import.meta.url));
-  const frontendDist = resolve(__dirname, '../frontend-dist');
+  const frontendDist = resolve(__dirname, '../../../frontend-dist');
 
   if (existsSync(frontendDist)) {
     app.use(express.static(frontendDist));
