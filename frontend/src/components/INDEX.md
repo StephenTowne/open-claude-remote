@@ -27,7 +27,9 @@
 - useDndSensors.ts: dnd-kit 拖拽传感器配置 hook，PointerSensor + KeyboardSensor，激活约束 8px
 
 ## onboarding/
-- OnboardingGuide.tsx: 首次使用引导组件，分步展示功能介绍，localStorage 记录完成状态
+- SpotlightGuide.tsx: Spotlight 引导组件，镂空遮罩 + 气泡提示，支持键盘导航（方向键/Enter/Esc）
+- spotlight-steps.ts: Spotlight 引导步骤配置，CSS 选择器定位，包含快捷键/命令/输入框/设置/新建实例 5 个步骤
+- useSpotlight.ts: Spotlight 状态管理 Hook，目标元素定位计算，localStorage 记录完成状态
 
 ## terminal/
 - TerminalView.tsx: xterm.js 挂载容器，disableStdin 只读模式，外部通过 containerRef 注入
