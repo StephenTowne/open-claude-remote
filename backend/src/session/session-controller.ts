@@ -28,6 +28,7 @@ export class SessionController {
   private buffer: OutputBuffer;
   private pushService: PushService | null = null;
   private dingtalkService: DingtalkService | null = null;
+  private instanceUrl: string | null = null;
 
   private wsPendingChunks: string[] = [];
   private wsPendingBytes = 0;
@@ -72,6 +73,14 @@ export class SessionController {
    */
   setDingtalkService(dingtalkService: DingtalkService): void {
     this.dingtalkService = dingtalkService;
+  }
+
+  /**
+   * Set instance URL for inclusion in notifications.
+   */
+  setInstanceUrl(url: string): void {
+    this.instanceUrl = url;
+    logger.info({ instanceUrl: url }, 'Instance URL updated');
   }
 
   /**
@@ -317,12 +326,15 @@ export class SessionController {
     channel: NotificationChannel,
     notification: HookNotification
   ): void {
+    // 构造 URL 提示信息
+    const urlHint = this.instanceUrl ? `\n\nInstance: ${this.instanceUrl}` : '';
+
     switch (channel) {
       case 'websocket':
         this.wsServer.broadcast({
           type: 'status_update',
           status: 'waiting_input',
-          detail: notification.message,
+          detail: notification.message + urlHint,
         });
         break;
 
@@ -331,7 +343,7 @@ export class SessionController {
           this.pushService
             .notifyAll({
               title: notification.title,
-              body: notification.message,
+              body: notification.message + urlHint,
               tag: `claude-${notification.eventType}`,
               renotify: true,
             })
@@ -344,8 +356,8 @@ export class SessionController {
       case 'dingtalk':
         if (this.dingtalkService) {
           const body = notification.detail
-            ? `${notification.message}\n${notification.detail}`
-            : notification.message;
+            ? `${notification.message}\n${notification.detail}${urlHint}`
+            : notification.message + urlHint;
           this.dingtalkService
             .sendNotification(notification.title, notification.tool, body)
             .catch((err) => {

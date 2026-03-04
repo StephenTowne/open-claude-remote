@@ -169,6 +169,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   if (dingtalkService) {
     sessionController.setDingtalkService(dingtalkService);
   }
+  // 设置实例 URL（初始化）
+  const instanceUrl = `http://${config.displayIp}:${actualPort}`;
+  sessionController.setInstanceUrl(instanceUrl);
 
   // 17. Spawn Claude Code with instance-specific hook settings
   // 检查用户是否传了 --settings 参数，如果有则合并 hooks
@@ -247,6 +250,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
 
     // Update registry
     registry.updateHost(instanceId, newIp);
+
+    // Update instance URL in session controller
+    sessionController?.setInstanceUrl(newUrl);
 
     // Broadcast to all connected clients
     wsServer.broadcast({

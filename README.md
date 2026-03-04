@@ -75,7 +75,7 @@ When multiple clients are connected, window size is controlled by:
 
 ### Notifications
 
-Get notified when Claude is waiting for input:
+Get notified when Claude is waiting for input. All notifications include the instance URL so you can quickly reconnect even if the IP changes.
 
 **Web Push** — works even when the browser is in the background or the screen is locked. Just allow notifications when prompted.
 

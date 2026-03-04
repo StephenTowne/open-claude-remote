@@ -48,6 +48,18 @@ function createMockTerminalRelay() {
   };
 }
 
+function createMockPushService() {
+  return {
+    notifyAll: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockDingtalkService() {
+  return {
+    sendNotification: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 // ---- Lazy import after vi.mock setup ----
 vi.mock('../../../src/logger/logger.js', () => ({
   logger: {
@@ -388,6 +400,109 @@ describe('SessionController', () => {
           exitCode: 0,
         }),
       );
+    });
+  });
+
+  describe('instanceUrl in notifications', () => {
+    it('should include instance URL in WebSocket notification when set', async () => {
+      const controller = new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+      controller.setInstanceUrl('http://192.168.1.100:3000');
+
+      // 触发 notification 事件
+      hookReceiver.emit('notification', {
+        eventType: 'PreToolUse',
+        tool: 'Bash',
+        title: 'Approval Required: Bash',
+        message: 'Claude requests to execute command: ls -la',
+        channels: ['websocket'],
+      });
+
+      expect(wsServer.broadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'status_update',
+          detail: expect.stringContaining('Instance: http://192.168.1.100:3000'),
+        }),
+      );
+    });
+
+    it('should include instance URL in push notification when set', async () => {
+      const controller = new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+      const pushService = createMockPushService();
+      controller.setPushService(pushService as any);
+      controller.setInstanceUrl('http://192.168.1.100:3000');
+
+      hookReceiver.emit('notification', {
+        eventType: 'PreToolUse',
+        tool: 'Bash',
+        title: 'Approval Required: Bash',
+        message: 'Claude requests to execute command: ls -la',
+        channels: ['push'],
+      });
+
+      expect(pushService.notifyAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.stringContaining('Instance: http://192.168.1.100:3000'),
+        }),
+      );
+    });
+
+    it('should include instance URL in dingtalk notification when set', async () => {
+      const controller = new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+      const dingtalkService = createMockDingtalkService();
+      controller.setDingtalkService(dingtalkService as any);
+      controller.setInstanceUrl('http://192.168.1.100:3000');
+
+      hookReceiver.emit('notification', {
+        eventType: 'PreToolUse',
+        tool: 'Bash',
+        title: 'Approval Required: Bash',
+        message: 'Claude requests to execute command: ls -la',
+        channels: ['dingtalk'],
+      });
+
+      expect(dingtalkService.sendNotification).toHaveBeenCalledWith(
+        'Approval Required: Bash',
+        'Bash',
+        expect.stringContaining('Instance: http://192.168.1.100:3000'),
+      );
+    });
+
+    it('should NOT include instance URL when not set', async () => {
+      const controller = new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+
+      hookReceiver.emit('notification', {
+        eventType: 'PreToolUse',
+        tool: 'Bash',
+        title: 'Approval Required: Bash',
+        message: 'Claude requests to execute command: ls -la',
+        channels: ['websocket'],
+      });
+
+      expect(wsServer.broadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'status_update',
+          detail: 'Claude requests to execute command: ls -la',
+        }),
+      );
+    });
+
+    it('should append URL after detail in dingtalk notification', async () => {
+      const controller = new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
+      const dingtalkService = createMockDingtalkService();
+      controller.setDingtalkService(dingtalkService as any);
+      controller.setInstanceUrl('http://192.168.1.100:3000');
+
+      hookReceiver.emit('notification', {
+        eventType: 'PreToolUse',
+        tool: 'Bash',
+        title: 'Approval Required: Bash',
+        message: 'Claude requests to execute command',
+        detail: 'Command: ls -la',
+        channels: ['dingtalk'],
+      });
+
+      const call = dingtalkService.sendNotification.mock.calls[0];
+      expect(call[2]).toBe('Claude requests to execute command\nCommand: ls -la\n\nInstance: http://192.168.1.100:3000');
     });
   });
 });
