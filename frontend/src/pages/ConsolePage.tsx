@@ -183,8 +183,11 @@ function getAutoSwitchCandidates(instances: InstanceListItem[], currentInstanceI
 }
 
 export function ConsolePage() {
-  const { height, offsetTop } = useViewport();
-  const isKeyboardOpen = typeof window !== 'undefined' ? height < window.innerHeight - 50 : false;
+  const { height, offsetTop, needsCompensation } = useViewport();
+  // 键盘检测：needsCompensation=true 表示输入框被软键盘遮挡
+  // 此时 height 来自 visualViewport，与 window.innerHeight 对比可判断键盘是否弹出
+  // needsCompensation=false 时无遮挡 → 无需隐藏 UI 元素（桌面端也始终为 false）
+  const isKeyboardOpen = needsCompensation && height < window.innerHeight - 50;
   const showCommandPicker = !isKeyboardOpen;
 
   usePushNotification();
@@ -360,10 +363,12 @@ export function ConsolePage() {
   return (
     <div data-testid="console-page" style={{
       position: 'fixed',
-      top: offsetTop,
+      // 默认 top: 0，只在需要补偿时使用动态 offset
+      top: needsCompensation ? offsetTop : 0,
       left: 0,
       right: 0,
-      height: height,
+      // 使用 dvh 或动态 height
+      height: needsCompensation ? height : '100dvh',
       display: 'flex',
       flexDirection: 'column',
     }}>

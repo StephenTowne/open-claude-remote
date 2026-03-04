@@ -2,9 +2,11 @@
 # frontend/src/components/ - React UI 组件，按功能域子目录组织
 
 ## common/
+- BottomSheet.tsx: 通用底部抽屉组件，滑入/滑出动画 + 拖拽手柄 + 点击遮罩关闭
 - ConnectionBanner.tsx: WS 断开时顶部警告横幅，connecting 黄色 / disconnected 红色
 - IpChangeToast.tsx: IP 变化通知弹窗，显示旧 IP → 新 IP 变化，提供"复制新地址"按钮
 - SafeArea.tsx: iOS 安全区域适配容器，paddingTop 使用 env(safe-area-inset-top)
+- SettingsFileSelector.tsx: Settings 文件选择器，可搜索过滤 + 显示 displayName/directory + 键盘导航
 - WorkspaceSelector.tsx: 工作目录选择器，可搜索过滤 + 智能路径截取（.../parent/current）+ 键盘导航（↑↓/Enter/Esc）
 
 ## input/

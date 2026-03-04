@@ -3,8 +3,9 @@ import { ShortcutSettings } from './ShortcutSettings.js';
 import { CommandSettings } from './CommandSettings.js';
 import { NotificationSettings } from './NotificationSettings.js';
 import { getUserConfig, updateUserConfig } from '../../services/api-client.js';
-import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand, type SafeUserConfig } from '../../config/commands.js';
+import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand } from '../../config/commands.js';
 import { DINGTALK_WEBHOOK_PATTERN, type SafeNotificationConfigs } from '#shared';
+import { BottomSheet } from '../common/BottomSheet.js';
 
 export type WithId<T> = T & { _id: string };
 
@@ -25,8 +26,6 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
-  const [isAnimating, setIsAnimating] = useState(false);
   const idCounter = useRef(0);
 
   function nextId(): string {
@@ -43,21 +42,6 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
       loadConfig();
     }
   }, [isOpen]);
-
-  // 抽屉动画状态管理
-  useEffect(() => {
-    if (isOpen) {
-      setIsVisible(true);
-      // 双重 rAF 确保浏览器先渲染 translateY(100%) 的初始帧，再过渡到 translateY(0)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setIsAnimating(true));
-      });
-    } else if (isVisible) {
-      setIsAnimating(false);
-      const timer = setTimeout(() => setIsVisible(false), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, isVisible]);
 
   const loadConfig = async () => {
     try {
@@ -135,124 +119,13 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
     }
   };
 
-  if (!isVisible) return null;
-
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: isAnimating ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0)',
-        display: 'flex',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: '100%',
-          maxWidth: 480,
-          maxHeight: '85vh',
-          borderRadius: '16px 16px 0 0',
-          background: 'var(--bg-secondary)',
-          boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.3)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          transform: isAnimating ? 'translateY(0)' : 'translateY(100%)',
-          paddingBottom: 'var(--safe-bottom)',
-        }}
-      >
-        {/* 头部 */}
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Settings"
+      footer={
         <div style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid var(--border-color)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
-            Settings
-          </h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 6,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              fontSize: 20,
-              cursor: 'pointer',
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Tab 切换 */}
-        <div style={{
-          display: 'flex',
-          borderBottom: '1px solid var(--border-color)',
-        }}>
-          {(['shortcuts', 'commands', 'notifications'] as TabType[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                flex: 1,
-                padding: '12px 16px',
-                border: 'none',
-                background: 'transparent',
-                color: activeTab === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
-                borderBottom: activeTab === tab ? '2px solid var(--status-running)' : '2px solid transparent',
-                cursor: 'pointer',
-                fontSize: 14,
-                fontWeight: activeTab === tab ? 600 : 400,
-              }}
-            >
-              {tab === 'shortcuts' ? 'Shortcuts' : tab === 'commands' ? 'Commands' : 'Notifications'}
-            </button>
-          ))}
-        </div>
-
-        {/* 内容区 */}
-        <div style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: 16,
-        }}>
-          {activeTab === 'shortcuts' ? (
-            <ShortcutSettings
-              shortcuts={shortcuts}
-              onChange={setShortcuts}
-            />
-          ) : activeTab === 'commands' ? (
-            <CommandSettings
-              commands={commands}
-              onChange={setCommands}
-            />
-          ) : (
-            <NotificationSettings
-              notificationStatus={notificationStatus}
-              dingtalkWebhookUrl={dingtalkWebhookUrl}
-              onDingtalkWebhookChange={setDingtalkWebhookUrl}
-            />
-          )}
-        </div>
-
-        {/* 底部操作栏 */}
-        <div style={{
-          padding: '12px 20px',
-          borderTop: '1px solid var(--border-color)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -296,7 +169,53 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
             </button>
           </div>
         </div>
+      }
+    >
+      {/* Tab 切换 */}
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid var(--border-color)',
+        margin: '0 -16px',
+        marginBottom: 16,
+      }}>
+        {(['shortcuts', 'commands', 'notifications'] as TabType[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              border: 'none',
+              background: 'transparent',
+              color: activeTab === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
+              borderBottom: activeTab === tab ? '2px solid var(--status-running)' : '2px solid transparent',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: activeTab === tab ? 600 : 400,
+            }}
+          >
+            {tab === 'shortcuts' ? 'Shortcuts' : tab === 'commands' ? 'Commands' : 'Notifications'}
+          </button>
+        ))}
       </div>
-    </div>
+
+      {activeTab === 'shortcuts' ? (
+        <ShortcutSettings
+          shortcuts={shortcuts}
+          onChange={setShortcuts}
+        />
+      ) : activeTab === 'commands' ? (
+        <CommandSettings
+          commands={commands}
+          onChange={setCommands}
+        />
+      ) : (
+        <NotificationSettings
+          notificationStatus={notificationStatus}
+          dingtalkWebhookUrl={dingtalkWebhookUrl}
+          onDingtalkWebhookChange={setDingtalkWebhookUrl}
+        />
+      )}
+    </BottomSheet>
   );
 }

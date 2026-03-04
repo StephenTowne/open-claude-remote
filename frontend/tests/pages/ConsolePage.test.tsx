@@ -9,6 +9,7 @@ import { authenticate } from '../../src/services/api-client.js';
 const viewportState = {
   height: 900,
   offsetTop: 0,
+  needsCompensation: false,
 };
 
 // Mock window.innerHeight for isKeyboardOpen calculation
@@ -127,6 +128,7 @@ describe('ConsolePage', () => {
     capturedOnSwitch = null;
     viewportState.height = 900;
     viewportState.offsetTop = 0;
+    viewportState.needsCompensation = false;
     mockScrollToBottom.mockClear();
     mockScrollToTop.mockClear();
     mockSetOnScrollPositionChange.mockClear();
@@ -178,9 +180,10 @@ describe('ConsolePage', () => {
   });
 
   it('should hide virtual key bar and apply fixed positioning when keyboard is open', () => {
-    // 模拟键盘打开：height 变小，offsetTop 增加
+    // 模拟键盘打开：needsCompensation=true，height 变小，offsetTop 增加
     viewportState.height = 720;
     viewportState.offsetTop = 180;
+    viewportState.needsCompensation = true;
 
     render(<ConsolePage />);
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { getInstanceConfig, createInstance, type InstanceConfigResponse } from '../../services/instance-create-api.js';
 import { WorkspaceSelector } from '../common/WorkspaceSelector.js';
 import { SettingsFileSelector } from '../common/SettingsFileSelector.js';
+import { BottomSheet } from '../common/BottomSheet.js';
 import type { SettingsFile, InstanceInfo } from '#shared';
 
 interface CreateInstanceModalProps {
@@ -131,225 +132,15 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
     }
   };
 
-  if (!isOpen) return null;
-
   const hasWorkspaces = config && config.workspaces.length > 0;
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: '90%',
-          maxWidth: 480,
-          maxHeight: '80vh',
-          borderRadius: 12,
-          background: 'var(--bg-secondary)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-      >
-        {/* 头部 */}
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title={copySource ? 'Copy Instance' : 'Create New Instance'}
+      footer={
         <div style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid var(--border-color)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
-            {copySource ? 'Copy Instance' : 'Create New Instance'}
-          </h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 6,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              fontSize: 20,
-              cursor: 'pointer',
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        {/* 内容区 */}
-        <div style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: 16,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 16,
-        }}>
-          {/* 工作目录选择 */}
-          <div>
-            <label htmlFor="cwd-select" style={{
-              display: 'block',
-              fontSize: 13,
-              fontWeight: 500,
-              marginBottom: 6,
-              color: 'var(--text-secondary)',
-            }}>
-              Working Directory *
-            </label>
-            <WorkspaceSelector
-              id="cwd-select"
-              workspaces={config?.workspaces ?? []}
-              value={cwd}
-              onChange={setCwd}
-              placeholder="Select working directory…"
-              disabled={!hasWorkspaces}
-            />
-            {!hasWorkspaces && (
-              <p style={{
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                marginTop: 6,
-                opacity: 0.8,
-              }}>
-                Please configure workspaces in the config file first, or start an instance via CLI.
-              </p>
-            )}
-          </div>
-
-          {/* 实例名称 */}
-          <div>
-            <label htmlFor="instance-name" style={{
-              display: 'block',
-              fontSize: 13,
-              fontWeight: 500,
-              marginBottom: 6,
-              color: 'var(--text-secondary)',
-            }}>
-              Instance Name (optional)
-            </label>
-            <input
-              id="instance-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Defaults to working directory name"
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-tertiary)',
-                color: 'var(--text-primary)',
-                fontSize: 14,
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
-
-          {/* Settings 文件选择器 */}
-          {config && config.settingsFiles.length > 0 && (
-            <div>
-              <label htmlFor="settings-select" style={{
-                display: 'block',
-                fontSize: 13,
-                fontWeight: 500,
-                marginBottom: 6,
-                color: 'var(--text-secondary)',
-              }}>
-                Settings File (optional)
-              </label>
-              <SettingsFileSelector
-                id="settings-select"
-                settingsFiles={config.settingsFiles}
-                value={settingsFile}
-                onChange={setSettingsFile}
-                placeholder="None"
-              />
-              <p style={{
-                fontSize: 11,
-                color: 'var(--text-secondary)',
-                marginTop: 4,
-                opacity: 0.7,
-              }}>
-                Custom Claude settings from ~/.claude/ or ~/.claude-remote/settings/
-              </p>
-            </div>
-          )}
-
-          {/* Claude 参数 */}
-          <div>
-            <label htmlFor="claude-args" style={{
-              display: 'block',
-              fontSize: 13,
-              fontWeight: 500,
-              marginBottom: 6,
-              color: 'var(--text-secondary)',
-            }}>
-              Claude Arguments (optional)
-            </label>
-            <input
-              id="claude-args"
-              type="text"
-              value={claudeArgs}
-              onChange={(e) => setClaudeArgs(e.target.value)}
-              placeholder="e.g., chat --model claude-sonnet-4-6"
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-tertiary)',
-                color: 'var(--text-primary)',
-                fontSize: 14,
-                boxSizing: 'border-box',
-              }}
-            />
-            <p style={{
-              fontSize: 11,
-              color: 'var(--text-secondary)',
-              marginTop: 4,
-              opacity: 0.7,
-            }}>
-              Multiple arguments separated by spaces (quoted arguments with spaces not supported)
-            </p>
-          </div>
-
-          {/* 错误提示 */}
-          {error && (
-            <div style={{
-              padding: '10px 12px',
-              borderRadius: 8,
-              background: 'rgba(255, 59, 48, 0.1)',
-              color: 'var(--status-error)',
-              fontSize: 13,
-            }}>
-              {error}
-            </div>
-          )}
-        </div>
-
-        {/* 底部操作栏 */}
-        <div style={{
-          padding: '12px 20px',
-          borderTop: '1px solid var(--border-color)',
           display: 'flex',
           justifyContent: 'flex-end',
           alignItems: 'center',
@@ -387,7 +178,156 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
             {loading ? (copySource ? 'Copying…' : 'Creating…') : (copySource ? 'Copy' : 'Create')}
           </button>
         </div>
+      }
+    >
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        paddingBottom: 16,
+      }}>
+        {/* 工作目录选择 */}
+        <div>
+          <label htmlFor="cwd-select" style={{
+            display: 'block',
+            fontSize: 13,
+            fontWeight: 500,
+            marginBottom: 6,
+            color: 'var(--text-secondary)',
+          }}>
+            Working Directory *
+          </label>
+          <WorkspaceSelector
+            id="cwd-select"
+            workspaces={config?.workspaces ?? []}
+            value={cwd}
+            onChange={setCwd}
+            placeholder="Select working directory…"
+            disabled={!hasWorkspaces}
+          />
+          {!hasWorkspaces && (
+            <p style={{
+              fontSize: 12,
+              color: 'var(--text-secondary)',
+              marginTop: 6,
+              opacity: 0.8,
+            }}>
+              Please configure workspaces in the config file first, or start an instance via CLI.
+            </p>
+          )}
+        </div>
+
+        {/* 实例名称 */}
+        <div>
+          <label htmlFor="instance-name" style={{
+            display: 'block',
+            fontSize: 13,
+            fontWeight: 500,
+            marginBottom: 6,
+            color: 'var(--text-secondary)',
+          }}>
+            Instance Name (optional)
+          </label>
+          <input
+            id="instance-name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Defaults to working directory name"
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-tertiary)',
+              color: 'var(--text-primary)',
+              fontSize: 14,
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {/* Settings 文件选择器 */}
+        {config && config.settingsFiles.length > 0 && (
+          <div>
+            <label htmlFor="settings-select" style={{
+              display: 'block',
+              fontSize: 13,
+              fontWeight: 500,
+              marginBottom: 6,
+              color: 'var(--text-secondary)',
+            }}>
+              Settings File (optional)
+            </label>
+            <SettingsFileSelector
+              id="settings-select"
+              settingsFiles={config.settingsFiles}
+              value={settingsFile}
+              onChange={setSettingsFile}
+              placeholder="None"
+            />
+            <p style={{
+              fontSize: 11,
+              color: 'var(--text-secondary)',
+              marginTop: 4,
+              opacity: 0.7,
+            }}>
+              Custom Claude settings from ~/.claude/ or ~/.claude-remote/settings/
+            </p>
+          </div>
+        )}
+
+        {/* Claude 参数 */}
+        <div>
+          <label htmlFor="claude-args" style={{
+            display: 'block',
+            fontSize: 13,
+            fontWeight: 500,
+            marginBottom: 6,
+            color: 'var(--text-secondary)',
+          }}>
+            Claude Arguments (optional)
+          </label>
+          <input
+            id="claude-args"
+            type="text"
+            value={claudeArgs}
+            onChange={(e) => setClaudeArgs(e.target.value)}
+            placeholder="e.g., chat --model claude-sonnet-4-6"
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-tertiary)',
+              color: 'var(--text-primary)',
+              fontSize: 14,
+              boxSizing: 'border-box',
+            }}
+          />
+          <p style={{
+            fontSize: 11,
+            color: 'var(--text-secondary)',
+            marginTop: 4,
+            opacity: 0.7,
+          }}>
+            Multiple arguments separated by spaces (quoted arguments with spaces not supported)
+          </p>
+        </div>
+
+        {/* 错误提示 */}
+        {error && (
+          <div style={{
+            padding: '10px 12px',
+            borderRadius: 8,
+            background: 'rgba(255, 59, 48, 0.1)',
+            color: 'var(--status-error)',
+            fontSize: 13,
+          }}>
+            {error}
+          </div>
+        )}
       </div>
-    </div>
+    </BottomSheet>
   );
 }
