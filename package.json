@@ -38,7 +38,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "stop": "tsx backend/src/registry/stop-instances.ts",
-    "clean": "rm -rf dist frontend-dist"
+    "clean": "rm -rf dist frontend-dist",
+    "postinstall": "node scripts/fix-node-pty-permissions.js"
   },
   "dependencies": {
     "cookie": "^1.0.0",
