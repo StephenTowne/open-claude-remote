@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { TOKEN_BYTES, SESSION_ID_BYTES } from '@claude-remote/shared';
+import { TOKEN_BYTES, SESSION_ID_BYTES } from '#shared';
 
 /**
  * Generate a random hex token for authentication.

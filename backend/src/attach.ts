@@ -8,8 +8,8 @@
  */
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { CLAUDE_REMOTE_DIR, REGISTRY_FILENAME } from '@claude-remote/shared';
-import type { InstanceInfo } from '@claude-remote/shared';
+import { CLAUDE_REMOTE_DIR, REGISTRY_FILENAME } from '#shared';
+import type { InstanceInfo } from '#shared';
 import { existsSync, readFileSync } from 'node:fs';
 import { VirtualPtyManager } from './pty/virtual-pty.js';
 import { TerminalRelay } from './terminal/terminal-relay.js';

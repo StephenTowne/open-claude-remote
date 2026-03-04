@@ -14,7 +14,7 @@ vi.mock('../../../src/logger/logger.js', () => ({
 }));
 
 import { InstanceRegistryManager } from '../../../src/registry/instance-registry.js';
-import type { InstanceInfo } from '@claude-remote/shared';
+import type { InstanceInfo } from '#shared';
 
 function makeInstance(overrides: Partial<InstanceInfo> = {}): InstanceInfo {
   return {

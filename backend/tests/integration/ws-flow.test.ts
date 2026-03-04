@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { WebSocket } from 'ws';
-import type { HistorySyncMessage, TerminalOutputMessage } from '@claude-remote/shared';
+import type { HistorySyncMessage, TerminalOutputMessage } from '#shared';
 import {
   startTestServer,
   stopTestServer,

@@ -1,23 +1,105 @@
 {
-  "name": "open-claude-remote",
+  "name": "@caoruhua/open-claude-remote",
   "version": "0.1.1",
-  "description": "Remote control proxy for Claude Code CLI over LAN",
+  "description": "Remote control proxy for Claude Code CLI - control your PC terminal from mobile browser",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "remote",
+    "terminal",
+    "proxy",
+    "mobile"
+  ],
+  "author": "caoruhua",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/StephenTowne/open-claude-remote.git"
+  },
+  "type": "module",
+  "main": "./dist/backend/src/index.js",
+  "types": "./dist/backend/src/index.d.ts",
+  "bin": {
+    "claude-remote": "./dist/backend/src/cli.js"
+  },
+  "imports": {
+    "#shared": "./shared/index.ts"
+  },
+  "files": [
+    "dist/",
+    "frontend-dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "dev": "pnpm copy-frontend-dist && concurrently --kill-others --handle-input -n backend,frontend -c blue,green \"pnpm --filter ./backend dev\" \"pnpm --filter ./frontend dev\"",
-    "build": "pnpm --filter ./shared build && pnpm --filter ./frontend build && pnpm --filter ./backend build && pnpm copy-frontend-dist",
-    "copy-frontend-dist": "node scripts/copy-frontend-dist.js",
-    "start": "node backend/dist/index.js",
-    "test": "pnpm --filter ./backend test",
-    "stop": "pnpm --filter ./backend exec tsx src/registry/stop-instances.ts",
-    "clean": "pnpm -r exec rm -rf dist"
+    "dev": "concurrently --kill-others --handle-input -n backend,frontend -c blue,green \"tsx backend/src/index.ts\" \"cd frontend && vite\"",
+    "build": "tsc && tsc-alias && cd frontend && vite build",
+    "start": "node dist/backend/src/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "stop": "tsx backend/src/registry/stop-instances.ts",
+    "clean": "rm -rf dist frontend-dist"
+  },
+  "dependencies": {
+    "cookie": "^1.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "node-pty": "^1.0.0",
+    "pino": "^9.6.0",
+    "qrcode-terminal": "^0.12.0",
+    "web-push": "^3.6.7",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/claude-code": ">=0.0.1"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/claude-code": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "@dnd-kit/core": "^6.1.0",
+    "@dnd-kit/sortable": "^8.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@testing-library/react": "^16.0.0",
+    "@types/cookie": "^0.6.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/web-push": "^3.6.4",
+    "@types/ws": "^8.5.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-unicode11": "^0.8.0",
+    "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/xterm": "^5.5.0",
+    "concurrently": "^9.1.0",
+    "jsdom": "^26.0.0",
+    "pino-pretty": "^13.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsc-alias": "^1.8.16",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.1.0",
+    "vitest": "^3.0.0",
+    "zustand": "^5.0.0"
   },
   "engines": {
     "node": ">=20.0.0"
   },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "node-pty"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "node-pty"
+    ]
   }
 }

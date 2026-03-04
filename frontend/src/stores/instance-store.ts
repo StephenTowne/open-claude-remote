@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { InstanceListItem } from '@claude-remote/shared';
+import type { InstanceListItem } from '#shared';
 
 interface InstanceState {
   instances: InstanceListItem[];

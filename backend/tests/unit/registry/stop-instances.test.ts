@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { InstanceInfo } from '@claude-remote/shared';
+import type { InstanceInfo } from '#shared';
 
 vi.mock('../../../src/logger/logger.js', () => ({
   logger: {

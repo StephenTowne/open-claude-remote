@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { WebSocket } from 'ws';
 import type {
   StatusUpdateMessage,
-} from '@claude-remote/shared';
+} from '#shared';
 import {
   startTestServer,
   stopTestServer,

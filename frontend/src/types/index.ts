@@ -1,1 +1,1 @@
-export type { SessionStatus, ServerMessage, ClientMessage } from '@claude-remote/shared';
+export type { SessionStatus, ServerMessage, ClientMessage } from '#shared';

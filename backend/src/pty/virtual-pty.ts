@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { WebSocket } from 'ws';
-import type { ClientMessage, ServerMessage } from '@claude-remote/shared';
+import type { ClientMessage, ServerMessage } from '#shared';
 import type { IPtyManager } from './types.js';
 import { logger } from '../logger/logger.js';
 

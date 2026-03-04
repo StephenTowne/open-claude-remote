@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { existsSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
-import type { InstanceInfo, InstanceListItem } from '@claude-remote/shared';
+import type { InstanceInfo, InstanceListItem } from '#shared';
 import { AuthModule } from '../auth/auth-middleware.js';
 import { createAuthRoutes } from './auth-routes.js';
 import { InstanceSpawner, type SpawnOptions } from '../registry/instance-spawner.js';

@@ -1,9 +1,7 @@
 import {
   DEFAULT_SHORTCUTS as SHARED_DEFAULT_SHORTCUTS,
   DEFAULT_COMMANDS as SHARED_DEFAULT_COMMANDS,
-  type ConfigurableShortcut as SharedConfigurableShortcut,
-  type ConfigurableCommand as SharedConfigurableCommand,
-} from '@claude-remote/shared';
+} from '#shared';
 
 /**
  * 快捷键 - 点击直接发送 ANSI 控制字符

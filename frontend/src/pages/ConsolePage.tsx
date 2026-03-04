@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect, useMemo } from 'react';
-import type { ServerMessage, InstanceListItem } from '@claude-remote/shared';
+import type { ServerMessage, InstanceListItem } from '#shared';
 import { StatusBar } from '../components/status/StatusBar.js';
 import { TerminalView } from '../components/terminal/TerminalView.js';
 import { InputBar, type InputBarRef } from '../components/input/InputBar.js';

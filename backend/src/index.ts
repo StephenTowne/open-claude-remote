@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
-import { CLAUDE_REMOTE_DIR, SETTINGS_DIR } from '@claude-remote/shared';
+import { CLAUDE_REMOTE_DIR, SETTINGS_DIR } from '#shared';
 import { loadConfig, createSessionCookieName, createClaudeSettings, extractSettingsFromArgs, saveClaudeSettings, ensureDefaultUserConfig, type CliOverrides } from './config.js';
 import { AuthModule } from './auth/auth-middleware.js';
 import { PtyManager } from './pty/pty-manager.js';

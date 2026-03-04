@@ -11,7 +11,7 @@ import { HookReceiver } from '../hooks/hook-receiver.js';
 import { PushService } from '../push/push-service.js';
 import { InstanceSpawner } from '../registry/instance-spawner.js';
 import type { SessionController } from '../session/session-controller.js';
-import type { InstanceInfo } from '@claude-remote/shared';
+import type { InstanceInfo } from '#shared';
 
 export interface ApiRouterOptions {
   authModule: AuthModule;

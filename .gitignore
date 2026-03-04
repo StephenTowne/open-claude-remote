@@ -6,11 +6,7 @@ logs/
 .DS_Store
 .idea/
 *.tsbuildinfo
-frontend/dist/
+frontend-dist/
 
 # npm pack artifacts
 *.tgz
-
-# prepack build outputs
-backend/frontend-dist/
-backend/shared-dist/

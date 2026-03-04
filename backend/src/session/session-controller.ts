@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws';
-import type { SessionStatus } from '@claude-remote/shared';
+import type { SessionStatus } from '#shared';
 import { PtyManager } from '../pty/pty-manager.js';
 import { OutputBuffer } from '../pty/output-buffer.js';
 import { WsServer, type ClientType } from '../ws/ws-server.js';
