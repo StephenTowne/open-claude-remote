@@ -37,7 +37,7 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
   }, [handleSubmit]);
 
   return (
-    <div style={{
+    <div data-testid="input-bar" style={{
       height: 'var(--inputbar-height)',
       background: 'var(--bg-secondary)',
       borderTop: '1px solid var(--border-color)',

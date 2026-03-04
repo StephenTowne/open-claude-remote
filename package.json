@@ -1,6 +1,6 @@
 {
   "name": "@caoruhua/open-claude-remote",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Remote control proxy for Claude Code CLI - control your PC terminal from mobile browser",
   "keywords": [
     "claude",

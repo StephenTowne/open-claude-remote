@@ -46,6 +46,11 @@ Scan the QR code shown in your terminal with your phone. The auth token is auto-
 - Custom shortcuts (configurable in settings)
 - Preset commands (/clear, /compact, /resume, etc.)
 
+### First-time Guide
+- Interactive spotlight guide on first visit
+- Highlights key UI elements with coach marks
+- Auto-skips on subsequent visits
+
 ### Multi-Instance
 - Run multiple `claude-remote` instances simultaneously
 - Browser tab bar for switching — no re-authentication needed

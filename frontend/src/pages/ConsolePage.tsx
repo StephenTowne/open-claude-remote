@@ -7,7 +7,7 @@ import { CommandPicker } from '../components/input/CommandPicker.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
 import { IpChangeToast } from '../components/common/IpChangeToast.js';
 import { InstanceTabs } from '../components/instances/InstanceTabs.js';
-import { OnboardingGuide } from '../components/onboarding/OnboardingGuide.js';
+import { SpotlightGuide } from '../components/onboarding/SpotlightGuide.js';
 import { ScrollToBottomButton } from '../components/terminal/ScrollToBottomButton.js';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useTerminal } from '../hooks/useTerminal.js';
@@ -346,7 +346,7 @@ export function ConsolePage() {
         />
       </div>
       {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}
-      <OnboardingGuide />
+      <SpotlightGuide />
     </div>
   );
 }
