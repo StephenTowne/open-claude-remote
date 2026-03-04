@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { App } from '../src/App.js';
 import { useAppStore } from '../src/stores/app-store.js';
 import { getStatus, authenticate } from '../src/services/api-client.js';
@@ -41,6 +41,7 @@ describe('App', () => {
   });
 
   afterEach(() => {
+    cleanup();
     sessionStorage.clear();
   });
 

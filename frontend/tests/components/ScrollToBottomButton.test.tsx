@@ -1,8 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { ScrollToBottomButton } from '../../src/components/terminal/ScrollToBottomButton.js';
 
 describe('ScrollToBottomButton', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it('should not render when visible is false', () => {
     const { container } = render(<ScrollToBottomButton visible={false} onClick={() => {}} />);
     expect(container.firstChild).toBeNull();
@@ -11,7 +15,7 @@ describe('ScrollToBottomButton', () => {
   it('should render when visible is true', () => {
     render(<ScrollToBottomButton visible={true} onClick={() => {}} />);
 
-    const button = screen.getByRole('button', { name: '跳转到最新输出' });
+    const button = screen.getByRole('button', { name: 'Jump to latest output' });
     expect(button).toBeTruthy();
     expect(button.textContent).toBe('↓');
   });
@@ -30,7 +34,7 @@ describe('ScrollToBottomButton', () => {
     render(<ScrollToBottomButton visible={true} onClick={() => {}} />);
 
     const button = screen.getByRole('button');
-    expect(button.getAttribute('aria-label')).toBe('跳转到最新输出');
+    expect(button.getAttribute('aria-label')).toBe('Jump to latest output');
   });
 
   it('should apply visible class when visible is true', () => {
@@ -40,7 +44,7 @@ describe('ScrollToBottomButton', () => {
     expect(button.className).toContain('visible');
   });
 
-  it('should remove from DOM after fade-out animation ends', () => {
+  it('should remove from DOM after fade-out animation ends', async () => {
     const { rerender, container } = render(
       <ScrollToBottomButton visible={true} onClick={() => {}} />
     );
@@ -56,8 +60,11 @@ describe('ScrollToBottomButton', () => {
     expect(button).toBeTruthy();
     expect(button!.className).toContain('hidden');
 
-    // Simulate animation end
-    fireEvent.animationEnd(button!);
+    // Simulate animation end event
+    // In jsdom@28, we need to dispatch the event on the actual DOM element
+    act(() => {
+      button!.dispatchEvent(new Event('animationend', { bubbles: true }));
+    });
 
     // Button should be removed from DOM
     expect(container.querySelector('.scroll-to-bottom-btn')).toBeNull();

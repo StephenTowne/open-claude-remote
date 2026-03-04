@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, cleanup } from '@testing-library/react';
 import { ConsolePage } from '../../src/pages/ConsolePage.js';
 import { useAppStore } from '../../src/stores/app-store.js';
 import { useInstanceStore } from '../../src/stores/instance-store.js';
@@ -99,6 +99,7 @@ const mockedAuthenticate = vi.mocked(authenticate);
 describe('ConsolePage', () => {
   afterEach(() => {
     vi.useRealTimers();
+    cleanup();
   });
 
   beforeEach(() => {
@@ -151,7 +152,8 @@ describe('ConsolePage', () => {
 
     render(<ConsolePage />);
 
-    expect(screen.getByText('Esc')).toBeDefined();
+    // 使用 getAllByText 因为有多个 Esc 按钮
+    expect(screen.getAllByText('Esc').length).toBeGreaterThan(0);
   });
 
   it('should hide virtual key bar and apply keyboard bottom inset when keyboard is open', () => {
@@ -161,7 +163,8 @@ describe('ConsolePage', () => {
 
     const root = screen.getByTestId('console-page');
     expect(root.style.paddingBottom).toBe('180px');
-    expect(screen.queryByText('Esc')).toBeNull();
+    // 当键盘打开时，虚拟键栏应该隐藏，不再有 Esc 按钮
+    expect(screen.queryAllByText('Esc')).toHaveLength(0);
   });
 
   it('should auto switch to next available instance by port order and show toast when active instance disconnects', async () => {
