@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { existsSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
-import type { InstanceInfo, InstanceListItem } from '#shared';
+import type { InstanceInfo, InstanceListItem, SettingsFile } from '#shared';
 import { AuthModule } from '../auth/auth-middleware.js';
 import { createAuthRoutes } from './auth-routes.js';
 import { InstanceSpawner, type SpawnOptions } from '../registry/instance-spawner.js';
-import { loadUserConfig } from '../config.js';
+import { loadUserConfig, getSettingsDirs, scanSettingsFiles } from '../config.js';
 import { logger } from '../logger/logger.js';
 
 /**
@@ -52,6 +52,10 @@ export interface InstanceConfigResponse {
   workspaces: string[];
   /** Claude 参数 */
   claudeArgs: string[];
+  /** 可用的 settings 文件列表 */
+  settingsFiles: SettingsFile[];
+  /** 扫描的 settings 目录列表（用于显示） */
+  settingsDirs: string[];
 }
 
 export function createInstanceRoutes(
@@ -83,10 +87,14 @@ export function createInstanceRoutes(
     try {
       const config = loadUserConfig();
       const allowedCwds = await getAllowedCwds(listInstances);
+      const settingsDirs = getSettingsDirs(config);
+      const settingsFiles = scanSettingsFiles(settingsDirs);
 
       const response: InstanceConfigResponse = {
         workspaces: allowedCwds,
         claudeArgs: config.claudeArgs ?? [],
+        settingsFiles,
+        settingsDirs,
       };
       res.json(response);
     } catch (error) {

@@ -37,9 +37,7 @@ export function DingtalkConfigForm({
           value={webhookUrl}
           onChange={(e) => {
             onChange(e.target.value);
-            if (showValidation) {
-              setShowValidation(true);
-            }
+            // 输入时不清除验证状态，保持用户看到的反馈
           }}
           onBlur={() => setShowValidation(true)}
           style={{

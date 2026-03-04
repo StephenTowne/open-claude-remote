@@ -20,9 +20,12 @@
 - CreateInstanceModal.tsx: 创建实例对话框，工作目录选择/自定义输入，实例名称/Claude 参数可选
 
 ## settings/
-- SettingsModal.tsx: 设置模态框，Tab 切换（快捷键/命令），加载/保存用户配置
+- SettingsModal.tsx: 设置模态框，Tab 切换（快捷键/命令/通知），加载/保存用户配置
 - ShortcutSettings.tsx: 快捷键设置面板，按键录制转换为 ANSI 序列
 - CommandSettings.tsx: 命令设置面板，编辑/删除/重置命令列表
+- NotificationSettings.tsx: 通知设置面板，支持多渠道通知（钉钉/Email/Slack/微信）的开关与配置管理
+- NotificationChannelCard.tsx: 通知渠道卡片组件，包含图标、描述、状态指示及折叠/展开动画
+- DingtalkConfigForm.tsx: 钉钉通知配置表单，包含 Webhook URL 验证及保存状态提示
 - SortableItemShell.tsx: 可排序列表项外壳，集成拖拽手柄/toggle开关/删除按钮，用于设置项行布局
 - useDndSensors.ts: dnd-kit 拖拽传感器配置 hook，PointerSensor + KeyboardSensor，激活约束 8px
 

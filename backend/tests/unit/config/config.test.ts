@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { rmSync, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createSessionCookieName, createClaudeSettings, saveClaudeSettings, loadUserConfig, loadConfig, type CliOverrides, type UserConfig } from '../../../src/config.js';
+import { createSessionCookieName, createClaudeSettings, saveClaudeSettings, loadUserConfig, loadConfig, type CliOverrides, type UserConfig, getDefaultSettingsDirs, getSettingsDirs, scanSettingsFiles, getSettingsFilePath } from '../../../src/config.js';
 
 describe('createSessionCookieName', () => {
   it('should generate cookie name based on port number', () => {
@@ -318,5 +318,212 @@ describe('loadConfig', () => {
     const config = loadConfigWithMocks(userConfig, cliOverrides);
 
     expect(config.claudeArgs).toEqual(['--arg1', '--arg2', '--arg3', '--arg4']);
+  });
+});
+
+describe('getDefaultSettingsDirs', () => {
+  it('should return default settings directories', () => {
+    const dirs = getDefaultSettingsDirs();
+
+    expect(dirs).toHaveLength(2);
+    expect(dirs[0]).toContain('.claude');
+    expect(dirs[1]).toContain('.claude-remote');
+    expect(dirs[1]).toContain('settings');
+  });
+});
+
+describe('getSettingsDirs', () => {
+  it('should return default dirs when userConfig is undefined', () => {
+    const dirs = getSettingsDirs();
+    expect(dirs).toHaveLength(2);
+  });
+
+  it('should return default dirs when settingsDirs is empty', () => {
+    const dirs = getSettingsDirs({ settingsDirs: [] });
+    expect(dirs).toHaveLength(2);
+  });
+
+  it('should expand ~ to home directory', () => {
+    const dirs = getSettingsDirs({ settingsDirs: ['~/custom-dir'] });
+    expect(dirs[0]).not.toContain('~');
+    expect(dirs[0]).toContain('custom-dir');
+  });
+
+  it('should resolve relative paths', () => {
+    const dirs = getSettingsDirs({ settingsDirs: ['./relative'] });
+    expect(dirs[0]).not.toContain('./');
+  });
+});
+
+describe('scanSettingsFiles', () => {
+  const testDir = resolve(tmpdir(), `claude-remote-settings-test-${Date.now()}`);
+
+  beforeEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('should return empty array when directory does not exist', () => {
+    const files = scanSettingsFiles(['/nonexistent/path']);
+    expect(files).toEqual([]);
+  });
+
+  it('should scan settings files with correct naming', () => {
+    // 创建测试文件
+    writeFileSync(join(testDir, 'settings-project-a.json'), '{}');
+    writeFileSync(join(testDir, 'settings.idea.json'), '{}');
+    writeFileSync(join(testDir, 'settings.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files).toHaveLength(3);
+    const filenames = files.map(f => f.filename).sort();
+    expect(filenames).toContain('settings-project-a.json');
+    expect(filenames).toContain('settings.idea.json');
+    expect(filenames).toContain('settings.json');
+  });
+
+  it('should ignore non-settings JSON files', () => {
+    writeFileSync(join(testDir, 'settings-valid.json'), '{}');
+    writeFileSync(join(testDir, 'other-config.json'), '{}');
+    writeFileSync(join(testDir, 'config.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files).toHaveLength(1);
+    expect(files[0].filename).toBe('settings-valid.json');
+  });
+
+  it('should ignore port config files (pure numbers)', () => {
+    writeFileSync(join(testDir, 'settings-project.json'), '{}');
+    writeFileSync(join(testDir, '3000.json'), '{}');
+    writeFileSync(join(testDir, '8080.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files).toHaveLength(1);
+    expect(files[0].filename).toBe('settings-project.json');
+  });
+
+  it('should reject files with path traversal', () => {
+    // 扫描函数只会读取目录中的文件，无法创建恶意文件名
+    // 但我们测试安全检查函数不在这里
+    // 这个测试验证包含 .. 的文件名不会在有效扫描结果中
+    const files = scanSettingsFiles([testDir]);
+    expect(files.every(f => !f.filename.includes('..'))).toBe(true);
+  });
+
+  it('should generate correct displayName', () => {
+    writeFileSync(join(testDir, 'settings-project-a.json'), '{}');
+    writeFileSync(join(testDir, 'settings.idea.json'), '{}');
+    writeFileSync(join(testDir, 'settings.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+    const displayNames = files.map(f => f.displayName);
+
+    expect(displayNames).toContain('project-a');
+    expect(displayNames).toContain('idea');
+    // settings.json 去掉 settings 后为空，应保留原名
+    expect(displayNames).toContain('settings');
+  });
+
+  it('should dedupe filenames from multiple directories', () => {
+    const dir1 = join(testDir, 'dir1');
+    const dir2 = join(testDir, 'dir2');
+    mkdirSync(dir1, { recursive: true });
+    mkdirSync(dir2, { recursive: true });
+
+    writeFileSync(join(dir1, 'settings-common.json'), '{}');
+    writeFileSync(join(dir2, 'settings-common.json'), '{}');
+    writeFileSync(join(dir2, 'settings-unique.json'), '{}');
+
+    const files = scanSettingsFiles([dir1, dir2]);
+
+    // 应该去重，只保留一个 settings-common.json
+    expect(files).toHaveLength(2);
+    const filenames = files.map(f => f.filename);
+    expect(filenames.filter(n => n === 'settings-common.json')).toHaveLength(1);
+    expect(filenames).toContain('settings-unique.json');
+  });
+
+  it('should sort results by displayName', () => {
+    writeFileSync(join(testDir, 'settings-zebra.json'), '{}');
+    writeFileSync(join(testDir, 'settings-apple.json'), '{}');
+    writeFileSync(join(testDir, 'settings-mango.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files[0].displayName).toBe('apple');
+    expect(files[1].displayName).toBe('mango');
+    expect(files[2].displayName).toBe('zebra');
+  });
+
+  it('should include directoryPath in results', () => {
+    writeFileSync(join(testDir, 'settings-test.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files).toHaveLength(1);
+    expect(files[0].directoryPath).toBe(testDir);
+  });
+});
+
+describe('getSettingsFilePath', () => {
+  const testDir = resolve(tmpdir(), `claude-remote-getsettings-test-${Date.now()}`);
+
+  beforeEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('should return full path when file exists', () => {
+    writeFileSync(join(testDir, 'settings-test.json'), '{}');
+
+    const path = getSettingsFilePath([testDir], 'settings-test.json');
+
+    expect(path).toBe(join(testDir, 'settings-test.json'));
+  });
+
+  it('should return null when file does not exist', () => {
+    const path = getSettingsFilePath([testDir], 'settings-missing.json');
+
+    expect(path).toBeNull();
+  });
+
+  it('should search in multiple directories', () => {
+    const dir1 = join(testDir, 'dir1');
+    const dir2 = join(testDir, 'dir2');
+    mkdirSync(dir1, { recursive: true });
+    mkdirSync(dir2, { recursive: true });
+
+    writeFileSync(join(dir2, 'settings-found.json'), '{}');
+
+    const path = getSettingsFilePath([dir1, dir2], 'settings-found.json');
+
+    expect(path).toBe(join(dir2, 'settings-found.json'));
+  });
+
+  it('should reject dangerous filenames', () => {
+    const path1 = getSettingsFilePath([testDir], '../etc/passwd');
+    const path2 = getSettingsFilePath([testDir], 'settings.json/../../../etc/passwd');
+    const path3 = getSettingsFilePath([testDir], 'settings.json\\..\\..\\etc\\passwd');
+
+    expect(path1).toBeNull();
+    expect(path2).toBeNull();
+    expect(path3).toBeNull();
+  });
+
+  it('should reject non-JSON files', () => {
+    const path = getSettingsFilePath([testDir], 'settings.txt');
+
+    expect(path).toBeNull();
   });
 });

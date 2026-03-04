@@ -149,6 +149,7 @@ Config file: `~/.claude-remote/config.json`
 | `shortcuts` | array | see below | Quick-input buttons |
 | `commands` | array | see below | Custom command buttons |
 | `workspaces` | string[] | [] | Allowed working directories for web-spawned instances |
+| `settingsDirs` | string[] | ["~/.claude/", "~/.claude-remote/settings/"] | Directories to scan for settings files |
 | `notifications` | object | — | Notification channels config (DingTalk, etc.) |
 
 **Priority**: CLI args > config file > defaults
@@ -243,6 +244,45 @@ Restrict which directories web-spawned instances can use:
 ```
 
 If not configured, web-spawned instances can only select projects from existed claude instances
+
+### Settings Files
+
+When creating instances from the web UI, you can select a custom settings file to pass via `--settings`. Settings files must:
+
+1. Be named with `settings` prefix (e.g., `settings-project-a.json`, `settings.idea.json`)
+2. Be valid JSON files ending in `.json`
+3. Be located in one of the configured scan directories
+
+**Default scan directories:**
+- `~/.claude/` — Claude Code config directory
+- `~/.claude-remote/settings/` — Claude Remote custom settings
+
+**Custom directories:**
+
+```json
+{
+  "settingsDirs": [
+    "~/.claude/",
+    "~/.claude-remote/settings/",
+    "~/my-custom-settings/"
+  ]
+}
+```
+
+**Example settings file** (`~/.claude/settings-project-a.json`):
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+  },
+  "permissions": {
+    "allow": ["Bash(git:*)", "Bash(npm:*)"]
+  }
+}
+```
+
+> **Note**: Files like `3000.json` (port configs) are automatically excluded from the settings file list.
 
 ### Complete Example
 

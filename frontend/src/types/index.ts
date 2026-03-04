@@ -1,1 +1,1 @@
-export type { SessionStatus, ServerMessage, ClientMessage } from '#shared';
+export type { SessionStatus, ServerMessage, ClientMessage, SettingsFile } from '#shared';

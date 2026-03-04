@@ -11,11 +11,12 @@ import {
   type ConfigurableCommand,
   type NotificationConfigs,
   type DingtalkConfig,
+  type SettingsFile,
   mergeNotificationConfigs,
 } from '#shared';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { detectLanIp, detectNonLoopbackIp } from './utils/network.js';
@@ -70,6 +71,10 @@ export interface UserConfig {
   // === 多渠道通知配置（新版）===
   /** 多渠道通知配置 */
   notifications?: NotificationConfigs;
+
+  // === Settings 文件配置 ===
+  /** Settings 文件扫描目录列表（默认: ["~/.claude/", "~/.claude-remote/settings/"]） */
+  settingsDirs?: string[];
 }
 
 /**
@@ -483,5 +488,171 @@ export function extractSettingsFromArgs(args: string[]): { settingsPath: string;
   if (settingsValue) {
     return { settingsPath: settingsPath || 'inline', settingsValue, otherArgs };
   }
+  return null;
+}
+
+/**
+ * 获取默认 Settings 扫描目录列表
+ * @returns 默认目录路径数组（已展开 ~ 为实际路径）
+ */
+export function getDefaultSettingsDirs(): string[] {
+  const home = homedir();
+  return [
+    resolve(home, '.claude'),
+    resolve(home, CLAUDE_REMOTE_DIR, SETTINGS_DIR),
+  ];
+}
+
+/**
+ * 获取配置的 Settings 目录列表
+ * @param userConfig 用户配置（可选）
+ * @returns 目录路径数组（已展开 ~ 为实际路径）
+ */
+export function getSettingsDirs(userConfig?: UserConfig): string[] {
+  if (!userConfig?.settingsDirs || userConfig.settingsDirs.length === 0) {
+    return getDefaultSettingsDirs();
+  }
+
+  // 展开 ~ 为 home 目录
+  const home = homedir();
+  return userConfig.settingsDirs.map(dir => {
+    if (dir.startsWith('~/')) {
+      return resolve(home, dir.slice(2));
+    }
+    return resolve(dir);
+  });
+}
+
+/**
+ * 安全检查：文件名是否合法
+ * - 不能包含路径分隔符
+ * - 不能包含路径遍历字符
+ * - 必须以 .json 结尾
+ */
+function isSafeSettingsFilename(filename: string): boolean {
+  // 禁止路径分隔符和遍历
+  if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+    return false;
+  }
+  // 必须以 .json 结尾
+  if (!filename.endsWith('.json')) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * 检查文件名是否为有效的 settings 文件
+ * - 以 "settings" 开头（不区分大小写）
+ * - 或者为有效的自定义配置文件名（非纯数字）
+ */
+function isValidSettingsFilename(filename: string): boolean {
+  const baseName = filename.slice(0, -5); // 去掉 .json 后缀
+
+  // 排除纯数字文件名（如 3000.json，这些是端口配置）
+  if (/^\d+$/.test(baseName)) {
+    return false;
+  }
+
+  // 以 settings 开头的文件
+  if (baseName.toLowerCase().startsWith('settings')) {
+    return true;
+  }
+
+  // 可选：未来可扩展支持其他命名规则
+  return false;
+}
+
+/**
+ * 生成显示名称
+ * - 去掉 settings 前缀和 .json 后缀
+ * - 如果结果为空，使用原文件名
+ */
+function makeDisplayName(filename: string): string {
+  const baseName = filename.slice(0, -5); // 去掉 .json 后缀
+
+  // 去掉 settings 前缀（不区分大小写）
+  const withoutPrefix = baseName.replace(/^settings[-._]?/i, '');
+
+  // 如果结果为空或只有分隔符，使用原 baseName
+  return withoutPrefix.trim() || baseName;
+}
+
+/**
+ * 扫描多个目录中的 settings 文件
+ * @param settingsDirs 要扫描的目录列表
+ * @returns Settings 文件列表（已去重）
+ */
+export function scanSettingsFiles(settingsDirs: string[]): SettingsFile[] {
+  const seen = new Set<string>();
+  const results: SettingsFile[] = [];
+
+  for (const dir of settingsDirs) {
+    // 目录不存在则跳过
+    if (!existsSync(dir)) {
+      continue;
+    }
+
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        // 只处理文件
+        if (!entry.isFile()) continue;
+
+        const filename = entry.name;
+
+        // 安全检查
+        if (!isSafeSettingsFilename(filename)) continue;
+
+        // 有效性检查
+        if (!isValidSettingsFilename(filename)) continue;
+
+        // 去重（基于 filename）
+        if (seen.has(filename)) continue;
+        seen.add(filename);
+
+        // 取目录的 basename 用于显示（如 .claude 或 settings）
+        const dirDisplay = basename(dir);
+
+        results.push({
+          filename,
+          displayName: makeDisplayName(filename),
+          directory: dirDisplay,
+          directoryPath: dir,
+        });
+      }
+    } catch (err) {
+      // 目录读取失败，记录日志并跳过
+      logger.warn({ dir, err }, 'Failed to scan settings directory');
+    }
+  }
+
+  // 按显示名称排序
+  results.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  return results;
+}
+
+/**
+ * 从多个目录中查找 settings 文件的完整路径
+ * @param settingsDirs 要搜索的目录列表
+ * @param filename 文件名
+ * @returns 完整文件路径，未找到返回 null
+ */
+export function getSettingsFilePath(settingsDirs: string[], filename: string): string | null {
+  // 安全检查
+  if (!isSafeSettingsFilename(filename)) {
+    logger.warn({ filename }, 'Invalid settings filename rejected');
+    return null;
+  }
+
+  for (const dir of settingsDirs) {
+    const fullPath = join(dir, filename);
+    if (existsSync(fullPath)) {
+      return fullPath;
+    }
+  }
+
   return null;
 }

@@ -27,3 +27,15 @@ export const REGISTRY_FILENAME = 'instances.json';
 
 /** Claude Code settings 目录名 */
 export const SETTINGS_DIR = 'settings';
+
+/** Settings 文件信息 */
+export interface SettingsFile {
+  /** 文件名（不含路径） */
+  filename: string;
+  /** 显示名称（去掉 settings 前缀和 .json 后缀） */
+  displayName: string;
+  /** 所在目录（用于区分同名文件） */
+  directory: string;
+  /** 所在目录的完整路径 */
+  directoryPath: string;
+}

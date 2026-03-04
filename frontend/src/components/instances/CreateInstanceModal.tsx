@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getInstanceConfig, createInstance, type InstanceConfigResponse } from '../../services/instance-create-api.js';
 import { WorkspaceSelector } from '../common/WorkspaceSelector.js';
+import type { SettingsFile } from '../../types/index.js';
 
 interface CreateInstanceModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
   const [config, setConfig] = useState<InstanceConfigResponse | null>(null);
   const [cwd, setCwd] = useState('');
   const [name, setName] = useState('');
+  const [settingsFile, setSettingsFile] = useState('');
   const [claudeArgs, setClaudeArgs] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +25,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
       // 重置表单
       setCwd('');
       setName('');
+      setSettingsFile('');
       setClaudeArgs('');
       setError(null);
     }
@@ -52,14 +55,30 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
     setError(null);
 
     try {
-      const args = claudeArgs.trim()
-        ? claudeArgs.split(/\s+/).filter(Boolean)
-        : undefined;
+      // 构建 claudeArgs
+      const args: string[] = [];
+
+      // 如果选择了 settings 文件，添加 --settings 参数
+      if (settingsFile && config) {
+        // 根据 filename 找到选中的 SettingsFile
+        const selected = config.settingsFiles.find(
+          (sf: SettingsFile) => sf.filename === settingsFile
+        );
+        if (selected) {
+          // 使用 directoryPath 构建完整路径
+          args.push('--settings', `${selected.directoryPath}/${selected.filename}`);
+        }
+      }
+
+      // 添加用户手动输入的其他参数
+      if (claudeArgs.trim()) {
+        args.push(...claudeArgs.trim().split(/\s+/).filter(Boolean));
+      }
 
       await createInstance({
         cwd,
         name: name.trim() || undefined,
-        claudeArgs: args,
+        claudeArgs: args.length > 0 ? args : undefined,
       });
 
       // 计算新实例名称（与 instance-spawner.ts 逻辑一致）
@@ -206,6 +225,52 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess }: CreateInstan
               }}
             />
           </div>
+
+          {/* Settings 文件选择器 */}
+          {config && config.settingsFiles.length > 0 && (
+            <div>
+              <label htmlFor="settings-select" style={{
+                display: 'block',
+                fontSize: 13,
+                fontWeight: 500,
+                marginBottom: 6,
+                color: 'var(--text-secondary)',
+              }}>
+                Settings File (optional)
+              </label>
+              <select
+                id="settings-select"
+                value={settingsFile}
+                onChange={(e) => setSettingsFile(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  fontSize: 14,
+                  boxSizing: 'border-box',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">None</option>
+                {config.settingsFiles.map((sf: SettingsFile) => (
+                  <option key={sf.filename} value={sf.filename}>
+                    {sf.displayName} ({sf.directory})
+                  </option>
+                ))}
+              </select>
+              <p style={{
+                fontSize: 11,
+                color: 'var(--text-secondary)',
+                marginTop: 4,
+                opacity: 0.7,
+              }}>
+                Custom Claude settings from ~/.claude/ or ~/.claude-remote/settings/
+              </p>
+            </div>
+          )}
 
           {/* Claude 参数 */}
           <div>

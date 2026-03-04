@@ -20,6 +20,8 @@ const mockConfig = {
 };
 vi.mock('../../../src/config.js', () => ({
   loadUserConfig: () => mockConfig,
+  getSettingsDirs: () => [],
+  scanSettingsFiles: () => [],
 }));
 
 // Mock fs - 所有目录都存在
