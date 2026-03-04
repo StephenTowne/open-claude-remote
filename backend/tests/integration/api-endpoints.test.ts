@@ -234,7 +234,7 @@ describe('REST API Endpoints', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: 'Claude wants to run: ls',
+          hook_event_name: 'PermissionRequest',
           tool_name: 'Bash',
           tool_input: { command: 'ls' },
         }),
@@ -254,13 +254,18 @@ describe('REST API Endpoints', () => {
       expect(res.status).toBe(400);
     });
 
-    it('should return tool name in response', async () => {
+    it('should return tool name in response for Notification event', async () => {
       const res = await fetch(`${ctx.baseUrl}/api/hook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'test', tool_name: 'Read' }),
+        body: JSON.stringify({
+          hook_event_name: 'Notification',
+          message: 'Claude needs your permission to use Read',
+          notification_type: 'permission_prompt',
+        }),
       });
       const body = await res.json();
+      expect(body.ok).toBe(true);
       expect(body.tool).toBe('Read');
     });
 
@@ -269,9 +274,27 @@ describe('REST API Endpoints', () => {
       const res = await fetch(`${ctx.baseUrl}/api/hook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'test' }),
+        body: JSON.stringify({
+          hook_event_name: 'Stop',
+          stop_hook_active: false,
+        }),
       });
       expect(res.status).toBe(200);
+    });
+
+    it('should return ignored:true for unhandled events', async () => {
+      const res = await fetch(`${ctx.baseUrl}/api/hook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hook_event_name: 'SessionStart',
+          source: 'startup',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.ignored).toBe(true);
     });
   });
 });

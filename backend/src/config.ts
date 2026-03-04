@@ -244,23 +244,54 @@ export function createClaudeSettings(port: number, existingSettings?: Record<str
 
   const hooksConfig = {
     hooks: {
+      // 权限审批请求
+      PermissionRequest: [
+        {
+          matcher: "",
+          hooks: [{ type: "command", command: hookCommand }]
+        }
+      ],
+      // 通知事件（permission_prompt, idle_prompt, elicitation_dialog）
       Notification: [
         {
           matcher: "permission_prompt",
           hooks: [{ type: "command", command: hookCommand }]
-        }
+        },
+        {
+          matcher: "idle_prompt",
+          hooks: [{ type: "command", command: hookCommand }]
+        },
+        {
+          matcher: "elicitation_dialog",
+          hooks: [{ type: "command", command: hookCommand }]
+        },
       ],
+      // 用户提问工具
       PreToolUse: [
         {
           matcher: "AskUserQuestion",
           hooks: [{ type: "command", command: hookCommand }]
         }
-      ]
+      ],
+      // 任务完成（用于检测用户响应后任务继续执行）
+      Stop: [
+        {
+          matcher: "",
+          hooks: [{ type: "command", command: hookCommand }]
+        }
+      ],
+      // 会话结束
+      SessionEnd: [
+        {
+          matcher: "",
+          hooks: [{ type: "command", command: hookCommand }]
+        }
+      ],
     }
   };
 
   // 如果有现有 settings，合并 hooks 配置（保留用户自定义的其他 hook 事件）
-  // 注意：同名 hook 事件（Notification / PreToolUse）会被我们的配置覆盖，
+  // 注意：同名 hook 事件会被我们的配置覆盖，
   // 因为这些事件是 claude-remote 正常工作的必要条件
   if (existingSettings) {
     const existingHooks = (existingSettings.hooks ?? {}) as Record<string, unknown[]>;
