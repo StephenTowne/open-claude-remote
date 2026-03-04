@@ -187,7 +187,7 @@ export function SettingsFileSelector({
 
           {/* Settings 文件列表 */}
           <div style={styles.listContainer}>
-            {filteredItems.length === 0 ? (
+            {filteredItems.length === 1 && !filteredItems[0] ? (
               <div style={styles.emptyList}>没有匹配的 Settings 文件</div>
             ) : (
               filteredItems.map((item, index) => (
