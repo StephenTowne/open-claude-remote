@@ -37,18 +37,22 @@ export class InstanceSpawner {
     // 获取当前模块所在目录
     const currentDir = dirname(fileURLToPath(import.meta.url));
 
-    // 入口脚本路径：优先检查 dist/（生产模式），回退到 src/../dist（开发模式）
-    // 开发模式下 tsx 直接运行 src/，import.meta.url 指向 src/registry/
-    // 生产模式下 node 运行 dist/，import.meta.url 指向 dist/registry/
-    const distEntryScript = resolve(currentDir, '../cli.js');
-    const devEntryScript = resolve(currentDir, '../../dist/cli.js');
+    // TypeScript 编译输出结构：
+    // 源码：backend/src/registry/instance-spawner.ts
+    // 编译：dist/backend/src/registry/instance-spawner.js
+    //
+    // 入口脚本路径计算：
+    // 生产模式：import.meta.url 指向 dist/backend/src/registry/，向上找 cli.js
+    // 开发模式：import.meta.url 指向 backend/src/registry/，需要找编译后的 dist/backend/src/cli.js
+    const prodEntryScript = resolve(currentDir, '../cli.js');
+    const devEntryScript = resolve(currentDir, '../../../dist/backend/src/cli.js');
 
-    if (existsSync(distEntryScript)) {
-      this.entryScript = distEntryScript;
+    if (existsSync(prodEntryScript)) {
+      this.entryScript = prodEntryScript;
     } else if (existsSync(devEntryScript)) {
       this.entryScript = devEntryScript;
     } else {
-      throw new Error(`Entry script not found. Tried: ${distEntryScript}, ${devEntryScript}`);
+      throw new Error(`Entry script not found. Tried: ${prodEntryScript}, ${devEntryScript}`);
     }
   }
 
