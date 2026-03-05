@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { render, screen, waitFor, act, cleanup } from '@testing-library/react';
 import { ConsolePage } from '../../src/pages/ConsolePage.js';
 import { useAppStore } from '../../src/stores/app-store.js';
@@ -7,8 +7,25 @@ import { authenticateToInstance } from '../../src/services/instance-api.js';
 import { authenticate } from '../../src/services/api-client.js';
 
 const viewportState = {
-  keyboardHeight: 0,
+  offsetTop: 0,
+  needsCompensation: false,
 };
+
+// Mock window.innerHeight for isKeyboardOpen calculation
+const originalInnerHeight = window.innerHeight;
+beforeAll(() => {
+  Object.defineProperty(window, 'innerHeight', {
+    configurable: true,
+    value: 900,
+  });
+});
+
+afterAll(() => {
+  Object.defineProperty(window, 'innerHeight', {
+    configurable: true,
+    value: originalInnerHeight,
+  });
+});
 
 vi.mock('../../src/hooks/useViewport.js', () => ({
   useViewport: () => viewportState,
@@ -65,9 +82,11 @@ vi.mock('../../src/components/status/StatusBar.js', () => ({
 }));
 
 let capturedOnSwitch: ((targetId: string) => void) | null = null;
+let capturedOnCopySuccess: ((newInstanceName: string) => void) | null = null;
 vi.mock('../../src/components/instances/InstanceTabs.js', () => ({
-  InstanceTabs: ({ onSwitch }: { onSwitch: (id: string) => void }) => {
+  InstanceTabs: ({ onSwitch, onCopySuccess }: { onSwitch: (id: string) => void; onCopySuccess?: (name: string) => void }) => {
     capturedOnSwitch = onSwitch;
+    capturedOnCopySuccess = onCopySuccess ?? null;
     return <div>InstanceTabs</div>;
   },
 }));
@@ -104,9 +123,11 @@ describe('ConsolePage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
     capturedHandleMessage = null;
     capturedOnSwitch = null;
-    viewportState.keyboardHeight = 0;
+    viewportState.offsetTop = 0;
+    viewportState.needsCompensation = false;
     mockScrollToBottom.mockClear();
     mockScrollToTop.mockClear();
     mockSetOnScrollPositionChange.mockClear();
@@ -148,7 +169,7 @@ describe('ConsolePage', () => {
   });
 
   it('should show virtual key bar when keyboard is closed', () => {
-    viewportState.keyboardHeight = 0;
+    viewportState.offsetTop = 0;
 
     render(<ConsolePage />);
 
@@ -156,13 +177,19 @@ describe('ConsolePage', () => {
     expect(screen.getAllByText('Esc').length).toBeGreaterThan(0);
   });
 
-  it('should hide virtual key bar and apply keyboard bottom inset when keyboard is open', () => {
-    viewportState.keyboardHeight = 180;
+  it('should hide virtual key bar and apply transform when keyboard is open', () => {
+    // 模拟键盘打开：needsCompensation=true，offsetTop 增加
+    viewportState.offsetTop = 180;
+    viewportState.needsCompensation = true;
 
     render(<ConsolePage />);
 
     const root = screen.getByTestId('console-page');
-    expect(root.style.paddingBottom).toBe('180px');
+    // 使用 fixed 定位保持高度不变，用 transform 实现平滑滚动
+    expect(root.style.position).toBe('fixed');
+    expect(root.style.top).toBe('0px');
+    // transform 用于平滑滚动（替代动态修改 top/height）
+    expect(root.style.transform).toBe('translateY(-180px)');
     // 当键盘打开时，虚拟键栏应该隐藏，不再有 Esc 按钮
     expect(screen.queryAllByText('Esc')).toHaveLength(0);
   });
@@ -501,6 +528,65 @@ describe('ConsolePage', () => {
     expect(mockWrite).not.toHaveBeenCalled();
   });
 
+  it('should mark instance as disconnected when session_ended message is received', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'session_ended',
+      });
+    });
+
+    // session_ended 应该触发 setSessionStatus('idle') 和 setInstanceConnectionStatus(instanceId, 'disconnected')
+    expect(useAppStore.getState().sessionStatus).toBe('idle');
+    expect(useAppStore.getState().instanceConnectionStatus['inst-1']).toBe('disconnected');
+  });
+
+  it('should trigger auto switch immediately when session_ended is received', async () => {
+    mockedAuthenticateToInstance.mockResolvedValue(true);
+
+    useInstanceStore.setState({
+      instances: [
+        {
+          instanceId: 'inst-1',
+          name: 'Current',
+          host: '127.0.0.1',
+          port: 3000,
+          pid: 12345,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: true,
+        },
+        {
+          instanceId: 'inst-2',
+          name: 'Other',
+          host: '127.0.0.1',
+          port: 3001,
+          pid: 12346,
+          cwd: '/tmp/other',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: false,
+        },
+      ],
+    });
+
+    render(<ConsolePage />);
+
+    // 收到 session_ended 后立即标记为 disconnected，触发自动切换
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'session_ended',
+      });
+    });
+
+    // 验证：应该立即（不等待轮询）切换到另一个实例
+    await waitFor(() => {
+      expect(useInstanceStore.getState().activeInstanceId).toBe('inst-2');
+    });
+
+    expect(screen.getByText('已切换到 3001')).toBeDefined();
+  });
+
   it('should write error message to terminal when error message is received', async () => {
     render(<ConsolePage />);
 
@@ -613,5 +699,135 @@ describe('ConsolePage', () => {
     });
 
     expect(useInstanceStore.getState().currentHostOverride).toBe('192.168.1.20');
+  });
+
+  // ---- Copy instance success auto-switch tests ----
+
+  it('should auto switch to new instance when onCopySuccess is called', async () => {
+    mockedAuthenticateToInstance.mockResolvedValue(true);
+
+    // 预设 store 中的实例列表（模拟 InstanceTabs 轮询后已更新 store）
+    useInstanceStore.setState({
+      instances: [
+        {
+          instanceId: 'inst-1',
+          name: 'Current',
+          host: '127.0.0.1',
+          port: 3000,
+          pid: 12345,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: true,
+        },
+        {
+          instanceId: 'inst-copy',
+          name: 'Current-copy',
+          host: '127.0.0.1',
+          port: 3001,
+          pid: 54321,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-02T00:00:00.000Z',
+          isCurrent: false,
+        },
+      ],
+    });
+
+    render(<ConsolePage />);
+
+    // 通过 capturedOnCopySuccess 模拟复制成功回调（直接从 store 读取，无轮询）
+    await act(async () => {
+      capturedOnCopySuccess?.('Current-copy');
+    });
+
+    // 复制的实例是 isCurrent: false，所以使用 authenticateToInstance
+    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('127.0.0.1', 3001, 'cached-token');
+    expect(useInstanceStore.getState().activeInstanceId).toBe('inst-copy');
+    expect(screen.getByText('Created and switched to Current-copy')).toBeDefined();
+  });
+
+  it('should use authenticateToInstance for non-current copied instance', async () => {
+    mockedAuthenticateToInstance.mockResolvedValue(true);
+
+    useInstanceStore.setState({
+      instances: [
+        {
+          instanceId: 'inst-1',
+          name: 'Current',
+          host: '127.0.0.1',
+          port: 3000,
+          pid: 12345,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: true,
+        },
+        {
+          instanceId: 'inst-copy',
+          name: 'Other-copy',
+          host: '192.168.1.50',
+          port: 3002,
+          pid: 54321,
+          cwd: '/tmp/other',
+          startedAt: '2026-01-02T00:00:00.000Z',
+          isCurrent: false,
+        },
+      ],
+    });
+
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedOnCopySuccess?.('Other-copy');
+    });
+
+    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('192.168.1.50', 3002, 'cached-token');
+    expect(useInstanceStore.getState().activeInstanceId).toBe('inst-copy');
+  });
+
+  it('should pick newest instance when duplicate names exist', async () => {
+    mockedAuthenticateToInstance.mockResolvedValue(true);
+
+    useInstanceStore.setState({
+      instances: [
+        {
+          instanceId: 'inst-1',
+          name: 'Current',
+          host: '127.0.0.1',
+          port: 3000,
+          pid: 12345,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: true,
+        },
+        {
+          instanceId: 'inst-old-copy',
+          name: 'Current-copy',
+          host: '127.0.0.1',
+          port: 3001,
+          pid: 11111,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: false,
+        },
+        {
+          instanceId: 'inst-new-copy',
+          name: 'Current-copy',
+          host: '127.0.0.1',
+          port: 3002,
+          pid: 22222,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-03T00:00:00.000Z',
+          isCurrent: false,
+        },
+      ],
+    });
+
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedOnCopySuccess?.('Current-copy');
+    });
+
+    // 应选中 startedAt 最新的 inst-new-copy，而非 inst-old-copy
+    expect(useInstanceStore.getState().activeInstanceId).toBe('inst-new-copy');
   });
 });

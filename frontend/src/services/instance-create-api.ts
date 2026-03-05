@@ -1,9 +1,12 @@
 import { authenticate } from './api-client.js';
 import { loadToken } from './token-storage.js';
+import type { SettingsFile } from '../types/index.js';
 
 export interface InstanceConfigResponse {
   workspaces: string[];
   claudeArgs: string[];
+  settingsFiles: SettingsFile[];
+  settingsDirs: string[];
 }
 
 export interface CreateInstanceRequest {

@@ -202,7 +202,7 @@ export class WsServer {
         if (!client.alive) {
           logger.info('Terminating unresponsive WebSocket client');
           client.ws.terminate();
-          this.clients.delete(client);
+          // 不手动删除，让 close 事件处理器统一处理删除和 disconnectHandler 调用
           continue;
         }
         client.alive = false;

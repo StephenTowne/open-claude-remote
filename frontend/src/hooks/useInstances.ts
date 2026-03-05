@@ -24,23 +24,18 @@ export function useInstances() {
         if (cancelled) return;
         setInstances(instances);
 
-        // 首次加载：自动选中 isCurrent 实例
+        // 首次加载：如果没有选中的实例，自动选中 isCurrent 实例
         if (!initializedRef.current && instances.length > 0) {
           initializedRef.current = true;
-          const current = instances.find(i => i.isCurrent);
-          if (current) {
-            setActiveInstanceId(current.instanceId);
+          const currentActive = useInstanceStore.getState().activeInstanceId;
+          if (!currentActive) {
+            const current = instances.find(i => i.isCurrent);
+            if (current) {
+              setActiveInstanceId(current.instanceId);
+            }
           }
         }
 
-        // 如果当前活跃实例不在列表中（已下线），自动切换到其他存活实例
-        const currentActive = useInstanceStore.getState().activeInstanceId;
-        if (currentActive && !instances.find(i => i.instanceId === currentActive)) {
-          const fallback = instances[0];
-          if (fallback) {
-            setActiveInstanceId(fallback.instanceId);
-          }
-        }
       } catch {
         // 轮询失败时静默处理（可能未认证）
       }

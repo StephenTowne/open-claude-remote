@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useSpotlight } from './useSpotlight';
+import { useSpotlightContext } from './SpotlightContext';
 
 /**
  * Spotlight 引导组件
@@ -16,7 +16,7 @@ export function SpotlightGuide() {
     handleNext,
     handlePrev,
     handleSkip,
-  } = useSpotlight();
+  } = useSpotlightContext();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
@@ -123,6 +123,7 @@ export function SpotlightGuide() {
         bottom: 0,
         zIndex: 2000,
         cursor: 'pointer',
+        WebkitTapHighlightColor: 'transparent',
       }}
       onClick={(e) => {
         // 点击镂空区域或气泡内部不触发关闭
@@ -142,20 +143,7 @@ export function SpotlightGuide() {
         }}
       />
 
-      {/* 镂空高亮边框 */}
-      <div
-        style={{
-          position: 'absolute',
-          left: spotlightLeft,
-          top: spotlightTop,
-          width: spotlightWidth,
-          height: spotlightHeight,
-          borderRadius: radius,
-          border: '2px solid var(--status-running)',
-          pointerEvents: 'none',
-          animation: prefersReducedMotion ? 'none' : 'spotlight-pulse 2s ease-in-out infinite',
-        }}
-      />
+      {/* 镂空高亮边框 - 现在通过 useSpotlight 直接应用到目标元素 */}
 
       {/* 气泡提示 */}
       <div
@@ -285,14 +273,6 @@ export function SpotlightGuide() {
 
       {/* 动画样式 */}
       <style>{`
-        @keyframes spotlight-pulse {
-          0%, 100% {
-            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
-          }
-          50% {
-            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
-          }
-        }
         @keyframes spotlight-tooltip-enter {
           from {
             opacity: 0;

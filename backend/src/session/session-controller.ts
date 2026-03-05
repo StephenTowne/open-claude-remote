@@ -1,5 +1,6 @@
 import { WebSocket } from 'ws';
 import type { SessionStatus } from '#shared';
+import type { NotificationChannel } from '../hooks/hook-types.js';
 import { PtyManager } from '../pty/pty-manager.js';
 import { OutputBuffer } from '../pty/output-buffer.js';
 import { WsServer, type ClientType } from '../ws/ws-server.js';
@@ -7,14 +8,14 @@ import { HookReceiver } from '../hooks/hook-receiver.js';
 import {
   type HookNotification,
   type TaskCompletedData,
-  type NotificationChannel,
   HookEventType,
 } from '../hooks/hook-types.js';
 import { handleWsMessage } from '../ws/ws-handler.js';
 import { logger } from '../logger/logger.js';
 import type { PushService } from '../push/push-service.js';
 import type { TerminalRelay } from '../terminal/terminal-relay.js';
-import type { DingtalkService } from '../notification/dingtalk-service.js';
+import type { NotificationManager } from '../notification/notification-manager.js';
+import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
 
 const WS_FLUSH_INTERVAL_MS = 16;
 const WS_MAX_CHUNK_BYTES = 32 * 1024;
@@ -27,7 +28,9 @@ export class SessionController {
   private _status: SessionStatus = 'idle';
   private buffer: OutputBuffer;
   private pushService: PushService | null = null;
-  private dingtalkService: DingtalkService | null = null;
+  private notificationServiceFactory: NotificationServiceFactory | null = null;
+  private notificationManager: NotificationManager | null = null;
+  private instanceUrl: string | null = null;
 
   private wsPendingChunks: string[] = [];
   private wsPendingBytes = 0;
@@ -68,10 +71,25 @@ export class SessionController {
   }
 
   /**
-   * Inject DingtalkService for hook-triggered notifications.
+   * Inject NotificationServiceFactory for lazily creating notification services.
    */
-  setDingtalkService(dingtalkService: DingtalkService): void {
-    this.dingtalkService = dingtalkService;
+  setNotificationServiceFactory(factory: NotificationServiceFactory): void {
+    this.notificationServiceFactory = factory;
+  }
+
+  /**
+   * Inject NotificationManager for dynamic enabled status checking.
+   */
+  setNotificationManager(manager: NotificationManager): void {
+    this.notificationManager = manager;
+  }
+
+  /**
+   * Set instance URL for inclusion in notifications.
+   */
+  setInstanceUrl(url: string): void {
+    this.instanceUrl = url;
+    logger.info({ instanceUrl: url }, 'Instance URL updated');
   }
 
   /**
@@ -317,12 +335,24 @@ export class SessionController {
     channel: NotificationChannel,
     notification: HookNotification
   ): void {
+    // websocket 和 push 渠道不做 enabled 检查（始终发送）
+    if (channel !== 'websocket' && channel !== 'push') {
+      // 检查渠道是否启用
+      if (this.notificationManager && !this.notificationManager.isEnabled(channel)) {
+        logger.debug({ channel }, 'Notification channel disabled, skipping');
+        return;
+      }
+    }
+
+    // 构造 URL 提示信息
+    const urlHint = this.instanceUrl ? `\n\nInstance: ${this.instanceUrl}` : '';
+
     switch (channel) {
       case 'websocket':
         this.wsServer.broadcast({
           type: 'status_update',
           status: 'waiting_input',
-          detail: notification.message,
+          detail: notification.message + urlHint,
         });
         break;
 
@@ -331,7 +361,7 @@ export class SessionController {
           this.pushService
             .notifyAll({
               title: notification.title,
-              body: notification.message,
+              body: notification.message + urlHint,
               tag: `claude-${notification.eventType}`,
               renotify: true,
             })
@@ -342,15 +372,34 @@ export class SessionController {
         break;
 
       case 'dingtalk':
-        if (this.dingtalkService) {
-          const body = notification.detail
-            ? `${notification.message}\n${notification.detail}`
-            : notification.message;
-          this.dingtalkService
-            .sendNotification(notification.title, notification.tool, body)
-            .catch((err) => {
-              logger.error({ err, channel: 'dingtalk' }, 'Failed to send dingtalk notification');
-            });
+        if (this.notificationServiceFactory) {
+          const service = this.notificationServiceFactory.getDingtalkService();
+          if (service) {
+            const body = notification.detail
+              ? `${notification.message}\n${notification.detail}${urlHint}`
+              : notification.message + urlHint;
+            service
+              .sendNotification(notification.title, notification.tool, body)
+              .catch((err) => {
+                logger.error({ err, channel: 'dingtalk' }, 'Failed to send dingtalk notification');
+              });
+          }
+        }
+        break;
+
+      case 'wechat_work':
+        if (this.notificationServiceFactory) {
+          const service = this.notificationServiceFactory.getWechatWorkService();
+          if (service) {
+            const body = notification.detail
+              ? `${notification.message}\n${notification.detail}${urlHint}`
+              : notification.message + urlHint;
+            service
+              .sendNotification(notification.title, notification.tool, body)
+              .catch((err) => {
+                logger.error({ err, channel: 'wechat_work' }, 'Failed to send WeChat notification');
+              });
+          }
         }
         break;
     }

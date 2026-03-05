@@ -324,10 +324,17 @@ describe('useTerminal', () => {
       expect(mockTermOnScroll).toHaveBeenCalled();
       const scrollCallback = mockTermOnScroll.mock.calls[0][0];
 
-      // 模拟用户向上滚动（viewportY 变小,不在底部）
-      mockBuffer.active.viewportY = 50;
+      // 设置初始位置（底部）
+      mockBuffer.active.viewportY = 76; // length - rows = 100 - 24 = 76（底部）
       mockBuffer.active.length = 100;
       mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback(); // 初始化 lastViewportYRef = 76
+      });
+
+      // 模拟用户向上滚动（viewportY 变小）
+      mockBuffer.active.viewportY = 50;
 
       act(() => {
         scrollCallback();
@@ -343,9 +350,18 @@ describe('useTerminal', () => {
       // 模拟用户滚动上去，触发 showScrollHint
       expect(mockTermOnScroll).toHaveBeenCalled();
       const scrollCallback = mockTermOnScroll.mock.calls[0][0];
-      mockBuffer.active.viewportY = 50;
+
+      // 设置初始位置（底部）
+      mockBuffer.active.viewportY = 76;
       mockBuffer.active.length = 100;
       mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback(); // 初始化 lastViewportYRef
+      });
+
+      // 模拟用户向上滚动
+      mockBuffer.active.viewportY = 50;
 
       act(() => {
         scrollCallback();
@@ -367,10 +383,17 @@ describe('useTerminal', () => {
       expect(mockTermOnScroll).toHaveBeenCalled();
       const scrollCallback = mockTermOnScroll.mock.calls[0][0];
 
-      // 模拟不在底部 → showScrollHint = true
-      mockBuffer.active.viewportY = 50;
+      // 设置初始位置（底部）
+      mockBuffer.active.viewportY = 76;
       mockBuffer.active.length = 100;
       mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback(); // 初始化 lastViewportYRef
+      });
+
+      // 模拟向上滚动 → showScrollHint = true
+      mockBuffer.active.viewportY = 50;
 
       act(() => {
         scrollCallback();
@@ -388,13 +411,24 @@ describe('useTerminal', () => {
       expect(result.current.showScrollHint).toBe(false);
     });
 
-    it('should show scroll hint even after rapid auto-scrolls (counter mechanism)', async () => {
+    it('should show scroll hint even after rapid auto-scrolls (timestamp mechanism)', async () => {
       // 测试场景：PTY 持续输出时，用户滚动应能正常触发按钮显示
-      // 计数器机制确保只跳过一个程序滚动事件，后续用户滚动不受影响
+      // 时间戳机制确保程序滚动后短暂时间内跳过 onScroll 事件
+      vi.useFakeTimers();
+
       const { result } = renderUseTerminal();
 
       expect(mockTermOnScroll).toHaveBeenCalled();
       const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      // 设置初始位置（底部）
+      mockBuffer.active.viewportY = 76;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback(); // 初始化 lastViewportYRef
+      });
 
       // 模拟 PTY 输出触发 auto-scroll
       act(() => {
@@ -405,25 +439,30 @@ describe('useTerminal', () => {
         rafCallback?.(0);
       });
 
-      // 程序滚动触发的 onScroll 事件应该被跳过（计数器从 1 减到 0）
+      // 程序滚动触发的 onScroll 事件应该被跳过（时间戳检查）
       // 此时 autoFollow 仍为 true，showScrollHint 应为 false
       act(() => {
-        scrollCallback(); // 程序滚动事件
+        scrollCallback(); // 程序滚动事件（会被跳过）
       });
 
       expect(result.current.showScrollHint).toBe(false);
 
-      // 模拟用户滚动（计数器已为 0，不再跳过）
+      // 模拟时间流逝超过阈值（PROGRAM_SCROLL_THRESHOLD_MS = 50ms）
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+
+      // 模拟用户向上滚动
       mockBuffer.active.viewportY = 50;
-      mockBuffer.active.length = 100;
-      mockTermState.rows = 24;
 
       act(() => {
-        scrollCallback(); // 用户滚动事件
+        scrollCallback(); // 用户滚动事件（不会被跳过）
       });
 
       // 用户滚动应该正常触发按钮显示
       expect(result.current.showScrollHint).toBe(true);
+
+      vi.useRealTimers();
     });
   });
 

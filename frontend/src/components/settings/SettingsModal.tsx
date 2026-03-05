@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { ShortcutSettings } from './ShortcutSettings.js';
 import { CommandSettings } from './CommandSettings.js';
-import { getUserConfig, updateUserConfig } from '../../services/api-client.js';
-import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand, type SafeUserConfig } from '../../config/commands.js';
-
-/** 钉钉 Webhook URL 格式验证 */
-const DINGTALK_WEBHOOK_PATTERN = /^https:\/\/oapi\.dingtalk\.com\/robot\/send\?access_token=/;
+import { NotificationSettings } from './NotificationSettings.js';
+import { getUserConfig, updateUserConfig, updateNotificationChannelEnabled } from '../../services/api-client.js';
+import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand } from '../../config/commands.js';
+import { DINGTALK_WEBHOOK_PATTERN, SENDKEY_PATTERN, type SafeNotificationConfigs } from '#shared';
+import { BottomSheet } from '../common/BottomSheet.js';
 
 export type WithId<T> = T & { _id: string };
 
@@ -15,19 +15,18 @@ interface SettingsModalProps {
   onConfigSaved?: () => void;
 }
 
-type TabType = 'shortcuts' | 'commands' | 'dingtalk';
+type TabType = 'shortcuts' | 'commands' | 'notifications';
 
 export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('shortcuts');
   const [shortcuts, setShortcuts] = useState<WithId<ConfigurableShortcut>[]>([]);
   const [commands, setCommands] = useState<WithId<ConfigurableCommand>[]>([]);
   const [dingtalkWebhookUrl, setDingtalkWebhookUrl] = useState('');
-  const [dingtalkConfigured, setDingtalkConfigured] = useState(false);
+  const [wechatWorkSendKey, setWechatWorkSendKey] = useState('');
+  const [notificationStatus, setNotificationStatus] = useState<SafeNotificationConfigs>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
-  const [isAnimating, setIsAnimating] = useState(false);
   const idCounter = useRef(0);
 
   function nextId(): string {
@@ -45,39 +44,49 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
     }
   }, [isOpen]);
 
-  // 抽屉动画状态管理
-  useEffect(() => {
-    if (isOpen) {
-      setIsVisible(true);
-      // 双重 rAF 确保浏览器先渲染 translateY(100%) 的初始帧，再过渡到 translateY(0)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setIsAnimating(true));
-      });
-    } else if (isVisible) {
-      setIsAnimating(false);
-      const timer = setTimeout(() => setIsVisible(false), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, isVisible]);
-
   const loadConfig = async () => {
     try {
       const { config } = await getUserConfig();
       if (config) {
         setShortcuts(config.shortcuts.map(s => withId(s)));
         setCommands(config.commands.map(c => withId(c)));
-        setDingtalkConfigured(config.dingtalk?.configured ?? false);
+        // 使用 notifications 结构
+        const status: SafeNotificationConfigs = config.notifications || {};
+        setNotificationStatus(status);
         setDingtalkWebhookUrl(''); // 不暴露已有 URL，用户需要重新输入才能更改
       } else {
         // 使用默认配置
         setShortcuts(DEFAULT_SHORTCUTS.map(s => withId({ ...s, enabled: true })));
         setCommands(DEFAULT_COMMANDS.map(c => withId({ ...c, enabled: true })));
-        setDingtalkConfigured(false);
+        setNotificationStatus({});
         setDingtalkWebhookUrl('');
       }
     } catch (err) {
       setError('Failed to load configuration');
       console.error(err);
+    }
+  };
+
+  /**
+   * 处理通知渠道启用状态变更
+   * 即时生效，无需点击 Save
+   */
+  const handleChannelEnabledChange = async (channel: 'dingtalk' | 'wechat_work', enabled: boolean) => {
+    // 乐观更新：立即切换 Toggle 状态
+    const prevStatus = notificationStatus;
+    setNotificationStatus((prev) => ({
+      ...prev,
+      [channel]: { ...prev[channel], configured: true, enabled },
+    }));
+
+    try {
+      await updateNotificationChannelEnabled(channel, enabled);
+    } catch (err) {
+      // 失败回滚
+      setNotificationStatus(prevStatus);
+      console.error('Failed to update channel enabled status:', err);
+      setError('Failed to update channel status');
+      setTimeout(() => setError(null), 2000);
     }
   };
 
@@ -92,25 +101,51 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         shortcuts: shortcuts.map(({ _id: _, ...rest }) => rest),
         commands: commands.map(({ _id: _, ...rest }) => rest),
       };
-      // 只有在用户输入了新的 webhook URL 时才更新钉钉配置
+
+      // 构建通知配置：只在用户实际输入了新 URL 时才发送对应渠道
+      const notifications: NonNullable<UserConfig['notifications']> = {};
+
+      // 钉钉配置：仅在用户输入了新 URL 时包含
       const trimmedUrl = dingtalkWebhookUrl.trim();
       if (trimmedUrl) {
-        // 验证 webhook URL 格式
         if (!DINGTALK_WEBHOOK_PATTERN.test(trimmedUrl)) {
           setError('Please enter a valid DingTalk Webhook URL (starting with https://oapi.dingtalk.com/robot/send?access_token=)');
           setSaving(false);
           return;
         }
-        config.dingtalk = { webhookUrl: trimmedUrl };
+        notifications.dingtalk = { webhookUrl: trimmedUrl };
       }
+
+      // 微信配置：仅在用户输入了新 SendKey 时包含
+      const trimmedSendKey = wechatWorkSendKey.trim();
+      if (trimmedSendKey) {
+        if (!SENDKEY_PATTERN.test(trimmedSendKey)) {
+          setError('Please enter a valid SendKey (starts with SCT, at least 13 characters)');
+          setSaving(false);
+          return;
+        }
+        notifications.wechat_work = { sendKey: trimmedSendKey };
+      }
+
+      // 如果有通知配置变更，添加到 config
+      if (Object.keys(notifications).length > 0) {
+        config.notifications = notifications;
+      }
+
       const ok = await updateUserConfig(config);
       if (ok) {
         setSuccess(true);
-        // 更新已配置状态
+        // 仅更新有新 URL 输入的渠道状态，保留已有 configured/enabled
+        const newStatus: SafeNotificationConfigs = { ...notificationStatus };
         if (trimmedUrl) {
-          setDingtalkConfigured(true);
+          newStatus.dingtalk = { ...notificationStatus?.dingtalk, configured: true, enabled: notificationStatus?.dingtalk?.enabled };
           setDingtalkWebhookUrl(''); // 保存后清空输入框
         }
+        if (trimmedSendKey) {
+          newStatus.wechat_work = { ...notificationStatus?.wechat_work, configured: true, enabled: notificationStatus?.wechat_work?.enabled };
+          setWechatWorkSendKey(''); // 保存后清空输入框
+        }
+        setNotificationStatus(newStatus);
         onConfigSaved?.();
         setTimeout(() => setSuccess(false), 2000);
       } else {
@@ -124,182 +159,13 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
     }
   };
 
-  if (!isVisible) return null;
-
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: isAnimating ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0)',
-        display: 'flex',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: '100%',
-          maxWidth: 480,
-          maxHeight: '85vh',
-          borderRadius: '16px 16px 0 0',
-          background: 'var(--bg-secondary)',
-          boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.3)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          transform: isAnimating ? 'translateY(0)' : 'translateY(100%)',
-          paddingBottom: 'var(--safe-bottom)',
-        }}
-      >
-        {/* 头部 */}
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Settings"
+      footer={
         <div style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid var(--border-color)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
-            Settings
-          </h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 6,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              fontSize: 20,
-              cursor: 'pointer',
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Tab 切换 */}
-        <div style={{
-          display: 'flex',
-          borderBottom: '1px solid var(--border-color)',
-        }}>
-          {(['shortcuts', 'commands', 'dingtalk'] as TabType[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                flex: 1,
-                padding: '12px 16px',
-                border: 'none',
-                background: 'transparent',
-                color: activeTab === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
-                borderBottom: activeTab === tab ? '2px solid var(--status-running)' : '2px solid transparent',
-                cursor: 'pointer',
-                fontSize: 14,
-                fontWeight: activeTab === tab ? 600 : 400,
-              }}
-            >
-              {tab === 'shortcuts' ? 'Shortcuts' : tab === 'commands' ? 'Commands' : 'DingTalk'}
-            </button>
-          ))}
-        </div>
-
-        {/* 内容区 */}
-        <div style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: 16,
-        }}>
-          {activeTab === 'shortcuts' ? (
-            <ShortcutSettings
-              shortcuts={shortcuts}
-              onChange={setShortcuts}
-            />
-          ) : activeTab === 'commands' ? (
-            <CommandSettings
-              commands={commands}
-              onChange={setCommands}
-            />
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{
-                padding: 12,
-                background: 'var(--bg-tertiary)',
-                borderRadius: 8,
-                fontSize: 13,
-                color: 'var(--text-secondary)',
-              }}>
-                Configure DingTalk group bot Webhook to receive notifications when Claude Code needs input.
-              </div>
-              <div>
-                <label style={{
-                  display: 'block',
-                  fontSize: 14,
-                  fontWeight: 500,
-                  marginBottom: 8,
-                  color: 'var(--text-primary)',
-                }}>
-                  Webhook URL
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
-                  value={dingtalkWebhookUrl}
-                  onChange={(e) => setDingtalkWebhookUrl(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 6,
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--bg-tertiary)',
-                    color: 'var(--text-primary)',
-                    fontSize: 14,
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-              {dingtalkConfigured && !dingtalkWebhookUrl && (
-                <div style={{
-                  padding: 10,
-                  background: 'rgba(46, 204, 113, 0.1)',
-                  borderRadius: 6,
-                  fontSize: 13,
-                  color: 'var(--status-running)',
-                }}>
-                  ✓ Configured. Enter a new URL to update.
-                </div>
-              )}
-              <div style={{
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                marginTop: 8,
-              }}>
-                <a
-                  href="https://open.dingtalk.com/document/robots/custom-robot-access"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'var(--status-running)' }}
-                >
-                  How to get DingTalk group bot Webhook?
-                </a>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 底部操作栏 */}
-        <div style={{
-          padding: '12px 20px',
-          borderTop: '1px solid var(--border-color)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -343,7 +209,56 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
             </button>
           </div>
         </div>
+      }
+    >
+      {/* Tab 切换 */}
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid var(--border-color)',
+        margin: '0 -16px',
+        marginBottom: 16,
+      }}>
+        {(['shortcuts', 'commands', 'notifications'] as TabType[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              border: 'none',
+              background: 'transparent',
+              color: activeTab === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
+              borderBottom: activeTab === tab ? '2px solid var(--status-running)' : '2px solid transparent',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: activeTab === tab ? 600 : 400,
+            }}
+          >
+            {tab === 'shortcuts' ? 'Shortcuts' : tab === 'commands' ? 'Commands' : 'Notifications'}
+          </button>
+        ))}
       </div>
-    </div>
+
+      {activeTab === 'shortcuts' ? (
+        <ShortcutSettings
+          shortcuts={shortcuts}
+          onChange={setShortcuts}
+        />
+      ) : activeTab === 'commands' ? (
+        <CommandSettings
+          commands={commands}
+          onChange={setCommands}
+        />
+      ) : (
+        <NotificationSettings
+          notificationStatus={notificationStatus}
+          dingtalkWebhookUrl={dingtalkWebhookUrl}
+          onDingtalkWebhookChange={setDingtalkWebhookUrl}
+          wechatWorkSendKey={wechatWorkSendKey}
+          onWechatWorkSendKeyChange={setWechatWorkSendKey}
+          onChannelEnabledChange={handleChannelEnabledChange}
+        />
+      )}
+    </BottomSheet>
   );
 }

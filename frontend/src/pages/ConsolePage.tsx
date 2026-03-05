@@ -7,7 +7,6 @@ import { CommandPicker } from '../components/input/CommandPicker.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
 import { IpChangeToast } from '../components/common/IpChangeToast.js';
 import { InstanceTabs } from '../components/instances/InstanceTabs.js';
-import { SpotlightGuide } from '../components/onboarding/SpotlightGuide.js';
 import { ScrollToBottomButton } from '../components/terminal/ScrollToBottomButton.js';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useTerminal } from '../hooks/useTerminal.js';
@@ -25,6 +24,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
   const inputBarRef = useRef<InputBarRef>(null);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
   const setIpChangeInfo = useAppStore((s) => s.setIpChangeInfo);
+  const setInstanceConnectionStatus = useAppStore((s) => s.setInstanceConnectionStatus);
   const { showNotification } = useLocalNotification();
 
   // 用 ref 打破循环依赖：handleMessage ↔ write，send ↔ onResize
@@ -69,6 +69,10 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
         break;
       case 'session_ended':
         setSessionStatus('idle');
+        // 立即标记连接断开，触发自动切换（不等 WebSocket onclose）
+        if (instanceId) {
+          setInstanceConnectionStatus(instanceId, 'disconnected');
+        }
         break;
       case 'error':
         writeRef.current(`\r\n\x1b[31m[Error] ${msg.message}\x1b[0m\r\n`);
@@ -183,8 +187,11 @@ function getAutoSwitchCandidates(instances: InstanceListItem[], currentInstanceI
 }
 
 export function ConsolePage() {
-  const { keyboardHeight } = useViewport();
-  const showCommandPicker = keyboardHeight === 0;
+  const { offsetTop, needsCompensation } = useViewport();
+  // 键盘检测：needsCompensation=true 表示输入框被软键盘遮挡
+  // 检测键盘是否真正打开：visualViewport.offsetTop > 0 表示有键盘或工具栏
+  const isKeyboardOpen = needsCompensation && offsetTop > 0;
+  const showCommandPicker = !isKeyboardOpen;
 
   usePushNotification();
   useInstances();
@@ -325,15 +332,55 @@ export function ConsolePage() {
     setCurrentHostOverride(newIp);
   }, [setCurrentHostOverride]);
 
+  // 复制成功后自动切换到新实例
+  // InstanceTabs.handleCreateSuccess 已轮询并更新了 store，这里直接读取切换
+  const handleCopySuccess = useCallback(async (newInstanceName: string) => {
+    const currentInstances = useInstanceStore.getState().instances;
+    // 按 startedAt 倒序找最新的同名实例，避免重名歧义
+    const found = [...currentInstances]
+      .filter(inst => inst.name === newInstanceName)
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+
+    if (!found) {
+      showToast('Instance created, but switch failed');
+      return;
+    }
+
+    // 认证到新实例
+    if (cachedToken) {
+      try {
+        if (found.isCurrent) {
+          await authenticate(cachedToken);
+        } else {
+          await authenticateToInstance(found.host, found.port, cachedToken);
+        }
+      } catch {
+        // 认证失败时仍然切换
+      }
+    }
+    setCurrentHostOverride(null);
+    setActiveInstanceId(found.instanceId);
+    showToast(`Created and switched to ${newInstanceName}`);
+  }, [cachedToken, setActiveInstanceId, setCurrentHostOverride, showToast]);
+
   return (
     <div data-testid="console-page" style={{
-      height: '100%',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      // 保持固定高度，用 transform 实现平滑滚动
+      height: '100dvh',
+      // 使用 transform 替代 top 修改，避免布局重计算，实现平滑过渡
+      transform: needsCompensation ? `translateY(-${offsetTop}px)` : 'none',
+      transition: 'transform 0.25s ease-out',
+      // 性能优化：仅在需要补偿时启用 GPU 加速
+      willChange: needsCompensation ? 'transform' : 'auto',
       display: 'flex',
       flexDirection: 'column',
-      paddingBottom: keyboardHeight > 0 ? keyboardHeight : undefined,
     }}>
       <StatusBar />
-      <InstanceTabs onSwitch={handleInstanceSwitch} />
+      <InstanceTabs onSwitch={handleInstanceSwitch} onCopySuccess={handleCopySuccess} />
       {/* key=activeInstanceId 强制 React 重建整个终端+WS */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <ConsoleContent
@@ -341,12 +388,11 @@ export function ConsolePage() {
           wsUrl={wsUrl}
           instanceId={activeInstanceId ?? undefined}
           showCommandPicker={showCommandPicker}
-          isKeyboardOpen={keyboardHeight > 0}
+          isKeyboardOpen={isKeyboardOpen}
           onIpChanged={activeInstance?.isCurrent ? handleCurrentInstanceIpChanged : undefined}
         />
       </div>
       {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}
-      <SpotlightGuide />
     </div>
   );
 }

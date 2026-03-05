@@ -105,161 +105,6 @@ describe('HookReceiver', () => {
   });
 
   // ==============================
-  // PermissionRequest 事件测试
-  // ==============================
-  describe('PermissionRequest event', () => {
-    it('should handle PermissionRequest with tool details', () => {
-      const receiver = new HookReceiver();
-      const handler = vi.fn();
-      receiver.on('notification', handler);
-
-      const result = receiver.processHook({
-        hook_event_name: 'PermissionRequest',
-        tool_name: 'Bash',
-        tool_input: { command: 'npm test', description: 'Run tests' },
-      });
-
-      expect(result.type).toBe('notification');
-      expect(result.notification!.tool).toBe('Bash');
-      expect(result.notification!.eventType).toBe(HookEventType.PERMISSION_REQUEST);
-      expect(result.notification!.message).toContain('npm test');
-      expect(result.notification!.channels).toEqual(['websocket', 'push', 'dingtalk']);
-      expect(handler).toHaveBeenCalled();
-    });
-
-    it('should generate appropriate message for Write tool', () => {
-      const receiver = new HookReceiver();
-
-      const result = receiver.processHook({
-        hook_event_name: 'PermissionRequest',
-        tool_name: 'Write',
-        tool_input: { file_path: '/path/to/file.ts', content: 'test' },
-      });
-
-      expect(result.type).toBe('notification');
-      expect(result.notification!.message).toContain('/path/to/file.ts');
-    });
-
-    it('should generate appropriate message for Edit tool', () => {
-      const receiver = new HookReceiver();
-
-      const result = receiver.processHook({
-        hook_event_name: 'PermissionRequest',
-        tool_name: 'Edit',
-        tool_input: { file_path: '/path/to/file.ts' },
-      });
-
-      expect(result.type).toBe('notification');
-      expect(result.notification!.message).toContain('edit file');
-    });
-
-    it('should handle unknown tool gracefully', () => {
-      const receiver = new HookReceiver();
-
-      const result = receiver.processHook({
-        hook_event_name: 'PermissionRequest',
-        tool_name: 'SomeUnknownTool',
-        tool_input: { foo: 'bar' },
-      });
-
-      expect(result.type).toBe('notification');
-      expect(result.notification!.tool).toBe('SomeUnknownTool');
-    });
-  });
-
-  // ==============================
-  // PreToolUse 事件测试
-  // ==============================
-  describe('PreToolUse event', () => {
-    it('should handle AskUserQuestion tool', () => {
-      const receiver = new HookReceiver();
-      const handler = vi.fn();
-      receiver.on('notification', handler);
-
-      const result = receiver.processHook({
-        hook_event_name: 'PreToolUse',
-        tool_name: 'AskUserQuestion',
-        tool_input: {
-          questions: [
-            { question: 'Which approach do you prefer?', options: [{ label: 'A' }] },
-            { question: 'Continue?', options: [{ label: 'Yes' }] },
-          ],
-        },
-        tool_use_id: 'tool_123',
-      });
-
-      expect(result.type).toBe('notification');
-      expect(result.notification!.tool).toBe('AskUserQuestion');
-      expect(result.notification!.message).toContain('Which approach do you prefer?');
-      expect(result.notification!.message).toContain('Continue?');
-      expect(result.notification!.channels).toEqual(['websocket', 'push', 'dingtalk']);
-      expect(handler).toHaveBeenCalled();
-    });
-
-    it('should ignore other PreToolUse tools', () => {
-      const receiver = new HookReceiver();
-      const handler = vi.fn();
-      receiver.on('notification', handler);
-
-      const result = receiver.processHook({
-        hook_event_name: 'PreToolUse',
-        tool_name: 'Bash',
-        tool_input: { command: 'ls' },
-        tool_use_id: 'tool_123',
-      });
-
-      expect(result.type).toBe('ignored');
-      expect(handler).not.toHaveBeenCalled();
-    });
-  });
-
-  // ==============================
-  // SessionEnd 事件测试
-  // ==============================
-  describe('SessionEnd event', () => {
-    it('should handle SessionEnd with known reason', () => {
-      const receiver = new HookReceiver();
-      const handler = vi.fn();
-      receiver.on('notification', handler);
-
-      const result = receiver.processHook({
-        hook_event_name: 'SessionEnd',
-        reason: 'logout',
-      });
-
-      expect(result.type).toBe('notification');
-      expect(result.notification!.eventType).toBe(HookEventType.SESSION_ENDED);
-      expect(result.notification!.tool).toBe('session');
-      expect(result.notification!.message).toContain('logged out');
-      // SessionEnd 只发送 WebSocket 通知
-      expect(result.notification!.channels).toEqual(['websocket']);
-      expect(handler).toHaveBeenCalled();
-    });
-
-    it('should format clear reason', () => {
-      const receiver = new HookReceiver();
-
-      const result = receiver.processHook({
-        hook_event_name: 'SessionEnd',
-        reason: 'clear',
-      });
-
-      expect(result.notification!.message).toContain('/clear');
-    });
-
-    it('should format unknown reason', () => {
-      const receiver = new HookReceiver();
-
-      const result = receiver.processHook({
-        hook_event_name: 'SessionEnd',
-        reason: 'unknown_reason',
-      });
-
-      expect(result.notification!.message).toContain('unknown_reason');
-    });
-  });
-
-  // ==============================
   // Stop 事件测试
   // ==============================
   describe('Stop event', () => {
@@ -322,6 +167,22 @@ describe('HookReceiver', () => {
       const result = receiver.processHook({
         hook_event_name: 'UserPromptSubmit',
         prompt: 'Hello',
+      });
+
+      expect(result.type).toBe('ignored');
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('should ignore PreToolUse', () => {
+      const receiver = new HookReceiver();
+      const handler = vi.fn();
+      receiver.on('notification', handler);
+
+      const result = receiver.processHook({
+        hook_event_name: 'PreToolUse',
+        tool_name: 'AskUserQuestion',
+        tool_input: { questions: [] },
+        tool_use_id: 'tool_123',
       });
 
       expect(result.type).toBe('ignored');

@@ -81,9 +81,10 @@ export function StatusBar() {
             onClick={() => setSettingsOpen(true)}
             aria-label="Settings"
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 6,
+              width: 44,
+              height: 44,
+              marginRight: -12,
+              borderRadius: 8,
               border: 'none',
               background: 'transparent',
               color: 'var(--text-secondary)',
@@ -91,7 +92,7 @@ export function StatusBar() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 18,
+              fontSize: 22,
             }}
           >
             ⚙

@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, readdirSync, unlinkSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -16,7 +16,8 @@ import { SessionController } from './session/session-controller.js';
 import { TerminalRelay } from './terminal/terminal-relay.js';
 import { createApiRouter } from './api/router.js';
 import { PushService } from './push/push-service.js';
-import { DingtalkService } from './notification/dingtalk-service.js';
+import { createNotificationManager } from './notification/notification-manager.js';
+import { createNotificationServiceFactory } from './notification/notification-service-factory.js';
 import { logger, setInstanceContext } from './logger/logger.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { findAvailablePort } from './registry/port-finder.js';
@@ -102,21 +103,11 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 9. Setup Push service
   const pushService = new PushService(sharedConfigDir);
 
-  // 9.5. Setup Dingtalk service (if configured)
-  const userConfigPath = resolve(sharedConfigDir, 'config.json');
-  let dingtalkService: DingtalkService | null = null;
-  try {
-    if (existsSync(userConfigPath)) {
-      const userConfigContent = readFileSync(userConfigPath, 'utf-8');
-      const userConfig = JSON.parse(userConfigContent) as { dingtalk?: { webhookUrl: string } };
-      if (userConfig.dingtalk?.webhookUrl) {
-        dingtalkService = new DingtalkService(userConfig.dingtalk.webhookUrl);
-        logger.info('Dingtalk notification service initialized');
-      }
-    }
-  } catch (err) {
-    logger.warn({ err }, 'Failed to load dingtalk config, skipping');
-  }
+  // 9.1. Create NotificationManager for dynamic enabled status checking
+  const notificationManager = createNotificationManager();
+
+  // 9.2. Create NotificationServiceFactory for lazy-loading notification services
+  const notificationServiceFactory = createNotificationServiceFactory();
 
   // 10. Session controller reference (set after PTY spawn)
   let sessionController: SessionController | null = null;
@@ -124,7 +115,10 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 10.5. Create Instance Spawner (for creating new instances via API)
   const instanceSpawner = new InstanceSpawner();
 
-  // 11. Mount REST API (with instance routes)
+  // 11. Create WebSocket server (needed for API routes)
+  const wsServer = new WsServer(httpServer, authModule);
+
+  // 12. Mount REST API (with instance routes)
   app.use('/api', createApiRouter({
     authModule,
     hookReceiver,
@@ -133,11 +127,17 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     listInstances: () => registry.list(),
     currentInstanceId: instanceId,
     instanceSpawner,
+    notificationManager,
+    notificationServiceFactory,
+    wsServer,
   }));
 
-  // 12. Serve frontend static files (if built)
+  // 13. Serve frontend static files (if built)
   const __dirname = dirname(fileURLToPath(import.meta.url));
-  const frontendDist = resolve(__dirname, '../../../frontend-dist');
+  // 开发模式 (tsx backend/src/index.ts): __dirname = backend/src/ → ../../frontend-dist
+  // 生产构建 (node dist/backend/src/index.js): __dirname = dist/backend/src/ → ../../../frontend-dist
+  const isDistBuild = __dirname.includes('/dist/');
+  const frontendDist = resolve(__dirname, isDistBuild ? '../../../frontend-dist' : '../../frontend-dist');
 
   if (existsSync(frontendDist)) {
     app.use(express.static(frontendDist));
@@ -153,9 +153,6 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     logger.warn('Frontend dist not found, skipping static file serving');
   }
 
-  // 13. Create WebSocket server
-  const wsServer = new WsServer(httpServer, authModule);
-
   // 14. Spawn PTY with Claude Code CLI
   const ptyManager = new PtyManager();
 
@@ -166,9 +163,11 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 16. Create Session Controller (with relay for dynamic master switch)
   sessionController = new SessionController(ptyManager, wsServer, hookReceiver, config.maxBufferLines, relay);
   sessionController.setPushService(pushService);
-  if (dingtalkService) {
-    sessionController.setDingtalkService(dingtalkService);
-  }
+  sessionController.setNotificationManager(notificationManager);
+  sessionController.setNotificationServiceFactory(notificationServiceFactory);
+  // 设置实例 URL（初始化）
+  const instanceUrl = `http://${config.displayIp}:${actualPort}`;
+  sessionController.setInstanceUrl(instanceUrl);
 
   // 17. Spawn Claude Code with instance-specific hook settings
   // 检查用户是否传了 --settings 参数，如果有则合并 hooks
@@ -211,6 +210,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     cwd: config.claudeCwd,
     startedAt: new Date().toISOString(),
     headless: noTerminal,
+    claudeArgs: config.claudeArgs.length > 0 ? config.claudeArgs : undefined,
   });
 
   // 18.5. Clean up stale settings files for dead instances
@@ -247,6 +247,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
 
     // Update registry
     registry.updateHost(instanceId, newIp);
+
+    // Update instance URL in session controller
+    sessionController?.setInstanceUrl(newUrl);
 
     // Broadcast to all connected clients
     wsServer.broadcast({

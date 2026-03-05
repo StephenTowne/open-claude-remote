@@ -73,16 +73,16 @@ describe('Hook → Notification Flow', () => {
       expect(status.detail).toContain('Write');
     });
 
-    it('should update session status to waiting_input from PermissionRequest', async () => {
+    it('should update session status to waiting_input from Notification permission_prompt', async () => {
       ctx.sessionController.setStatus('running');
 
       await fetch(`${ctx.baseUrl}/api/hook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          hook_event_name: 'PermissionRequest',
-          tool_name: 'Bash',
-          tool_input: { command: 'npm test' },
+          hook_event_name: 'Notification',
+          message: 'Claude needs your permission to use Bash',
+          notification_type: 'permission_prompt',
         }),
       });
 
@@ -141,17 +141,17 @@ describe('Hook → Notification Flow', () => {
   // ─── Status via REST API during waiting_input ────────────────────
 
   describe('status API reflects waiting_input state', () => {
-    it('should show waiting_input status in /api/status after PermissionRequest', async () => {
+    it('should show waiting_input status in /api/status after Notification permission_prompt', async () => {
       ctx.sessionController.setStatus('running');
 
-      // Trigger PermissionRequest
+      // Trigger Notification permission_prompt
       await fetch(`${ctx.baseUrl}/api/hook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          hook_event_name: 'PermissionRequest',
-          tool_name: 'Edit',
-          tool_input: { file_path: '/test.ts' },
+          hook_event_name: 'Notification',
+          message: 'Claude needs your permission to use Edit',
+          notification_type: 'permission_prompt',
         }),
       });
 

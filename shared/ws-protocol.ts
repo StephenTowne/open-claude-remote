@@ -55,6 +55,12 @@ export interface IpChangedMessage {
   newUrl: string;
 }
 
+export interface ServiceRefreshMessage {
+  type: 'service_refresh';
+  channel?: 'dingtalk' | 'wechat_work';
+  source: 'config_update' | 'validation_complete';
+}
+
 export type ServerMessage =
   | TerminalOutputMessage
   | StatusUpdateMessage
@@ -63,7 +69,8 @@ export type ServerMessage =
   | ErrorMessage
   | SessionEndedMessage
   | TerminalResizeMessage
-  | IpChangedMessage;
+  | IpChangedMessage
+  | ServiceRefreshMessage;
 
 // ==============================
 // Client → Server Messages

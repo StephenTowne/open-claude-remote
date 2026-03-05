@@ -234,9 +234,9 @@ describe('REST API Endpoints', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          hook_event_name: 'PermissionRequest',
-          tool_name: 'Bash',
-          tool_input: { command: 'ls' },
+          hook_event_name: 'Notification',
+          message: 'Claude needs your permission to use Bash',
+          notification_type: 'permission_prompt',
         }),
       });
       expect(res.status).toBe(200);

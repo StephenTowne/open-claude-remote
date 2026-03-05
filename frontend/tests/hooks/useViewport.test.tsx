@@ -54,20 +54,23 @@ describe('useViewport', () => {
     vi.restoreAllMocks();
   });
 
-  it('should return 0 when visualViewport is unavailable', () => {
+  it('should return 0 offsetTop when visualViewport is unavailable', () => {
     Object.defineProperty(window, 'visualViewport', {
       configurable: true,
       value: undefined,
     });
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 900,
+    });
 
     const { result } = renderHook(() => useViewport());
 
-    expect(result.current.keyboardHeight).toBe(0);
+    expect(result.current.offsetTop).toBe(0);
+    expect(result.current.needsCompensation).toBe(false);
   });
 
-  it('should update keyboardHeight using offsetTop when visual viewport shrinks', () => {
-    vi.useFakeTimers();
-
+  it('should return 0 offsetTop by default (no occlusion)', () => {
     const vv = createVisualViewportMock(800, 0);
 
     Object.defineProperty(window, 'innerHeight', {
@@ -80,24 +83,59 @@ describe('useViewport', () => {
       value: vv,
     });
 
-    const { result } = renderHook(() => useViewport());
-
-    // 模拟键盘弹出：offsetTop = 150（键盘将 viewport 推上去的距离）
-    act(() => {
-      vv.height = 700;
-      vv.offsetTop = 150;
-      vv.triggerResize();
-      vi.advanceTimersByTime(20);
+    // 无活跃输入框
+    Object.defineProperty(document, 'activeElement', {
+      configurable: true,
+      value: document.body,
     });
 
-    // keyboardHeight 应该等于 offsetTop，而不是 windowHeight - viewportHeight
-    expect(result.current.keyboardHeight).toBe(150);
+    const { result } = renderHook(() => useViewport());
+
+    // 默认不做补偿
+    expect(result.current.offsetTop).toBe(0);
+    expect(result.current.needsCompensation).toBe(false);
+  });
+
+  it('should not use visualViewport values when no active input', () => {
+    vi.useFakeTimers();
+
+    const vv = createVisualViewportMock(900, 0);
+
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 900,
+    });
+
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: vv,
+    });
+
+    const { result } = renderHook(() => useViewport());
+
+    // 初始状态：无遮挡
+    expect(result.current.offsetTop).toBe(0);
+    expect(result.current.needsCompensation).toBe(false);
+
+    // 模拟键盘弹出：viewport height 缩小
+    act(() => {
+      vv.height = 600;
+      vv.offsetTop = 300;
+      vv.triggerResize();
+      vi.advanceTimersByTime(10); // 防抖为 0，少量延迟即可
+    });
+
+    // 由于没有活跃的输入元素，仍然不需要补偿
+    expect(result.current.needsCompensation).toBe(false);
+    expect(result.current.offsetTop).toBe(0);
 
     vi.useRealTimers();
   });
 
-  it('should return 0 when offsetTop is exactly at threshold (100px)', () => {
-    const vv = createVisualViewportMock(800, 100);
+  it('should detect occlusion when input element is below visualViewport', () => {
+    vi.useFakeTimers();
+
+    const vv = createVisualViewportMock(900, 0);
 
     Object.defineProperty(window, 'innerHeight', {
       configurable: true,
@@ -109,15 +147,51 @@ describe('useViewport', () => {
       value: vv,
     });
 
+    // 创建模拟的输入元素
+    const mockInput = {
+      tagName: 'INPUT',
+      getBoundingClientRect: () => ({
+        bottom: 950, // 超出 visualViewport 底部
+        top: 910,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 40,
+        x: 0,
+        y: 910,
+        toJSON: () => ({}),
+      }),
+    };
+
+    Object.defineProperty(document, 'activeElement', {
+      configurable: true,
+      value: mockInput,
+    });
+
     const { result } = renderHook(() => useViewport());
 
-    // 初始 offsetTop = 100，恰好等于阈值，应返回 0
-    expect(result.current.keyboardHeight).toBe(0);
+    // 初始状态
+    expect(result.current.needsCompensation).toBe(false);
+
+    // 模拟键盘弹出：viewport height 缩小
+    act(() => {
+      vv.height = 600;
+      vv.offsetTop = 300;
+      vv.triggerResize();
+      vi.advanceTimersByTime(10);
+    });
+
+    // 输入框被遮挡（bottom: 950 > vv.height + vv.offsetTop - 10 = 890）
+    expect(result.current.needsCompensation).toBe(true);
+    expect(result.current.offsetTop).toBe(300);
+
+    vi.useRealTimers();
   });
 
-  it('should detect keyboard when offsetTop exceeds threshold (101px)', () => {
-    // viewportHeight = 799，windowHeight = 900，差值 = 101 > 阈值
-    const vv = createVisualViewportMock(799, 101);
+  it('should respond to scroll events (captures toolbar changes)', () => {
+    vi.useFakeTimers();
+
+    const vv = createVisualViewportMock(900, 0);
 
     Object.defineProperty(window, 'innerHeight', {
       configurable: true,
@@ -129,13 +203,190 @@ describe('useViewport', () => {
       value: vv,
     });
 
+    Object.defineProperty(document, 'activeElement', {
+      configurable: true,
+      value: document.body,
+    });
+
     const { result } = renderHook(() => useViewport());
 
-    // offsetTop = 101 > 阈值，应返回 offsetTop 值
-    expect(result.current.keyboardHeight).toBe(101);
+    // 初始状态
+    expect(result.current.needsCompensation).toBe(false);
+
+    // 通过 scroll 事件更新（模拟华为工具栏变化场景）
+    // 无输入框被遮挡时，仍使用默认值
+    act(() => {
+      vv.height = 700;
+      vv.offsetTop = 150;
+      vv.triggerScroll();
+      vi.advanceTimersByTime(10);
+    });
+
+    // 无遮挡，使用默认值
+    expect(result.current.needsCompensation).toBe(false);
+
+    vi.useRealTimers();
   });
 
-  it('should return 0 when offsetTop is below threshold (50px)', () => {
+  it('should handle focus events to immediately detect occlusion', () => {
+    vi.useFakeTimers();
+
+    const vv = createVisualViewportMock(600, 300);
+
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 900,
+    });
+
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: vv,
+    });
+
+    const mockInput = {
+      tagName: 'INPUT',
+      getBoundingClientRect: () => ({
+        bottom: 950, // 超出 visualViewport 底部
+        top: 910,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 40,
+        x: 0,
+        y: 910,
+        toJSON: () => ({}),
+      }),
+    };
+
+    Object.defineProperty(document, 'activeElement', {
+      configurable: true,
+      value: document.body,
+    });
+
+    const { result } = renderHook(() => useViewport());
+
+    // 初始无遮挡
+    expect(result.current.needsCompensation).toBe(false);
+
+    // 模拟 focusin 事件
+    act(() => {
+      Object.defineProperty(document, 'activeElement', {
+        configurable: true,
+        value: mockInput,
+      });
+      document.dispatchEvent(new Event('focusin', { bubbles: true }));
+    });
+
+    // focusin 事件应立即设置 needsCompensation
+    expect(result.current.needsCompensation).toBe(true);
+    // 但 offsetTop 需要等待 visualViewport.resize 更新
+    // 这是修复"跳动"问题的关键：focusin 时不立即应用 transform
+    expect(result.current.offsetTop).toBe(0);
+
+    // 模拟 visualViewport.resize 提供稳定的 offsetTop 值
+    act(() => {
+      vv.height = 600;
+      vv.offsetTop = 300;
+      vv.triggerResize();
+      vi.advanceTimersByTime(10);
+    });
+
+    // resize 后才设置 offsetTop
+    expect(result.current.offsetTop).toBe(300);
+
+    // 模拟 focusout：输入框失焦，恢复默认值
+    act(() => {
+      Object.defineProperty(document, 'activeElement', {
+        configurable: true,
+        value: document.body,
+      });
+      document.dispatchEvent(new Event('focusout', { bubbles: true }));
+    });
+
+    // focusout 后应重置为默认值
+    expect(result.current.needsCompensation).toBe(false);
+    expect(result.current.offsetTop).toBe(0);
+
+    vi.useRealTimers();
+  });
+
+  it('should handle Huawei keyboard scenario with occlusion detection', () => {
+    vi.useFakeTimers();
+
+    // 模拟华为手机场景：
+    // - windowHeight = 900
+    // - viewportHeight = 650（键盘 + 工具栏空白 = 250）
+    // - offsetTop = 200（键盘真正推上去的距离，不含工具栏空白）
+    const vv = createVisualViewportMock(900, 0);
+
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 900,
+    });
+
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: vv,
+    });
+
+    // 模拟输入框在屏幕底部，会被键盘遮挡
+    const mockInput = {
+      tagName: 'INPUT',
+      getBoundingClientRect: () => ({
+        bottom: 900, // 在 vv.height + vv.offsetTop - 10 = 840 之下，被遮挡
+        top: 860,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 40,
+        x: 0,
+        y: 860,
+        toJSON: () => ({}),
+      }),
+    };
+
+    Object.defineProperty(document, 'activeElement', {
+      configurable: true,
+      value: document.body,
+    });
+
+    const { result } = renderHook(() => useViewport());
+
+    // 初始状态：无遮挡
+    expect(result.current.needsCompensation).toBe(false);
+
+    // 模拟键盘弹起：设置 activeElement 并触发 focusin
+    act(() => {
+      Object.defineProperty(document, 'activeElement', {
+        configurable: true,
+        value: mockInput,
+      });
+      // 更新 visualViewport 值
+      vv.height = 650;
+      vv.offsetTop = 200;
+      document.dispatchEvent(new Event('focusin', { bubbles: true }));
+    });
+
+    // focusin 只设置 needsCompensation，offsetTop 需要 resize 事件更新
+    expect(result.current.needsCompensation).toBe(true);
+    expect(result.current.offsetTop).toBe(0);
+
+    // 模拟 visualViewport.resize 事件
+    act(() => {
+      vv.triggerResize();
+      vi.advanceTimersByTime(10);
+    });
+
+    // resize 后设置 offsetTop
+    expect(result.current.needsCompensation).toBe(true);
+    expect(result.current.offsetTop).toBe(200);
+
+    vi.useRealTimers();
+  });
+
+  it('should return 0 offsetTop when input is not occluded', () => {
+    vi.useFakeTimers();
+
     const vv = createVisualViewportMock(850, 50);
 
     Object.defineProperty(window, 'innerHeight', {
@@ -148,89 +399,33 @@ describe('useViewport', () => {
       value: vv,
     });
 
-    const { result } = renderHook(() => useViewport());
+    // 输入框在可视区域内（未遮挡）
+    const mockInput = {
+      tagName: 'INPUT',
+      getBoundingClientRect: () => ({
+        bottom: 800, // 在 vv.height + vv.offsetTop = 900 之内
+        top: 760,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 40,
+        x: 0,
+        y: 760,
+        toJSON: () => ({}),
+      }),
+    };
 
-    // offsetTop = 50px < 阈值，不应误判为键盘弹出
-    expect(result.current.keyboardHeight).toBe(0);
-  });
-
-  it('should clamp keyboardHeight to 0 when offsetTop is 0', () => {
-    const vv = createVisualViewportMock(1000, 0);
-
-    Object.defineProperty(window, 'innerHeight', {
+    Object.defineProperty(document, 'activeElement', {
       configurable: true,
-      value: 900,
-    });
-
-    Object.defineProperty(window, 'visualViewport', {
-      configurable: true,
-      value: vv,
-    });
-
-    const { result } = renderHook(() => useViewport());
-
-    act(() => {
-      vv.triggerResize();
-    });
-
-    expect(result.current.keyboardHeight).toBe(0);
-  });
-
-  it('should respond to scroll events (captures toolbar changes)', () => {
-    vi.useFakeTimers();
-
-    // 初态：viewportHeight = 800，windowHeight = 900，差值 = 100，等于阈值，不触发键盘
-    const vv = createVisualViewportMock(800, 0);
-
-    Object.defineProperty(window, 'innerHeight', {
-      configurable: true,
-      value: 900,
-    });
-
-    Object.defineProperty(window, 'visualViewport', {
-      configurable: true,
-      value: vv,
+      value: mockInput,
     });
 
     const { result } = renderHook(() => useViewport());
 
-    // 初值为 0（差值 = 100 未超过阈值）
-    expect(result.current.keyboardHeight).toBe(0);
-
-    // 通过 scroll 事件更新（模拟华为工具栏变化场景）
-    // 同时更新 height 和 offsetTop，让差值超过阈值
-    act(() => {
-      vv.height = 700;
-      vv.offsetTop = 150;
-      vv.triggerScroll();
-      vi.advanceTimersByTime(20);
-    });
-
-    expect(result.current.keyboardHeight).toBe(150);
+    // 输入框未被遮挡，使用默认值
+    expect(result.current.needsCompensation).toBe(false);
+    expect(result.current.offsetTop).toBe(0);
 
     vi.useRealTimers();
-  });
-
-  it('should handle Huawei keyboard scenario: toolbar space vs actual keyboard', () => {
-    // 模拟华为手机场景：
-    // - windowHeight = 900
-    // - viewportHeight = 650（键盘 + 工具栏空白 = 250）
-    // - offsetTop = 200（键盘真正推上去的距离，不含工具栏空白）
-    const vv = createVisualViewportMock(650, 200);
-
-    Object.defineProperty(window, 'innerHeight', {
-      configurable: true,
-      value: 900,
-    });
-
-    Object.defineProperty(window, 'visualViewport', {
-      configurable: true,
-      value: vv,
-    });
-
-    const { result } = renderHook(() => useViewport());
-
-    // keyboardHeight 应该是 offsetTop (200)，而不是 windowHeight - viewportHeight (250)
-    expect(result.current.keyboardHeight).toBe(200);
   });
 });

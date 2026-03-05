@@ -240,6 +240,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
                   type="text"
                   value={shortcut.label}
                   readOnly
+                  autoComplete="off"
                   placeholder="Press key to capture"
                   onClick={() => setCapturingIndex(index)}
                   onKeyDown={(e) => handleKeyDown(e, index)}

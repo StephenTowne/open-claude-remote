@@ -56,6 +56,7 @@ Scan the QR code shown in your terminal with your phone. The auth token is auto-
 - Browser tab bar for switching — no re-authentication needed
 - Auto-switch when an instance goes offline
 - Spawn new instances from the web UI ("+" button)
+- Copy instance via long-press/right-click tab — pre-fills working directory, settings, and arguments
 - `claude-remote attach <port|name>` to take over a web-spawned instance
 
 ### Window Resize Priority
@@ -75,24 +76,47 @@ When multiple clients are connected, window size is controlled by:
 
 ### Notifications
 
-Get notified when Claude is waiting for input:
+Get notified when Claude is waiting for input. All notifications include the instance URL so you can quickly reconnect even if the IP changes.
 
 **Web Push** — works even when the browser is in the background or the screen is locked. Just allow notifications when prompted.
+
+**Channel Toggle** — each notification channel has a toggle switch in the settings. Toggle to enable/disable without deleting the configuration. Changes take effect immediately across all running instances.
 
 **DingTalk** — configure a DingTalk bot webhook to receive notifications on your team channel:
 
 ```json
 {
-  "dingtalk": {
-    "webhookUrl": "https://oapi.dingtalk.com/robot/send?access_token=your-token"
+  "notifications": {
+    "dingtalk": {
+      "webhookUrl": "https://oapi.dingtalk.com/robot/send?access_token=your-token"
+    }
   }
 }
 ```
+
+> **Note**: Legacy config files with root-level `dingtalk` field are automatically migrated to `notifications.dingtalk` on first load.
 
 **Setup steps:**
 1. Open DingTalk group → Group Settings → Smart Group Assistant → Add Robot → Custom
 2. For security settings, select "Custom Keywords" and add `Claude` (the message title includes this keyword)
 3. Copy the Webhook URL to your config file or paste it in the Web UI settings
+
+**WeChat (Server酱³)** — configure Server酱³ to receive notifications on WeChat:
+
+```json
+{
+  "notifications": {
+    "wechat_work": {
+      "sendKey": "SCTxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+  }
+}
+```
+
+**Setup steps:**
+1. Visit [Server酱 Sendkey](https://sct.ftqq.com/sendkey) and sign in with WeChat
+2. Copy your SendKey (starts with `SCT`)
+3. Paste it in your config file or in the Web UI settings
 
 ---
 
@@ -145,7 +169,16 @@ Config file: `~/.claude-remote/config.json`
 | `shortcuts` | array | see below | Quick-input buttons |
 | `commands` | array | see below | Custom command buttons |
 | `workspaces` | string[] | [] | Allowed working directories for web-spawned instances |
-| `dingtalk` | object | — | DingTalk notification config |
+| `settingsDirs` | string[] | ["~/.claude/", "~/.claude-remote/settings/"] | Directories to scan for settings files |
+| `notifications` | object | — | Notification channels config (see below) |
+
+**Notification channel config:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `webhookUrl` | string | — | DingTalk webhook URL |
+| `sendKey` | string | — | Server酱³ SendKey (WeChat) |
+| `enabled` | boolean | true | Whether the channel is active |
 
 **Priority**: CLI args > config file > defaults
 
@@ -240,6 +273,45 @@ Restrict which directories web-spawned instances can use:
 
 If not configured, web-spawned instances can only select projects from existed claude instances
 
+### Settings Files
+
+When creating instances from the web UI, you can select a custom settings file to pass via `--settings`. Settings files must:
+
+1. Be named with `settings` prefix (e.g., `settings-project-a.json`, `settings.idea.json`)
+2. Be valid JSON files ending in `.json`
+3. Be located in one of the configured scan directories
+
+**Default scan directories:**
+- `~/.claude/` — Claude Code config directory
+- `~/.claude-remote/settings/` — Claude Remote custom settings
+
+**Custom directories:**
+
+```json
+{
+  "settingsDirs": [
+    "~/.claude/",
+    "~/.claude-remote/settings/",
+    "~/my-custom-settings/"
+  ]
+}
+```
+
+**Example settings file** (`~/.claude/settings-project-a.json`):
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+  },
+  "permissions": {
+    "allow": ["Bash(git:*)", "Bash(npm:*)"]
+  }
+}
+```
+
+> **Note**: Files like `3000.json` (port configs) are automatically excluded from the settings file list.
+
 ### Complete Example
 
 ```json
@@ -272,7 +344,13 @@ If not configured, web-spawned instances can only select projects from existed c
   "workspaces": [
     "/home/user/projects/api",
     "/home/user/projects/web"
-  ]
+  ],
+
+  "notifications": {
+    "dingtalk": {
+      "webhookUrl": "https://oapi.dingtalk.com/robot/send?access_token=your-token"
+    }
+  }
 }
 ```
 
