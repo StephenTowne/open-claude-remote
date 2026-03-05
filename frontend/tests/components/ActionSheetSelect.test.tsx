@@ -38,20 +38,12 @@ describe('ActionSheetSelect', () => {
       expect(screen.getByText('Select an option...')).toBeDefined();
     });
 
-    it('移动端打开面板不自动聚焦搜索框（显示点击搜索占位符）', async () => {
-      // 模拟触屏设备
-      Object.defineProperty(window, 'ontouchstart', {
-        value: {},
-        writable: true,
-        configurable: true,
-      });
-
+    it('点击触发器后显示选项列表', async () => {
       render(
         <ActionSheetSelect
           options={mockOptions}
           value={null}
           onChange={mockOnChange}
-          searchPlaceholder="Search items..."
         />
       );
 
@@ -59,73 +51,10 @@ describe('ActionSheetSelect', () => {
       fireEvent.click(trigger);
 
       await waitFor(() => {
-        // 应该显示搜索占位符文本，而不是真正的输入框
-        expect(screen.getByText('Search items...')).toBeDefined();
+        expect(screen.getByText('Project A')).toBeDefined();
+        expect(screen.getByText('Project B')).toBeDefined();
+        expect(screen.getByText('Test App')).toBeDefined();
       });
-
-      // 不应该直接显示输入框（避免键盘弹出）
-      expect(screen.queryByPlaceholderText('Search items...')).toBeNull();
-
-      // 清理
-      delete (window as { ontouchstart?: unknown }).ontouchstart;
-    });
-
-    it('桌面端打开面板自动聚焦搜索框', async () => {
-      // 确保不是触屏设备
-      delete (window as { ontouchstart?: unknown }).ontouchstart;
-
-      render(
-        <ActionSheetSelect
-          options={mockOptions}
-          value={null}
-          onChange={mockOnChange}
-          searchPlaceholder="Search items..."
-        />
-      );
-
-      const trigger = screen.getByRole('button');
-      fireEvent.click(trigger);
-
-      await waitFor(() => {
-        // 桌面端应该直接显示输入框（带有聚焦）
-        expect(screen.getByPlaceholderText('Search items...')).toBeDefined();
-      });
-    });
-
-    it('点击搜索占位符后切换到输入框', async () => {
-      // 模拟触屏设备
-      Object.defineProperty(window, 'ontouchstart', {
-        value: {},
-        writable: true,
-        configurable: true,
-      });
-
-      render(
-        <ActionSheetSelect
-          options={mockOptions}
-          value={null}
-          onChange={mockOnChange}
-          searchPlaceholder="Tap to search..."
-        />
-      );
-
-      const trigger = screen.getByRole('button');
-      fireEvent.click(trigger);
-
-      await waitFor(() => {
-        expect(screen.getByText('Tap to search...')).toBeDefined();
-      });
-
-      // 点击占位符区域
-      fireEvent.click(screen.getByText('Tap to search...'));
-
-      await waitFor(() => {
-        // 应该切换为输入框
-        expect(screen.getByPlaceholderText('Tap to search...')).toBeDefined();
-      });
-
-      // 清理
-      delete (window as { ontouchstart?: unknown }).ontouchstart;
     });
 
     it('渲染触发器显示选中项的 label', () => {
@@ -180,8 +109,8 @@ describe('ActionSheetSelect', () => {
       const trigger = screen.getByRole('button');
       fireEvent.click(trigger);
 
-      // 面板应该不存在
-      expect(screen.queryByPlaceholderText('Search…')).toBeNull();
+      // 面板应该不存在（没有选项列表）
+      expect(screen.queryByText('Project A')).toBeNull();
     });
   });
 
@@ -192,7 +121,6 @@ describe('ActionSheetSelect', () => {
           options={mockOptions}
           value={null}
           onChange={mockOnChange}
-          searchPlaceholder="Search items..."
         />
       );
 
@@ -200,7 +128,7 @@ describe('ActionSheetSelect', () => {
       fireEvent.click(trigger);
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search items...')).toBeDefined();
+        expect(screen.getByText('Project A')).toBeDefined();
       });
     });
 
@@ -217,7 +145,7 @@ describe('ActionSheetSelect', () => {
       fireEvent.click(trigger);
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search…')).toBeDefined();
+        expect(screen.getByText('Project A')).toBeDefined();
       });
 
       // 点击遮罩（overlay）- 找到固定定位的父容器
@@ -227,7 +155,7 @@ describe('ActionSheetSelect', () => {
 
       // 等待动画完成（300ms）
       await waitFor(() => {
-        expect(screen.queryByPlaceholderText('Search…')).toBeNull();
+        expect(screen.queryByText('Project A')).toBeNull();
       }, { timeout: 500 });
     });
 
@@ -244,94 +172,17 @@ describe('ActionSheetSelect', () => {
       fireEvent.click(trigger);
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search…')).toBeDefined();
+        expect(screen.getByText('Project A')).toBeDefined();
       });
 
-      const searchInput = screen.getByPlaceholderText('Search…');
-      fireEvent.keyDown(searchInput, { key: 'Escape' });
+      // Escape 键需要绑定到能接收键盘事件的元素上
+      const listbox = screen.getByRole('listbox');
+      fireEvent.keyDown(listbox, { key: 'Escape' });
 
       // 等待动画完成（300ms）
       await waitFor(() => {
-        expect(screen.queryByPlaceholderText('Search…')).toBeNull();
-      }, { timeout: 500 });
-    });
-  });
-
-  describe('搜索过滤', () => {
-    it('输入关键词过滤选项列表', async () => {
-      render(
-        <ActionSheetSelect
-          options={mockOptions}
-          value={null}
-          onChange={mockOnChange}
-        />
-      );
-
-      const trigger = screen.getByRole('button');
-      fireEvent.click(trigger);
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search…')).toBeDefined();
-      });
-
-      const searchInput = screen.getByPlaceholderText('Search…');
-      fireEvent.change(searchInput, { target: { value: 'project' } });
-
-      await waitFor(() => {
-        expect(screen.getByText('Project A')).toBeDefined();
-        expect(screen.getByText('Project B')).toBeDefined();
-        expect(screen.queryByText('Test App')).toBeNull();
-      });
-    });
-
-    it('搜索无结果时显示空状态', async () => {
-      render(
-        <ActionSheetSelect
-          options={mockOptions}
-          value={null}
-          onChange={mockOnChange}
-          emptyMessage="No matches"
-        />
-      );
-
-      const trigger = screen.getByRole('button');
-      fireEvent.click(trigger);
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search…')).toBeDefined();
-      });
-
-      const searchInput = screen.getByPlaceholderText('Search…');
-      fireEvent.change(searchInput, { target: { value: 'nonexistent' } });
-
-      await waitFor(() => {
-        expect(screen.getByText('No matches')).toBeDefined();
-      });
-    });
-
-    it('支持搜索 description', async () => {
-      render(
-        <ActionSheetSelect
-          options={mockOptions}
-          value={null}
-          onChange={mockOnChange}
-        />
-      );
-
-      const trigger = screen.getByRole('button');
-      fireEvent.click(trigger);
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search…')).toBeDefined();
-      });
-
-      const searchInput = screen.getByPlaceholderText('Search…');
-      fireEvent.change(searchInput, { target: { value: '/home' } });
-
-      await waitFor(() => {
-        expect(screen.getByText('Test App')).toBeDefined();
         expect(screen.queryByText('Project A')).toBeNull();
-      });
+      }, { timeout: 500 });
     });
   });
 
@@ -349,11 +200,11 @@ describe('ActionSheetSelect', () => {
       fireEvent.click(trigger);
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search…')).toBeDefined();
+        expect(screen.getByText('Project A')).toBeDefined();
       });
 
-      const searchInput = screen.getByPlaceholderText('Search…');
-      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
+      const listbox = screen.getByRole('listbox');
+      fireEvent.keyDown(listbox, { key: 'ArrowDown' });
 
       await waitFor(() => {
         const selectedItem = screen.getByText('Project A').closest('[role="option"]');
@@ -374,16 +225,16 @@ describe('ActionSheetSelect', () => {
       fireEvent.click(trigger);
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search…')).toBeDefined();
+        expect(screen.getByText('Project A')).toBeDefined();
       });
 
-      const searchInput = screen.getByPlaceholderText('Search…');
+      const listbox = screen.getByRole('listbox');
       // 先向下移动三次：-1 -> 0 -> 1 -> 2
-      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
-      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
-      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
+      fireEvent.keyDown(listbox, { key: 'ArrowDown' });
+      fireEvent.keyDown(listbox, { key: 'ArrowDown' });
+      fireEvent.keyDown(listbox, { key: 'ArrowDown' });
       // 再向上移动一次：2 -> 1
-      fireEvent.keyDown(searchInput, { key: 'ArrowUp' });
+      fireEvent.keyDown(listbox, { key: 'ArrowUp' });
 
       await waitFor(() => {
         const items = screen.getAllByRole('option');
@@ -406,12 +257,12 @@ describe('ActionSheetSelect', () => {
       fireEvent.click(trigger);
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search…')).toBeDefined();
+        expect(screen.getByText('Project A')).toBeDefined();
       });
 
-      const searchInput = screen.getByPlaceholderText('Search…');
-      fireEvent.keyDown(searchInput, { key: 'ArrowDown' });
-      fireEvent.keyDown(searchInput, { key: 'Enter' });
+      const listbox = screen.getByRole('listbox');
+      fireEvent.keyDown(listbox, { key: 'ArrowDown' });
+      fireEvent.keyDown(listbox, { key: 'Enter' });
 
       await waitFor(() => {
         expect(mockOnChange).toHaveBeenCalledWith(mockOptions[0].value);
@@ -431,12 +282,12 @@ describe('ActionSheetSelect', () => {
       fireEvent.click(trigger);
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search…')).toBeDefined();
+        expect(screen.getByText('Project A')).toBeDefined();
       });
 
-      const searchInput = screen.getByPlaceholderText('Search…');
+      const listbox = screen.getByRole('listbox');
       // 在第一项时按向上，应该跳到最后一项
-      fireEvent.keyDown(searchInput, { key: 'ArrowUp' });
+      fireEvent.keyDown(listbox, { key: 'ArrowUp' });
 
       const items = screen.getAllByRole('option');
       await waitFor(() => {
@@ -457,13 +308,13 @@ describe('ActionSheetSelect', () => {
       fireEvent.click(trigger);
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('Search…')).toBeDefined();
+        expect(screen.getByText('Project A')).toBeDefined();
       });
 
-      const searchInput = screen.getByPlaceholderText('Search…');
+      const listbox = screen.getByRole('listbox');
       // 移到最后一项
-      fireEvent.keyDown(searchInput, { key: 'ArrowUp' }); // 循环到最后一项
-      fireEvent.keyDown(searchInput, { key: 'ArrowDown' }); // 循环到第一项
+      fireEvent.keyDown(listbox, { key: 'ArrowUp' }); // 循环到最后一项
+      fireEvent.keyDown(listbox, { key: 'ArrowDown' }); // 循环到第一项
 
       const items = screen.getAllByRole('option');
       await waitFor(() => {
@@ -493,7 +344,7 @@ describe('ActionSheetSelect', () => {
 
       await waitFor(() => {
         expect(mockOnChange).toHaveBeenCalledWith(mockOptions[1].value);
-        expect(screen.queryByPlaceholderText('Search…')).toBeNull();
+        expect(screen.queryByText('Project A')).toBeNull();
       });
     });
   });
@@ -527,7 +378,7 @@ describe('ActionSheetSelect', () => {
   });
 
   describe('选项显示', () => {
-    it('显示选项的 label 和 description', async () => {
+    it('显示选项的 label 和 description（单行格式）', async () => {
       render(
         <ActionSheetSelect
           options={mockOptions}
@@ -541,8 +392,11 @@ describe('ActionSheetSelect', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Project A')).toBeDefined();
-        expect(screen.getByText('/projects/a')).toBeDefined();
       });
+
+      // description 应该作为 label 的一部分显示在括号中
+      const optionLabel = screen.getByText('Project A').closest('span');
+      expect(optionLabel?.textContent).toContain('/projects/a');
     });
 
     it('高亮选中项', async () => {
@@ -561,6 +415,133 @@ describe('ActionSheetSelect', () => {
         const items = screen.getAllByRole('option');
         // 第二项应该有选中样式
         expect(items[1].style.background).toContain('rgba(88, 166, 255, 0.08)');
+      });
+    });
+  });
+
+  describe('拖拽手柄交互', () => {
+    it('拖拽手柄向下超过阈值关闭面板', async () => {
+      render(
+        <ActionSheetSelect
+          options={mockOptions}
+          value={null}
+          onChange={mockOnChange}
+        />
+      );
+
+      const trigger = screen.getByRole('button');
+      fireEvent.click(trigger);
+
+      await waitFor(() => {
+        expect(screen.getByText('Project A')).toBeDefined();
+      });
+
+      // 找到拖拽手柄
+      const handle = document.querySelector('[data-testid="drag-handle"]') as HTMLElement;
+      expect(handle).toBeDefined();
+
+      // 模拟触摸拖拽：开始 -> 移动（超过100px）-> 结束
+      fireEvent.touchStart(handle, { touches: [{ clientY: 300, identifier: 0 }] });
+      fireEvent.touchMove(handle, { touches: [{ clientY: 410, identifier: 0 }] });
+      fireEvent.touchEnd(handle);
+
+      // 等待面板关闭
+      await waitFor(() => {
+        expect(screen.queryByText('Project A')).toBeNull();
+      }, { timeout: 500 });
+    });
+
+    it('拖拽距离不足时面板回弹不关闭', async () => {
+      render(
+        <ActionSheetSelect
+          options={mockOptions}
+          value={null}
+          onChange={mockOnChange}
+        />
+      );
+
+      const trigger = screen.getByRole('button');
+      fireEvent.click(trigger);
+
+      await waitFor(() => {
+        expect(screen.getByText('Project A')).toBeDefined();
+      });
+
+      const handle = document.querySelector('[data-testid="drag-handle"]') as HTMLElement;
+      expect(handle).toBeDefined();
+
+      // 模拟小距离拖拽（不足100px，不应关闭）
+      fireEvent.touchStart(handle, { touches: [{ clientY: 300, identifier: 0 }] });
+      fireEvent.touchMove(handle, { touches: [{ clientY: 350, identifier: 0 }] });
+      fireEvent.touchEnd(handle);
+
+      // 面板仍然打开
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(screen.queryByText('Project A')).toBeDefined();
+    });
+
+    it('支持鼠标拖拽关闭', async () => {
+      render(
+        <ActionSheetSelect
+          options={mockOptions}
+          value={null}
+          onChange={mockOnChange}
+        />
+      );
+
+      const trigger = screen.getByRole('button');
+      fireEvent.click(trigger);
+
+      await waitFor(() => {
+        expect(screen.getByText('Project A')).toBeDefined();
+      });
+
+      const handle = document.querySelector('[data-testid="drag-handle"]') as HTMLElement;
+      expect(handle).toBeDefined();
+
+      // 模拟鼠标拖拽
+      fireEvent.mouseDown(handle, { clientY: 300 });
+      fireEvent.mouseMove(handle, { clientY: 420 });
+      fireEvent.mouseUp(handle);
+
+      // 等待面板关闭
+      await waitFor(() => {
+        expect(screen.queryByText('Project A')).toBeNull();
+      }, { timeout: 500 });
+    });
+
+    it('拖拽过程中应用transform位移', async () => {
+      render(
+        <ActionSheetSelect
+          options={mockOptions}
+          value={null}
+          onChange={mockOnChange}
+        />
+      );
+
+      const trigger = screen.getByRole('button');
+      fireEvent.click(trigger);
+
+      await waitFor(() => {
+        expect(screen.getByText('Project A')).toBeDefined();
+      });
+
+      const handle = document.querySelector('[data-testid="drag-handle"]') as HTMLElement;
+      expect(handle).toBeDefined();
+
+      // 找到面板容器
+      const sheet = document.querySelector('[data-testid="action-sheet-panel"]') as HTMLElement;
+      expect(sheet).toBeDefined();
+
+      // 开始拖拽
+      fireEvent.touchStart(handle, { touches: [{ clientY: 300, identifier: 0 }] });
+
+      // 移动50px
+      fireEvent.touchMove(handle, { touches: [{ clientY: 350, identifier: 0 }] });
+
+      // 检查是否应用了transform
+      await waitFor(() => {
+        expect(sheet.style.transform).toContain('translateY(50px)');
       });
     });
   });

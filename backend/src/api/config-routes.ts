@@ -15,12 +15,12 @@ import {
 import {
   type NotificationConfigs,
   type SafeNotificationConfigs,
-  mergeNotificationConfigs,
   getNotificationStatus,
-  type DingtalkConfig,
 } from '#shared';
 import type { NotificationChannel } from '../hooks/hook-types.js';
 import type { NotificationManager } from '../notification/notification-manager.js';
+import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
+import type { WsServer } from '../ws/ws-server.js';
 
 const CONFIG_DIR = join(homedir(), '.claude-remote');
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
@@ -79,13 +79,6 @@ function validateConfigStructure(config: unknown): config is UserConfig {
     }
   }
 
-  // dingtalk 可选，如果存在必须是对象且包含 webhookUrl（旧版字段，向后兼容）
-  if ('dingtalk' in cfg && cfg.dingtalk !== undefined) {
-    if (typeof cfg.dingtalk !== 'object' || cfg.dingtalk === null) return false;
-    const dt = cfg.dingtalk as Record<string, unknown>;
-    if (typeof dt.webhookUrl !== 'string') return false;
-  }
-
   // notifications 可选，如果存在必须是对象
   if ('notifications' in cfg && cfg.notifications !== undefined) {
     if (typeof cfg.notifications !== 'object' || cfg.notifications === null) return false;
@@ -96,6 +89,13 @@ function validateConfigStructure(config: unknown): config is UserConfig {
       if (typeof notif.dingtalk !== 'object' || notif.dingtalk === null) return false;
       const dt = notif.dingtalk as Record<string, unknown>;
       if (typeof dt.webhookUrl !== 'string') return false;
+    }
+
+    // notifications.wechat_work 可选，如果存在必须是对象且包含 sendKey
+    if (notif.wechat_work !== undefined) {
+      if (typeof notif.wechat_work !== 'object' || notif.wechat_work === null) return false;
+      const wc = notif.wechat_work as Record<string, unknown>;
+      if (typeof wc.sendKey !== 'string') return false;
     }
   }
 
@@ -131,7 +131,12 @@ async function saveUserConfig(config: UserConfig): Promise<void> {
   await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
-export function createConfigRoutes(authModule: AuthModule, notificationManager?: NotificationManager): Router {
+export function createConfigRoutes(
+  authModule: AuthModule,
+  notificationManager?: NotificationManager,
+  notificationServiceFactory?: NotificationServiceFactory,
+  wsServer?: WsServer,
+): Router {
   const router = Router();
 
   // 复用 auth 路由以支持测试认证
@@ -160,24 +165,15 @@ export function createConfigRoutes(authModule: AuthModule, notificationManager?:
         filledConfig = fillDefaultCommands(filledConfig);
       }
 
-      // 合并通知配置：新版优先，回退旧版
-      const mergedNotifications = mergeNotificationConfigs(
-        filledConfig.notifications,
-        filledConfig.dingtalk
-      );
-
       // 安全处理：不暴露敏感字段（token、webhook URL 等）
-      const { token: _, dingtalk: _dt, notifications: _notif, ...safeConfig } = filledConfig;
+      const { token: _, notifications: _notif, ...safeConfig } = filledConfig;
 
       // 构建通知配置的安全视图
-      const safeNotifications: SafeNotificationConfigs = getNotificationStatus(mergedNotifications);
+      const safeNotifications: SafeNotificationConfigs = getNotificationStatus(filledConfig.notifications);
 
       const responseConfig = {
         ...safeConfig,
-        // 返回新版 notifications 结构
         notifications: safeNotifications,
-        // 保留 dingtalk 字段向后兼容（旧版前端）
-        dingtalk: safeNotifications.dingtalk ?? { configured: false },
       };
 
       res.json({ config: responseConfig, configPath: CONFIG_FILE });
@@ -206,27 +202,37 @@ export function createConfigRoutes(authModule: AuthModule, notificationManager?:
         const existingConfig = (await loadUserConfig()) ?? {};
         const mergedConfig: UserConfig & { notifications?: NotificationConfigs } = { ...existingConfig, ...newConfig };
 
-        // 处理通知配置：
-        // 1. 如果请求包含 notifications.dingtalk，写入新版结构
-        // 2. 如果请求包含 dingtalk（旧版），同时写入新旧两个字段（双写兼容）
-        if (newConfig.notifications?.dingtalk) {
-          mergedConfig.notifications = {
-            ...existingConfig.notifications,
-            ...newConfig.notifications,
-          };
-          // 同时更新旧版 dingtalk 字段（向后兼容）
-          mergedConfig.dingtalk = newConfig.notifications.dingtalk;
-        } else if (newConfig.dingtalk?.webhookUrl) {
-          // 旧版前端只发送 dingtalk，写入两个字段
-          mergedConfig.dingtalk = newConfig.dingtalk;
-          mergedConfig.notifications = {
-            ...existingConfig.notifications,
-            dingtalk: newConfig.dingtalk,
-          };
+        // 处理通知配置：逐渠道深合并，保留已有字段（如 enabled）
+        if (newConfig.notifications) {
+          const existingNotif = existingConfig.notifications ?? {};
+          const merged: NotificationConfigs = { ...existingNotif };
+
+          // 逐渠道合并：新值覆盖，但保留已有字段
+          if (newConfig.notifications.dingtalk) {
+            merged.dingtalk = { ...existingNotif.dingtalk, ...newConfig.notifications.dingtalk };
+          }
+          if (newConfig.notifications.wechat_work) {
+            merged.wechat_work = { ...existingNotif.wechat_work, ...newConfig.notifications.wechat_work };
+          }
+
+          mergedConfig.notifications = merged;
         }
 
         await saveUserConfig(mergedConfig as UserConfig);
       });
+
+      // 触发服务缓存刷新（当前实例即时生效）
+      if (notificationServiceFactory) {
+        notificationServiceFactory.refresh();
+      }
+
+      // 广播刷新消息通知其他实例
+      if (wsServer) {
+        wsServer.broadcast({
+          type: 'service_refresh',
+          source: 'config_update',
+        });
+      }
 
       logger.info({ configPath: CONFIG_FILE }, 'User config updated');
       res.json({ success: true, configPath: CONFIG_FILE });
@@ -262,23 +268,17 @@ export function createConfigRoutes(authModule: AuthModule, notificationManager?:
 
         // 检查渠道是否已配置
         if (channel === 'dingtalk') {
-          // 钉钉：检查新版和旧版配置
-          const dtConfig = notifications.dingtalk ?? config.dingtalk;
+          const dtConfig = notifications.dingtalk;
           if (!dtConfig?.webhookUrl) {
             return { error: 'Channel not configured' } as const;
           }
-          // 更新新版结构
           config.notifications = {
             ...notifications,
             dingtalk: { ...dtConfig, enabled },
           };
-          // 双写旧版结构
-          if (config.dingtalk) {
-            config.dingtalk = { ...config.dingtalk, enabled };
-          }
         } else if (channel === 'wechat_work') {
           const wcConfig = notifications.wechat_work;
-          if (!wcConfig?.apiUrl) {
+          if (!wcConfig?.sendKey) {
             return { error: 'Channel not configured' } as const;
           }
           config.notifications = {
@@ -299,6 +299,20 @@ export function createConfigRoutes(authModule: AuthModule, notificationManager?:
       // 主动刷新缓存（当前实例即时生效）
       if (notificationManager) {
         notificationManager.refresh(channel as NotificationChannel);
+      }
+
+      // 刷新服务缓存
+      if (notificationServiceFactory) {
+        notificationServiceFactory.refresh(channel as NotificationChannel);
+      }
+
+      // 广播刷新消息通知其他实例
+      if (wsServer) {
+        wsServer.broadcast({
+          type: 'service_refresh',
+          channel: channel as 'dingtalk' | 'wechat_work',
+          source: 'config_update',
+        });
       }
 
       logger.info({ channel, enabled }, 'Notification channel enabled status updated');

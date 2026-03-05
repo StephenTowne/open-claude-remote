@@ -10,9 +10,7 @@ import {
   type ConfigurableShortcut,
   type ConfigurableCommand,
   type NotificationConfigs,
-  type DingtalkConfig,
   type SettingsFile,
-  mergeNotificationConfigs,
 } from '#shared';
 import { basename, dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,11 +62,7 @@ export interface UserConfig {
   /** 预设工作目录列表 */
   workspaces?: string[];
 
-  // === 钉钉通知配置（旧版，向后兼容）===
-  /** 钉钉群机器人 Webhook 配置（旧版字段，向后兼容） */
-  dingtalk?: DingtalkConfig;
-
-  // === 多渠道通知配置（新版）===
+  // === 多渠道通知配置 ===
   /** 多渠道通知配置 */
   notifications?: NotificationConfigs;
 
@@ -130,12 +124,37 @@ export function loadUserConfig(configDir?: string): UserConfig {
   try {
     const content = readFileSync(configPath, 'utf-8');
     const config = JSON.parse(content) as UserConfig;
+    const rawConfig = config as Record<string, unknown>;
+    let needsSave = false;
 
     // 向后兼容：迁移旧的 defaultClaudeArgs 到 claudeArgs
-    const rawConfig = config as Record<string, unknown>;
     if (!config.claudeArgs && rawConfig.defaultClaudeArgs) {
       config.claudeArgs = rawConfig.defaultClaudeArgs as string[];
+      delete rawConfig.defaultClaudeArgs;
+      needsSave = true;
       logger.info('Migrated defaultClaudeArgs to claudeArgs');
+    }
+
+    // 迁移旧版 dingtalk 配置到 notifications.dingtalk（仅在新版未配置时）
+    if (rawConfig.dingtalk) {
+      if (!config.notifications) {
+        config.notifications = {};
+      }
+      // 仅在 notifications.dingtalk 不存在时迁移，避免覆盖已有新版配置
+      if (!config.notifications.dingtalk) {
+        config.notifications.dingtalk = rawConfig.dingtalk as { webhookUrl: string; enabled?: boolean };
+        logger.info('Migrated legacy dingtalk config to notifications.dingtalk');
+      } else {
+        logger.info('Skipped dingtalk migration: notifications.dingtalk already exists');
+      }
+      delete rawConfig.dingtalk;
+      needsSave = true;
+    }
+
+    // 如果有迁移发生，保存更新后的配置
+    if (needsSave) {
+      writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+      logger.info({ configPath }, 'User config migrated and saved');
     }
 
     logger.info({ configPath, keys: Object.keys(config) }, 'User config loaded');
@@ -175,13 +194,23 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
   const port = cliOverrides.port ?? userConfig.port ?? DEFAULT_PORT;
   const claudeCwd = userConfig.claudeCwd ?? process.cwd();
 
-  // 合并 claudeArgs：配置文件参数在前，命令行参数在后
+  // claudeArgs 优先级: CLI > 用户配置 > 默认值
+  // 当 CLI 显式传参时，完全使用 CLI 参数（不合并配置文件参数）
+  // 这样可以避免 web-spawned 实例的参数重复累积问题
   const userArgs = userConfig.claudeArgs ?? [];
   const cliArgs = cliOverrides.claudeArgs ?? [];
-  const mergedArgs = [...userArgs, ...cliArgs];
+
+  // 如果 CLI 传了参数（非 undefined），完全使用 CLI 参数
+  // 否则使用配置文件参数
+  const mergedArgs = cliOverrides.claudeArgs !== undefined ? cliArgs : userArgs;
 
   if (userArgs.length > 0 && cliArgs.length > 0) {
-    logger.info({ userArgs, cliArgs, mergedArgs }, 'Merged claudeArgs from config file and CLI');
+    logger.info(
+      { userArgs, cliArgs, mergedArgs },
+      'Using CLI claudeArgs (ignoring config file args to avoid duplication)',
+    );
+  } else if (mergedArgs.length > 0) {
+    logger.debug({ mergedArgs }, 'Using claudeArgs');
   }
 
   const config: AppConfig = {
@@ -253,13 +282,6 @@ export function createClaudeSettings(port: number, existingSettings?: Record<str
 
   const hooksConfig = {
     hooks: {
-      // 权限审批请求
-      PermissionRequest: [
-        {
-          matcher: "",
-          hooks: [{ type: "command", command: hookCommand }]
-        }
-      ],
       // 通知事件（permission_prompt, idle_prompt, elicitation_dialog）
       Notification: [
         {
@@ -275,22 +297,8 @@ export function createClaudeSettings(port: number, existingSettings?: Record<str
           hooks: [{ type: "command", command: hookCommand }]
         },
       ],
-      // 用户提问工具
-      PreToolUse: [
-        {
-          matcher: "AskUserQuestion",
-          hooks: [{ type: "command", command: hookCommand }]
-        }
-      ],
       // 任务完成（用于检测用户响应后任务继续执行）
       Stop: [
-        {
-          matcher: "",
-          hooks: [{ type: "command", command: hookCommand }]
-        }
-      ],
-      // 会话结束
-      SessionEnd: [
         {
           matcher: "",
           hooks: [{ type: "command", command: hookCommand }]

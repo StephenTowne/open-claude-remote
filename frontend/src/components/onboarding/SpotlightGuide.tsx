@@ -123,6 +123,7 @@ export function SpotlightGuide() {
         bottom: 0,
         zIndex: 2000,
         cursor: 'pointer',
+        WebkitTapHighlightColor: 'transparent',
       }}
       onClick={(e) => {
         // 点击镂空区域或气泡内部不触发关闭

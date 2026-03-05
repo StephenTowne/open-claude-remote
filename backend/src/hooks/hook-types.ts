@@ -11,14 +11,12 @@ export type HookEventName =
   | 'SessionStart'
   | 'UserPromptSubmit'
   | 'PreToolUse'
-  | 'PermissionRequest'
   | 'PostToolUse'
   | 'PostToolUseFailure'
   | 'Notification'
   | 'SubagentStart'
   | 'SubagentStop'
   | 'Stop'
-  | 'SessionEnd'
   | 'PreCompact';
 
 // ==============================
@@ -88,17 +86,6 @@ export interface PreToolUsePayload extends BaseHookPayload {
   tool_input: Record<string, unknown>;
   /** 工具调用 ID */
   tool_use_id: string;
-}
-
-/** PermissionRequest: 权限对话框出现 */
-export interface PermissionRequestPayload extends BaseHookPayload {
-  hook_event_name: 'PermissionRequest';
-  /** 工具名称 */
-  tool_name: string;
-  /** 工具输入参数 */
-  tool_input: Record<string, unknown>;
-  /** 权限建议选项 */
-  permission_suggestions?: unknown[];
 }
 
 /** PostToolUse: 工具调用成功 */
@@ -173,13 +160,6 @@ export interface StopPayload extends BaseHookPayload {
   last_assistant_message?: string;
 }
 
-/** SessionEnd: 会话结束 */
-export interface SessionEndPayload extends BaseHookPayload {
-  hook_event_name: 'SessionEnd';
-  /** 结束原因 */
-  reason: string;
-}
-
 /** PreCompact: 压缩前 */
 export interface PreCompactPayload extends BaseHookPayload {
   hook_event_name: 'PreCompact';
@@ -197,14 +177,12 @@ export type HookPayload =
   | SessionStartPayload
   | UserPromptSubmitPayload
   | PreToolUsePayload
-  | PermissionRequestPayload
   | PostToolUsePayload
   | PostToolUseFailurePayload
   | NotificationPayload
   | SubagentStartPayload
   | SubagentStopPayload
   | StopPayload
-  | SessionEndPayload
   | PreCompactPayload;
 
 // ==============================
@@ -215,12 +193,8 @@ export type HookPayload =
  * 通知事件类型（用于 HookNotification）
  */
 export enum HookEventType {
-  /** 权限审批请求 */
-  PERMISSION_REQUEST = 'permission_request',
-  /** 等待用户输入 */
+  /** 通知事件（permission_prompt, idle_prompt, elicitation_dialog 等） */
   NOTIFICATION = 'notification',
-  /** 会话结束 */
-  SESSION_ENDED = 'session_ended',
 }
 
 /**

@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 
 /**
+ * 拖拽配置常量
+ */
+const DRAG_CLOSE_THRESHOLD = 100; // 拖拽超过此距离即关闭
+const DRAG_CLOSE_VELOCITY = 300; // 拖拽速度阈值 (px/s)
+
+/**
  * 选项数据结构
  */
 export interface ActionSheetOption<T> {
@@ -23,7 +29,6 @@ export interface ActionSheetSelectProps<T> {
   placeholder?: string;
   disabled?: boolean;
   id?: string;
-  searchPlaceholder?: string;
   emptyMessage?: string;
   /** 触发器图标 */
   triggerIcon?: ReactNode;
@@ -43,7 +48,7 @@ const ANIMATION_DURATION = 300;
  * 特性：
  * - 点击触发器后，从底部弹出选择面板
  * - 面板高度约 70vh，最大化可视区域
- * - 内置搜索功能
+ * - 紧凑单行布局：label (description)
  * - 流畅的滑入/滑出动画
  * - 支持键盘导航
  * - 通用设计，支持任意选项类型
@@ -55,33 +60,19 @@ export function ActionSheetSelect<T>({
   placeholder = 'Select…',
   disabled = false,
   id,
-  searchPlaceholder = 'Search…',
   emptyMessage = 'No options available',
   triggerIcon,
   getDisplayLabel,
 }: ActionSheetSelectProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [searchValue, setSearchValue] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const [searchActive, setSearchActive] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // 过滤选项
-  const filteredOptions = useMemo(() => {
-    if (!searchValue.trim()) {
-      return options;
-    }
-    const searchLower = searchValue.toLowerCase();
-    return options.filter(
-      (opt) =>
-        opt.label.toLowerCase().includes(searchLower) ||
-        opt.description?.toLowerCase().includes(searchLower) ||
-        String(opt.value).toLowerCase().includes(searchLower)
-    );
-  }, [options, searchValue]);
+  const dragStartYRef = useRef(0);
+  const dragStartTimeRef = useRef(0);
 
   // 获取当前选中项
   const selectedOption = useMemo(
@@ -102,21 +93,54 @@ export function ActionSheetSelect<T>({
     if (disabled || options.length === 0) return;
     setIsOpen(true);
     setHighlightedIndex(-1);
-    setSearchValue('');
-    // 移动端不激活搜索框，桌面端自动激活
-    const isTouchDevice = typeof window !== 'undefined' && 'ontouchstart' in window;
-    setSearchActive(!isTouchDevice);
   }, [disabled, options.length]);
 
   // 关闭面板
   const handleClose = useCallback(() => {
     setIsAnimating(false);
+    setDragY(0);
     if (prefersReducedMotion) {
       setIsOpen(false);
     } else {
       setTimeout(() => setIsOpen(false), ANIMATION_DURATION);
     }
   }, []);
+
+  // 拖拽开始
+  const handleDragStart = useCallback((clientY: number) => {
+    setIsDragging(true);
+    dragStartYRef.current = clientY;
+    dragStartTimeRef.current = Date.now();
+    setDragY(0);
+  }, []);
+
+  // 拖拽移动
+  const handleDragMove = useCallback((clientY: number) => {
+    if (!isDragging) return;
+    const deltaY = clientY - dragStartYRef.current;
+    if (deltaY > 0) { // 只允许向下拖拽
+      setDragY(deltaY);
+    }
+  }, [isDragging]);
+
+  // 拖拽结束
+  const handleDragEnd = useCallback(() => {
+    if (!isDragging) return;
+
+    const dragDistance = dragY;
+    const dragDuration = Date.now() - dragStartTimeRef.current;
+    const velocity = dragDuration > 0 ? dragDistance / (dragDuration / 1000) : 0;
+
+    // 如果拖拽距离超过阈值或速度较快，则关闭面板
+    if (dragDistance > DRAG_CLOSE_THRESHOLD || (dragDistance > 50 && velocity > DRAG_CLOSE_VELOCITY)) {
+      handleClose();
+    } else {
+      // 回弹
+      setDragY(0);
+    }
+
+    setIsDragging(false);
+  }, [isDragging, dragY, handleClose]);
 
   // 选择选项
   const handleSelect = useCallback(
@@ -127,30 +151,21 @@ export function ActionSheetSelect<T>({
     [onChange, handleClose]
   );
 
-  // 动画控制
+  // 动画控制 - 使用单次 RAF 确保 DOM 已渲染后再触发动画
   useEffect(() => {
     if (isOpen) {
-      if (prefersReducedMotion) {
+      // 使用 setTimeout 确保浏览器已渲染初始状态（transform: translateY(100%)）
+      const timer = setTimeout(() => {
         setIsAnimating(true);
-      } else {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => setIsAnimating(true));
-        });
-      }
+      }, prefersReducedMotion ? 0 : 10);
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
-
-  // 打开后聚焦搜索框（仅桌面端）
-  useEffect(() => {
-    if (isOpen && isAnimating && searchActive) {
-      searchInputRef.current?.focus();
-    }
-  }, [isOpen, isAnimating, searchActive]);
 
   // 键盘导航
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      const itemCount = filteredOptions.length;
+      const itemCount = options.length;
 
       switch (e.key) {
         case 'ArrowDown':
@@ -170,7 +185,7 @@ export function ActionSheetSelect<T>({
         case 'Enter':
           e.preventDefault();
           if (highlightedIndex >= 0 && highlightedIndex < itemCount) {
-            handleSelect(filteredOptions[highlightedIndex]);
+            handleSelect(options[highlightedIndex]);
           }
           break;
 
@@ -180,7 +195,7 @@ export function ActionSheetSelect<T>({
           break;
       }
     },
-    [filteredOptions, highlightedIndex, handleSelect, handleClose]
+    [options, highlightedIndex, handleSelect, handleClose]
   );
 
   // 空状态
@@ -192,8 +207,15 @@ export function ActionSheetSelect<T>({
     );
   }
 
-  const transitionStyle = prefersReducedMotion ? 'none' : `transform ${ANIMATION_DURATION}ms ease-out`;
+  const transitionStyle = prefersReducedMotion
+    ? 'none'
+    : (isDragging ? 'none' : `transform ${ANIMATION_DURATION}ms ease-out`);
   const overlayTransition = prefersReducedMotion ? 'none' : `background ${ANIMATION_DURATION}ms ease-out`;
+
+  // 计算面板transform（考虑拖拽位移）
+  const sheetTransform = isDragging
+    ? `translateY(${dragY}px)`
+    : (isAnimating ? 'translateY(0)' : 'translateY(100%)');
 
   return (
     <>
@@ -233,57 +255,33 @@ export function ActionSheetSelect<T>({
           }}
         >
           <div
+            data-testid="action-sheet-panel"
             onClick={(e) => e.stopPropagation()}
             style={{
               ...styles.sheet,
-              transform: isAnimating ? 'translateY(0)' : 'translateY(100%)',
+              transform: sheetTransform,
               transition: transitionStyle,
             }}
           >
             {/* 拖拽手柄 */}
-            <div style={styles.handle} />
-
-            {/* 搜索框 */}
             <div
-              style={{
-                ...styles.searchContainer,
-                ...(searchActive ? {} : styles.searchContainerInactive),
-              }}
-            >
-              <SearchIcon />
-              {searchActive ? (
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={searchValue}
-                  onChange={(e) => {
-                    setSearchValue(e.target.value);
-                    setHighlightedIndex(-1);
-                  }}
-                  onKeyDown={handleKeyDown}
-                  placeholder={searchPlaceholder}
-                  autoComplete="off"
-                  style={styles.searchInput}
-                />
-              ) : (
-                <div
-                  onClick={() => {
-                    setSearchActive(true);
-                    setTimeout(() => searchInputRef.current?.focus(), 0);
-                  }}
-                  style={styles.searchPlaceholder}
-                >
-                  {searchPlaceholder}
-                </div>
-              )}
-            </div>
+              data-testid="drag-handle"
+              style={styles.handle}
+              onTouchStart={(e) => handleDragStart(e.touches[0].clientY)}
+              onTouchMove={(e) => handleDragMove(e.touches[0].clientY)}
+              onTouchEnd={handleDragEnd}
+              onMouseDown={(e) => handleDragStart(e.clientY)}
+              onMouseMove={(e) => isDragging && handleDragMove(e.clientY)}
+              onMouseUp={handleDragEnd}
+              onMouseLeave={handleDragEnd}
+            />
 
             {/* 选项列表 */}
             <div style={styles.listContainer} role="listbox">
-              {filteredOptions.length === 0 ? (
+              {options.length === 0 ? (
                 <div style={styles.emptyList}>{emptyMessage}</div>
               ) : (
-                filteredOptions.map((option, index) => (
+                options.map((option, index) => (
                   <div
                     key={index}
                     role="option"
@@ -297,12 +295,13 @@ export function ActionSheetSelect<T>({
                     }}
                   >
                     {option.icon}
-                    <div style={styles.optionContent}>
-                      <span style={styles.optionLabel}>{option.label}</span>
+                    <span style={styles.optionLabel}>
+                      {option.label}
                       {option.description && (
-                        <span style={styles.optionDescription}>{option.description}</span>
+                        <span style={styles.optionDescriptionInline}> ({option.description})</span>
                       )}
-                    </div>
+                    </span>
+                    {value === option.value && <CheckIcon />}
                   </div>
                 ))
               )}
@@ -315,36 +314,30 @@ export function ActionSheetSelect<T>({
 }
 
 /**
- * SVG 搜索图标
+ * SVG 选中标记图标
  */
-function SearchIcon() {
+function CheckIcon() {
   return (
     <svg
-      width="14"
-      height="14"
-      viewBox="0 0 14 14"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
-      style={styles.searchIcon}
+      style={styles.checkIcon}
     >
-      <circle
-        cx="5.5"
-        cy="5.5"
-        r="4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        fill="none"
-      />
       <path
-        d="M9 9L12.5 12.5"
+        d="M3 8L6.5 11.5L13 5"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="2"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
 }
+
 
 const styles: Record<string, React.CSSProperties> = {
   emptyState: {
@@ -406,15 +399,15 @@ const styles: Record<string, React.CSSProperties> = {
   sheet: {
     width: '100%',
     maxWidth: 480,
-    height: '80vh',
-    maxHeight: '80vh',
+    // 移除 minHeight，让面板高度由内容自然撑开
+    maxHeight: 'calc(80vh - env(safe-area-inset-bottom, 0px))',
     borderRadius: '16px 16px 0 0',
     background: 'var(--bg-secondary)',
     boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.3)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    paddingTop: 'env(safe-area-inset-top, 0)',
+    // 底部抽屉不需要顶部安全区域边距
     paddingBottom: 'var(--safe-bottom)',
   },
 
@@ -428,48 +421,12 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
 
-  searchContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '8px 16px',
-    borderBottom: '1px solid var(--border-color)',
-    background: 'var(--bg-tertiary)',
-    flexShrink: 0,
-  },
-
-  searchIcon: {
-    marginRight: 8,
-    flexShrink: 0,
-    color: 'var(--text-secondary)',
-  },
-
-  searchInput: {
-    flex: 1,
-    border: 'none',
-    background: 'transparent',
-    color: 'var(--text-primary)',
-    fontSize: 14,
-    fontFamily: 'var(--font-mono)',
-  },
-
-  searchContainerInactive: {
-    background: 'var(--bg-tertiary)',
-  },
-
-  searchPlaceholder: {
-    flex: 1,
-    color: 'var(--text-secondary)',
-    fontFamily: 'var(--font-mono)',
-    fontSize: 14,
-    padding: '6px 0',
-    cursor: 'pointer',
-  },
-
   listContainer: {
-    flex: 1,
+    flex: '1 1 auto',  // 允许伸缩，避免高度塌陷
     overflow: 'auto',
     overscrollBehavior: 'contain',
-    padding: '4px 0',
+    WebkitOverflowScrolling: 'touch',
+    padding: '8px 0',
   },
 
   emptyList: {
@@ -483,7 +440,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    padding: '14px 16px',
+    padding: '10px 16px',
     cursor: 'pointer',
     transition: 'background-color 0.1s ease',
   },
@@ -496,15 +453,9 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(88, 166, 255, 0.08)',
   },
 
-  optionContent: {
+  optionLabel: {
     flex: 1,
     minWidth: 0,
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 2,
-  },
-
-  optionLabel: {
     color: 'var(--text-primary)',
     fontFamily: 'var(--font-mono)',
     fontSize: 14,
@@ -513,12 +464,14 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap',
   },
 
-  optionDescription: {
+  optionDescriptionInline: {
     color: 'var(--text-secondary)',
-    fontFamily: 'var(--font-mono)',
     fontSize: 12,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+  },
+
+  checkIcon: {
+    marginLeft: 'auto',
+    flexShrink: 0,
+    color: 'var(--status-running)',
   },
 };

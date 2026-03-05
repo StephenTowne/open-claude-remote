@@ -13,6 +13,7 @@ import { generateId } from '../../utils/id.js';
 import type { WithId } from './SettingsModal.js';
 import { SortableItemShell } from './SortableItemShell.js';
 import { useDndSensors } from './useDndSensors.js';
+import { mergeTextareaStyle } from '../../styles/input.js';
 
 /** 按 enabled 状态排序：启用的在前，禁用的在后（稳定排序保持相对顺序） */
 const sortByEnabled = <T extends { enabled: boolean }>(items: T[]): T[] =>
@@ -229,12 +230,14 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
             >
               {/* 命令输入/显示 */}
               {editingIndex === index ? (
-                <input
-                  type="text"
+                <textarea
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') saveEdit(index);
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      saveEdit(index);
+                    }
                     if (e.key === 'Escape') {
                       // 取消编辑
                       setEditValue('');
@@ -243,19 +246,23 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                   }}
                   onBlur={() => saveEdit(index)}
                   autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  inputMode="text"
+                  rows={1}
                   placeholder="Enter command…"
                   aria-label={`Command ${index + 1}`}
-                  style={{
+                  style={mergeTextareaStyle({
                     flex: 1,
                     minWidth: 0,
                     height: 36,
                     padding: '0 12px',
-                    borderRadius: 6,
                     border: '2px solid var(--status-running)',
                     background: 'var(--bg-primary)',
                     color: 'var(--text-primary)',
-                    fontSize: 14,
-                  }}
+                    lineHeight: '36px',
+                  })}
                 />
               ) : (
                 <button

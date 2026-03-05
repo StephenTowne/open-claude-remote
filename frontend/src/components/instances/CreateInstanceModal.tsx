@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { getInstanceConfig, createInstance, type InstanceConfigResponse } from '../../services/instance-create-api.js';
 import { ActionSheetSelect, type ActionSheetOption } from '../common/ActionSheetSelect.js';
+import { SegmentedControl } from '../common/SegmentedControl.js';
+import type { SegmentedControlOption } from '../common/SegmentedControl.js';
 import { BottomSheet } from '../common/BottomSheet.js';
+import { mergeTextareaStyle } from '../../styles/input.js';
 import type { SettingsFile, InstanceInfo } from '#shared';
 
 interface CreateInstanceModalProps {
@@ -132,6 +135,37 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
       icon: <FolderIcon />,
     }));
   }, [config]);
+
+  // 将 workspaces 转换为 SegmentedControlOption 格式（用于 workspace 数量较少时）
+  const workspaceSegmentedOptions: SegmentedControlOption<string>[] = useMemo(() => {
+    if (!config) return [];
+    return config.workspaces.map((ws) => ({
+      value: ws,
+      label: getDirectoryName(ws),
+    }));
+  }, [config]);
+
+  // 智能选择控件：workspace 数量 <= 4 时使用 SegmentedControl，否则使用 ActionSheetSelect
+  const shouldUseSegmentedControl = config ? config.workspaces.length <= 4 : false;
+
+  // 将 settingsFiles 转换为 SegmentedControlOption 格式（包含 "None" 选项，用于数量较少时）
+  const settingsSegmentedOptions: SegmentedControlOption<string>[] = useMemo(() => {
+    if (!config) return [];
+    const items: SegmentedControlOption<string>[] = [
+      { value: '', label: 'None', title: 'No settings file' },
+    ];
+    config.settingsFiles.forEach((sf) => {
+      items.push({
+        value: sf.filename,
+        label: sf.displayName,
+        title: `${sf.directoryPath}/${sf.filename}`,
+      });
+    });
+    return items;
+  }, [config]);
+
+  // 智能选择控件：settings 数量（+1 None 选项）<= 4 时使用 SegmentedControl，否则使用 ActionSheetSelect
+  const shouldUseSegmentedSettings = config ? config.settingsFiles.length + 1 <= 4 : false;
 
   // 将 settingsFiles 转换为 ActionSheetOption 格式（包含 "None" 选项）
   const settingsOptions: ActionSheetOption<string>[] = useMemo(() => {
@@ -325,17 +359,26 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
           }}>
             Working Directory *
           </label>
-          <ActionSheetSelect
-            id="cwd-select"
-            options={workspaceOptions}
-            value={cwd || null}
-            onChange={setCwd}
-            placeholder="Select working directory…"
-            searchPlaceholder="Search directories…"
-            emptyMessage="No workspaces available"
-            disabled={!hasWorkspaces}
-            triggerIcon={<FolderIcon />}
-          />
+          {shouldUseSegmentedControl ? (
+            <SegmentedControl
+              options={workspaceSegmentedOptions}
+              value={cwd}
+              onChange={setCwd}
+              disabled={!hasWorkspaces}
+              aria-label="Working directory"
+            />
+          ) : (
+            <ActionSheetSelect
+              id="cwd-select"
+              options={workspaceOptions}
+              value={cwd || null}
+              onChange={setCwd}
+              placeholder="Select working directory…"
+              emptyMessage="No workspaces available"
+              disabled={!hasWorkspaces}
+              triggerIcon={<FolderIcon />}
+            />
+          )}
           {!hasWorkspaces && (
             <p style={{
               fontSize: 12,
@@ -359,23 +402,23 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
           }}>
             Instance Name (optional)
           </label>
-          <input
+          <textarea
             id="instance-name"
-            type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            inputMode="text"
+            rows={1}
             placeholder="Defaults to working directory name"
-            style={{
-              width: '100%',
-              padding: '10px 12px',
+            style={mergeTextareaStyle({
               borderRadius: 8,
               border: '1px solid var(--border-color)',
               background: 'var(--bg-tertiary)',
               color: 'var(--text-primary)',
-              fontSize: 14,
-              boxSizing: 'border-box',
-            }}
+            })}
           />
         </div>
 
@@ -391,15 +434,23 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
             }}>
               Settings File (optional)
             </label>
-            <ActionSheetSelect
-              id="settings-select"
-              options={settingsOptions}
-              value={settingsFile || null}
-              onChange={setSettingsFile}
-              placeholder="None"
-              searchPlaceholder="Search settings files…"
-              triggerIcon={<SettingsIcon />}
-            />
+            {shouldUseSegmentedSettings ? (
+              <SegmentedControl
+                options={settingsSegmentedOptions}
+                value={settingsFile}
+                onChange={setSettingsFile}
+                aria-label="Settings file"
+              />
+            ) : (
+              <ActionSheetSelect
+                id="settings-select"
+                options={settingsOptions}
+                value={settingsFile || null}
+                onChange={setSettingsFile}
+                placeholder="None"
+                triggerIcon={<SettingsIcon />}
+              />
+            )}
             <p style={{
               fontSize: 11,
               color: 'var(--text-secondary)',
@@ -422,23 +473,23 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
           }}>
             Claude Arguments (optional)
           </label>
-          <input
+          <textarea
             id="claude-args"
-            type="text"
             value={claudeArgs}
             onChange={(e) => setClaudeArgs(e.target.value)}
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            inputMode="text"
+            rows={1}
             placeholder="e.g., chat --model claude-sonnet-4-6"
-            style={{
-              width: '100%',
-              padding: '10px 12px',
+            style={mergeTextareaStyle({
               borderRadius: 8,
               border: '1px solid var(--border-color)',
               background: 'var(--bg-tertiary)',
               color: 'var(--text-primary)',
-              fontSize: 14,
-              boxSizing: 'border-box',
-            }}
+            })}
           />
           <p style={{
             fontSize: 11,

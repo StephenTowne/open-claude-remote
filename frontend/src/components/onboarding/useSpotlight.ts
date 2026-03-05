@@ -132,7 +132,9 @@ export function useSpotlight(): UseSpotlightReturn {
     element.style.zIndex = '2001'; // 高于遮罩层 z-index: 2000
 
     return () => {
-      // 恢复原始样式
+      // 同步恢复原始样式
+      // 不能用 requestAnimationFrame：当连续步骤指向同一元素时，
+      // 异步恢复会导致下一个 effect 捕获到被污染的 "原始样式"
       element.style.outline = originalOutline;
       element.style.outlineOffset = originalOutlineOffset;
       element.style.position = originalPosition;
@@ -181,7 +183,8 @@ export function useSpotlight(): UseSpotlightReturn {
   const handleNext = useCallback(() => {
     if (currentStep < totalSteps - 1) {
       setCurrentStep(currentStep + 1);
-      setIsLoading(true);
+      // 不在此处设置 isLoading(true)，保持旧状态直到新 targetRect 计算完成
+      // 这样可以避免步骤切换时的渲染闪动
     } else {
       handleComplete();
     }
@@ -190,7 +193,7 @@ export function useSpotlight(): UseSpotlightReturn {
   const handlePrev = useCallback(() => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
-      setIsLoading(true);
+      // 不在此处设置 isLoading(true)，保持旧状态直到新 targetRect 计算完成
     }
   }, [currentStep]);
 

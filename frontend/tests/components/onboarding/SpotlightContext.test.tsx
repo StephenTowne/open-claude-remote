@@ -53,7 +53,7 @@ describe('SpotlightContext', () => {
 
     expect(screen.getByTestId('visible').textContent).toBe('true');
     expect(screen.getByTestId('current-step').textContent).toBe('0');
-    expect(screen.getByTestId('total-steps').textContent).toBe('6');
+    expect(screen.getByTestId('total-steps').textContent).toBe('7');
   });
 
   it('should hide spotlight when localStorage key is set', () => {
@@ -110,8 +110,8 @@ describe('SpotlightContext', () => {
       </SpotlightProvider>
     );
 
-    // Click through all 6 steps
-    for (let i = 0; i < 6; i++) {
+    // Click through all 7 steps
+    for (let i = 0; i < 7; i++) {
       await act(async () => {
         screen.getByTestId('next-btn').click();
       });

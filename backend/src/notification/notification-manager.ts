@@ -69,7 +69,7 @@ export class NotificationManager {
         dingtalk?: { webhookUrl: string; enabled?: boolean };
         notifications?: {
           dingtalk?: { webhookUrl: string; enabled?: boolean };
-          wechat_work?: { apiUrl: string; enabled?: boolean };
+          wechat_work?: { sendKey: string; enabled?: boolean };
         };
       };
 
@@ -84,7 +84,7 @@ export class NotificationManager {
 
       if (channel === 'wechat_work') {
         const wechatConfig = config.notifications?.wechat_work;
-        if (!wechatConfig?.apiUrl) {
+        if (!wechatConfig?.sendKey) {
           return true; // 未配置，默认启用（不会被调用）
         }
         return wechatConfig.enabled ?? true;

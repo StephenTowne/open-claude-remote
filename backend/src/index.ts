@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, readdirSync, unlinkSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -16,9 +16,8 @@ import { SessionController } from './session/session-controller.js';
 import { TerminalRelay } from './terminal/terminal-relay.js';
 import { createApiRouter } from './api/router.js';
 import { PushService } from './push/push-service.js';
-import { DingtalkService } from './notification/dingtalk-service.js';
-import { WechatWorkService } from './notification/wechat-work-service.js';
 import { createNotificationManager } from './notification/notification-manager.js';
+import { createNotificationServiceFactory } from './notification/notification-service-factory.js';
 import { logger, setInstanceContext } from './logger/logger.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { findAvailablePort } from './registry/port-finder.js';
@@ -107,38 +106,8 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 9.1. Create NotificationManager for dynamic enabled status checking
   const notificationManager = createNotificationManager();
 
-  // 9.5. Setup Dingtalk service (if configured)
-  const userConfigPath = resolve(sharedConfigDir, 'config.json');
-  let dingtalkService: DingtalkService | null = null;
-  let wechatWorkService: WechatWorkService | null = null;
-  try {
-    if (existsSync(userConfigPath)) {
-      const userConfigContent = readFileSync(userConfigPath, 'utf-8');
-      const userConfig = JSON.parse(userConfigContent) as {
-        dingtalk?: { webhookUrl: string; enabled?: boolean };
-        notifications?: {
-          dingtalk?: { webhookUrl: string; enabled?: boolean };
-          wechat_work?: { apiUrl: string; enabled?: boolean };
-        };
-      };
-
-      // 钉钉配置：优先使用新版 notifications 结构，回退到旧版
-      const dingtalkConfig = userConfig.notifications?.dingtalk ?? userConfig.dingtalk;
-      if (dingtalkConfig?.webhookUrl && dingtalkConfig.enabled !== false) {
-        dingtalkService = new DingtalkService(dingtalkConfig.webhookUrl);
-        logger.info('Dingtalk notification service initialized');
-      }
-
-      // 微信配置：仅使用新版 notifications 结构
-      const wechatConfig = userConfig.notifications?.wechat_work;
-      if (wechatConfig?.apiUrl && wechatConfig.enabled !== false) {
-        wechatWorkService = new WechatWorkService(wechatConfig.apiUrl);
-        logger.info('WeChat notification service initialized');
-      }
-    }
-  } catch (err) {
-    logger.warn({ err }, 'Failed to load notification config, skipping');
-  }
+  // 9.2. Create NotificationServiceFactory for lazy-loading notification services
+  const notificationServiceFactory = createNotificationServiceFactory();
 
   // 10. Session controller reference (set after PTY spawn)
   let sessionController: SessionController | null = null;
@@ -146,7 +115,10 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 10.5. Create Instance Spawner (for creating new instances via API)
   const instanceSpawner = new InstanceSpawner();
 
-  // 11. Mount REST API (with instance routes)
+  // 11. Create WebSocket server (needed for API routes)
+  const wsServer = new WsServer(httpServer, authModule);
+
+  // 12. Mount REST API (with instance routes)
   app.use('/api', createApiRouter({
     authModule,
     hookReceiver,
@@ -156,9 +128,11 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     currentInstanceId: instanceId,
     instanceSpawner,
     notificationManager,
+    notificationServiceFactory,
+    wsServer,
   }));
 
-  // 12. Serve frontend static files (if built)
+  // 13. Serve frontend static files (if built)
   const __dirname = dirname(fileURLToPath(import.meta.url));
   // 开发模式 (tsx backend/src/index.ts): __dirname = backend/src/ → ../../frontend-dist
   // 生产构建 (node dist/backend/src/index.js): __dirname = dist/backend/src/ → ../../../frontend-dist
@@ -179,9 +153,6 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     logger.warn('Frontend dist not found, skipping static file serving');
   }
 
-  // 13. Create WebSocket server
-  const wsServer = new WsServer(httpServer, authModule);
-
   // 14. Spawn PTY with Claude Code CLI
   const ptyManager = new PtyManager();
 
@@ -193,12 +164,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   sessionController = new SessionController(ptyManager, wsServer, hookReceiver, config.maxBufferLines, relay);
   sessionController.setPushService(pushService);
   sessionController.setNotificationManager(notificationManager);
-  if (dingtalkService) {
-    sessionController.setDingtalkService(dingtalkService);
-  }
-  if (wechatWorkService) {
-    sessionController.setWechatWorkService(wechatWorkService);
-  }
+  sessionController.setNotificationServiceFactory(notificationServiceFactory);
   // 设置实例 URL（初始化）
   const instanceUrl = `http://${config.displayIp}:${actualPort}`;
   sessionController.setInstanceUrl(instanceUrl);

@@ -151,6 +151,7 @@ export function InstanceTabs({ onSwitch, onCopySuccess }: InstanceTabsProps) {
             return (
               <button
                 key={inst.instanceId}
+                data-testid="instance-tab"
                 onClick={() => handleTabClick(inst.instanceId)}
                 onTouchStart={(e) => handleTouchStart(inst, e)}
                 onTouchEnd={handleTouchEnd}

@@ -1,21 +1,22 @@
 import { useState } from 'react';
-import { WECHAT_WORK_API_URL_PATTERN } from '#shared';
+import { SENDKEY_PATTERN } from '#shared';
+import { mergeTextareaStyle } from '../../styles/input.js';
 
 interface WechatWorkConfigFormProps {
-  apiUrl: string;
-  onChange: (apiUrl: string) => void;
+  sendKey: string;
+  onChange: (sendKey: string) => void;
   configured?: boolean;
 }
 
 export function WechatWorkConfigForm({
-  apiUrl,
+  sendKey,
   onChange,
   configured,
 }: WechatWorkConfigFormProps) {
   const [showValidation, setShowValidation] = useState(false);
 
-  const isValid = apiUrl === '' || WECHAT_WORK_API_URL_PATTERN.test(apiUrl);
-  const showError = showValidation && !isValid && apiUrl !== '';
+  const isValid = sendKey === '' || SENDKEY_PATTERN.test(sendKey);
+  const showError = showValidation && !isValid && sendKey !== '';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -29,28 +30,27 @@ export function WechatWorkConfigForm({
             color: 'var(--text-primary)',
           }}
         >
-          API URL
+          SendKey
         </label>
-        <input
-          type="url"
+        <textarea
           autoComplete="off"
-          placeholder="https://<uid>.push.ft07.com/send/<sendkey>.send"
-          value={apiUrl}
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          inputMode="text"
+          rows={1}
+          placeholder="SCTxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          value={sendKey}
           onChange={(e) => {
             onChange(e.target.value);
             // 输入时不清除验证状态，保持用户看到的反馈
           }}
           onBlur={() => setShowValidation(true)}
-          style={{
-            width: '100%',
-            padding: '10px 12px',
-            borderRadius: 6,
+          style={mergeTextareaStyle({
             border: `1px solid ${showError ? 'var(--status-error)' : 'var(--border-color)'}`,
             background: 'var(--bg-secondary)',
             color: 'var(--text-primary)',
-            fontSize: 14,
-            boxSizing: 'border-box',
-          }}
+          })}
         />
         {showError && (
           <div
@@ -60,12 +60,12 @@ export function WechatWorkConfigForm({
               color: 'var(--status-error)',
             }}
           >
-            Please enter a valid Server酱³ API URL
+            Please enter a valid SendKey (starts with SCT, at least 13 characters)
           </div>
         )}
       </div>
 
-      {configured && !apiUrl && (
+      {configured && !sendKey && (
         <div
           style={{
             padding: 10,
@@ -75,7 +75,7 @@ export function WechatWorkConfigForm({
             color: 'var(--status-running)',
           }}
         >
-          ✓ Configured. Enter a new API URL to update.
+          ✓ Configured. Enter a new SendKey to update.
         </div>
       )}
 
@@ -91,7 +91,7 @@ export function WechatWorkConfigForm({
           rel="noopener noreferrer"
           style={{ color: 'var(--status-running)' }}
         >
-          How to get Server酱³ API URL?
+          How to get SendKey?
         </a>
       </div>
     </div>

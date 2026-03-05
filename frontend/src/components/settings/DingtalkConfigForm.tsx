@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DINGTALK_WEBHOOK_PATTERN } from '#shared';
+import { mergeTextareaStyle } from '../../styles/input.js';
 
 interface DingtalkConfigFormProps {
   webhookUrl: string;
@@ -31,9 +32,13 @@ export function DingtalkConfigForm({
         >
           Webhook URL
         </label>
-        <input
-          type="url"
+        <textarea
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          inputMode="text"
+          rows={1}
           placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
           value={webhookUrl}
           onChange={(e) => {
@@ -41,16 +46,11 @@ export function DingtalkConfigForm({
             // 输入时不清除验证状态，保持用户看到的反馈
           }}
           onBlur={() => setShowValidation(true)}
-          style={{
-            width: '100%',
-            padding: '10px 12px',
-            borderRadius: 6,
+          style={mergeTextareaStyle({
             border: `1px solid ${showError ? 'var(--status-error)' : 'var(--border-color)'}`,
             background: 'var(--bg-secondary)',
             color: 'var(--text-primary)',
-            fontSize: 14,
-            boxSizing: 'border-box',
-          }}
+          })}
         />
         {showError && (
           <div

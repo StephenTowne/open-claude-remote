@@ -12,6 +12,8 @@ import { PushService } from '../push/push-service.js';
 import { InstanceSpawner } from '../registry/instance-spawner.js';
 import type { SessionController } from '../session/session-controller.js';
 import type { NotificationManager } from '../notification/notification-manager.js';
+import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
+import type { WsServer } from '../ws/ws-server.js';
 import type { InstanceInfo } from '#shared';
 
 export interface ApiRouterOptions {
@@ -23,6 +25,8 @@ export interface ApiRouterOptions {
   currentInstanceId?: string;
   instanceSpawner?: InstanceSpawner;
   notificationManager?: NotificationManager;
+  notificationServiceFactory?: NotificationServiceFactory;
+  wsServer?: WsServer;
 }
 
 export function createApiRouter(opts: ApiRouterOptions): Router;
@@ -56,7 +60,12 @@ export function createApiRouter(
   router.use(createAuthRoutes(opts.authModule));
   router.use(createStatusRoutes(opts.authModule, opts.getController));
   router.use(createHookRoutes(opts.hookReceiver));
-  router.use(createConfigRoutes(opts.authModule, opts.notificationManager));
+  router.use(createConfigRoutes(
+    opts.authModule,
+    opts.notificationManager,
+    opts.notificationServiceFactory,
+    opts.wsServer,
+  ));
 
   if (opts.pushService) {
     router.use(createPushRoutes(opts.authModule, opts.pushService));

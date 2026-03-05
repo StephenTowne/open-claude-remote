@@ -60,6 +60,14 @@ function createMockDingtalkService() {
   };
 }
 
+function createMockNotificationServiceFactory(dingtalkService?: ReturnType<typeof createMockDingtalkService>, wechatWorkService?: ReturnType<typeof createMockDingtalkService>) {
+  return {
+    getDingtalkService: vi.fn(() => dingtalkService ?? null),
+    getWechatWorkService: vi.fn(() => wechatWorkService ?? null),
+    refresh: vi.fn(),
+  };
+}
+
 // ---- Lazy import after vi.mock setup ----
 vi.mock('../../../src/logger/logger.js', () => ({
   logger: {
@@ -410,7 +418,7 @@ describe('SessionController', () => {
 
       // 触发 notification 事件
       hookReceiver.emit('notification', {
-        eventType: 'PreToolUse',
+        eventType: 'notification',
         tool: 'Bash',
         title: 'Approval Required: Bash',
         message: 'Claude requests to execute command: ls -la',
@@ -432,7 +440,7 @@ describe('SessionController', () => {
       controller.setInstanceUrl('http://192.168.1.100:3000');
 
       hookReceiver.emit('notification', {
-        eventType: 'PreToolUse',
+        eventType: 'notification',
         tool: 'Bash',
         title: 'Approval Required: Bash',
         message: 'Claude requests to execute command: ls -la',
@@ -449,11 +457,12 @@ describe('SessionController', () => {
     it('should include instance URL in dingtalk notification when set', async () => {
       const controller = new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
       const dingtalkService = createMockDingtalkService();
-      controller.setDingtalkService(dingtalkService as any);
+      const factory = createMockNotificationServiceFactory(dingtalkService);
+      controller.setNotificationServiceFactory(factory as any);
       controller.setInstanceUrl('http://192.168.1.100:3000');
 
       hookReceiver.emit('notification', {
-        eventType: 'PreToolUse',
+        eventType: 'notification',
         tool: 'Bash',
         title: 'Approval Required: Bash',
         message: 'Claude requests to execute command: ls -la',
@@ -471,7 +480,7 @@ describe('SessionController', () => {
       const controller = new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
 
       hookReceiver.emit('notification', {
-        eventType: 'PreToolUse',
+        eventType: 'notification',
         tool: 'Bash',
         title: 'Approval Required: Bash',
         message: 'Claude requests to execute command: ls -la',
@@ -489,11 +498,12 @@ describe('SessionController', () => {
     it('should append URL after detail in dingtalk notification', async () => {
       const controller = new SessionController(ptyManager as any, wsServer as any, hookReceiver as any, 1000);
       const dingtalkService = createMockDingtalkService();
-      controller.setDingtalkService(dingtalkService as any);
+      const factory = createMockNotificationServiceFactory(dingtalkService);
+      controller.setNotificationServiceFactory(factory as any);
       controller.setInstanceUrl('http://192.168.1.100:3000');
 
       hookReceiver.emit('notification', {
-        eventType: 'PreToolUse',
+        eventType: 'notification',
         tool: 'Bash',
         title: 'Approval Required: Bash',
         message: 'Claude requests to execute command',

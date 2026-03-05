@@ -14,7 +14,7 @@ export interface DingtalkConfig {
 
 /** 企业微信（Server酱³）渠道配置 */
 export interface WechatWorkConfig {
-  apiUrl: string;
+  sendKey: string;
   enabled?: boolean; // 是否启用，默认 true
 }
 
@@ -88,49 +88,6 @@ export const NOTIFICATION_CHANNELS: NotificationChannelMetas = {
 } as const;
 
 /**
- * 将旧版 dingtalk 配置迁移到新版 notifications 结构
- * @param oldConfig 旧版配置（包含 dingtalk 字段）
- * @returns 新版配置（包含 notifications 字段）
- */
-export function migrateNotificationConfig(oldConfig: { dingtalk?: DingtalkConfig }): { notifications?: NotificationConfigs } {
-  if (!oldConfig.dingtalk) {
-    return {};
-  }
-  return {
-    notifications: {
-      dingtalk: oldConfig.dingtalk,
-    },
-  };
-}
-
-/**
- * 合并通知配置（新版优先，回退到旧版）
- * @param notifications 新版通知配置
- * @param oldDingtalk 旧版钉钉配置
- * @returns 合并后的配置
- */
-export function mergeNotificationConfigs(
-  notifications?: NotificationConfigs,
-  oldDingtalk?: DingtalkConfig
-): NotificationConfigs {
-  const result: NotificationConfigs = {};
-
-  // 钉钉配置：优先使用新版，回退到旧版
-  if (notifications?.dingtalk) {
-    result.dingtalk = notifications.dingtalk;
-  } else if (oldDingtalk?.webhookUrl) {
-    result.dingtalk = oldDingtalk;
-  }
-
-  // 企业微信配置：直接透传
-  if (notifications?.wechat_work) {
-    result.wechat_work = notifications.wechat_work;
-  }
-
-  return result;
-}
-
-/**
  * 检查通知渠道是否已配置
  * @param configs 通知配置
  * @returns 各渠道配置状态（包含 enabled 状态）
@@ -147,7 +104,7 @@ export function getNotificationStatus(configs?: NotificationConfigs): SafeNotifi
 
   if (configs?.wechat_work) {
     result.wechat_work = {
-      configured: !!configs.wechat_work.apiUrl,
+      configured: !!configs.wechat_work.sendKey,
       enabled: configs.wechat_work.enabled,
     };
   }
@@ -171,10 +128,10 @@ export function validateDingtalkConfig(config?: DingtalkConfig): boolean {
 }
 
 /**
- * Server酱³ API URL 格式验证
- * URL 格式: https://<uid>.push.ft07.com/send/<sendkey>.send
+ * Server酱 SendKey 格式验证
+ * SendKey 格式: SCT开头的字母数字组合（如 SCT44554TYXsr5mdP3gwWdD4ed6dKJ5cd）
  */
-export const WECHAT_WORK_API_URL_PATTERN = /^https:\/\/[a-zA-Z0-9-]+\.push\.ft07\.com\/send\/[a-zA-Z0-9]+\.send$/;
+export const SENDKEY_PATTERN = /^SCT[a-zA-Z0-9]{10,}$/;
 
 /**
  * 验证企业微信配置是否合法
@@ -183,5 +140,14 @@ export const WECHAT_WORK_API_URL_PATTERN = /^https:\/\/[a-zA-Z0-9-]+\.push\.ft07
  */
 export function validateWechatWorkConfig(config?: WechatWorkConfig): boolean {
   if (!config) return false;
-  return WECHAT_WORK_API_URL_PATTERN.test(config.apiUrl);
+  return SENDKEY_PATTERN.test(config.sendKey);
+}
+
+/**
+ * 从 SendKey 构建 Server酱 API URL
+ * @param sendKey Server酱 SendKey
+ * @returns API URL
+ */
+export function buildWechatWorkApiUrl(sendKey: string): string {
+  return `https://sctapi.ftqq.com/${sendKey}.send`;
 }

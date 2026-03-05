@@ -507,24 +507,25 @@ describe('config-routes', () => {
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      // 验证新版 notifications 结构
+      // 验证 notifications 结构
       expect(body.config.notifications).toBeDefined();
       expect(body.config.notifications.dingtalk).toEqual({ configured: true });
-      // 验证旧版 dingtalk 字段仍然存在（向后兼容）
-      expect(body.config.dingtalk).toEqual({ configured: true });
       // 验证不暴露实际 webhook URL
       expect(body.config.notifications.dingtalk.webhookUrl).toBeUndefined();
-      expect(body.config.dingtalk.webhookUrl).toBeUndefined();
     });
 
-    it('should migrate old dingtalk config to notifications (read fallback)', async () => {
+    it('should handle migrated config (old dingtalk migrated to notifications.dingtalk)', async () => {
+      // 注意：迁移发生在 loadUserConfig() 中，不是在 API 层
+      // 这里测试的是迁移后 API 读取 notifications 结构
       mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
       writeFileSync(
         configPath,
         JSON.stringify({
           shortcuts: [],
           commands: [],
-          dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=old123' },
+          notifications: {
+            dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=migrated123' },
+          },
         }),
         'utf-8'
       );
@@ -536,12 +537,10 @@ describe('config-routes', () => {
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      // 验证旧版 dingtalk 配置被正确识别
       expect(body.config.notifications.dingtalk).toEqual({ configured: true });
-      expect(body.config.dingtalk).toEqual({ configured: true });
     });
 
-    it('should save notifications config with dual-write (new and old fields)', async () => {
+    it('should save notifications config correctly', async () => {
       const cookie = await authenticate();
 
       const res = await fetch(`${baseUrl}/api/config`, {
@@ -558,65 +557,9 @@ describe('config-routes', () => {
 
       expect(res.status).toBe(200);
 
-      // 验证双写：同时写入 notifications 和 dingtalk
+      // 验证只写入 notifications 结构
       const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
       expect(saved.notifications?.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=new123');
-      expect(saved.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=new123');
-    });
-
-    it('should support old dingtalk format in PUT (backward compatibility)', async () => {
-      const cookie = await authenticate();
-
-      const res = await fetch(`${baseUrl}/api/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Cookie: cookie },
-        body: JSON.stringify({
-          shortcuts: [],
-          commands: [],
-          dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=old456' },
-        }),
-      });
-
-      expect(res.status).toBe(200);
-
-      // 验证双写：旧格式也会被写入新版 notifications
-      const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
-      expect(saved.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=old456');
-      expect(saved.notifications?.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=old456');
-    });
-
-    it('new notifications should take precedence over old dingtalk', async () => {
-      // 先创建带有旧版 dingtalk 配置的文件
-      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
-      writeFileSync(
-        configPath,
-        JSON.stringify({
-          shortcuts: [],
-          commands: [],
-          dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=old789' },
-        }),
-        'utf-8'
-      );
-
-      const cookie = await authenticate();
-
-      // 使用新版 notifications 更新
-      const res = await fetch(`${baseUrl}/api/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Cookie: cookie },
-        body: JSON.stringify({
-          notifications: {
-            dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=new789' },
-          },
-        }),
-      });
-
-      expect(res.status).toBe(200);
-
-      // 验证新版配置覆盖了旧版
-      const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
-      expect(saved.notifications?.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=new789');
-      expect(saved.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=new789');
     });
 
     it('should reject invalid notifications structure', async () => {
@@ -636,6 +579,49 @@ describe('config-routes', () => {
       });
 
       expect(res.status).toBe(400);
+    });
+
+    it('should reject invalid wechat_work notifications structure', async () => {
+      const cookie = await authenticate();
+
+      // sendKey 不是字符串
+      let res = await fetch(`${baseUrl}/api/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          notifications: {
+            wechat_work: { sendKey: 12345 },
+          },
+        }),
+      });
+      expect(res.status).toBe(400);
+
+      // wechat_work 不是对象
+      res = await fetch(`${baseUrl}/api/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          notifications: {
+            wechat_work: 'invalid',
+          },
+        }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('should accept valid wechat_work notifications structure', async () => {
+      const cookie = await authenticate();
+
+      const res = await fetch(`${baseUrl}/api/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          notifications: {
+            wechat_work: { sendKey: 'SCT123456abcdef' },
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
     });
 
     it('should return empty notification status when no config exists', async () => {
@@ -658,6 +644,222 @@ describe('config-routes', () => {
       const body = await res.json();
       // 没有通知配置时，notifications 应为空对象或未定义
       expect(body.config.notifications?.dingtalk?.configured).not.toBe(true);
+    });
+
+    it('PUT without notifications should preserve existing webhookUrl', async () => {
+      // 已有钉钉和微信配置
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          shortcuts: [],
+          commands: [],
+          notifications: {
+            dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=existing123', enabled: true },
+            wechat_work: { sendKey: 'SCT123456testkey', enabled: true },
+          },
+        }),
+        'utf-8'
+      );
+
+      const cookie = await authenticate();
+
+      // 前端只保存 shortcuts/commands，不含 notifications
+      const res = await fetch(`${baseUrl}/api/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          shortcuts: [{ label: 'New', data: 'x', enabled: true }],
+          commands: [],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      // 已有 webhookUrl 不应被清空
+      const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
+      expect(saved.notifications?.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=existing123');
+      expect(saved.notifications?.dingtalk?.enabled).toBe(true);
+      expect(saved.notifications?.wechat_work?.sendKey).toBe('SCT123456testkey');
+      expect(saved.notifications?.wechat_work?.enabled).toBe(true);
+    });
+
+    it('PUT updating webhookUrl should preserve existing enabled field', async () => {
+      // 已有钉钉配置，enabled 为 false
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          shortcuts: [],
+          commands: [],
+          notifications: {
+            dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=old', enabled: false },
+          },
+        }),
+        'utf-8'
+      );
+
+      const cookie = await authenticate();
+
+      // 更新 URL 但不发送 enabled
+      const res = await fetch(`${baseUrl}/api/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          shortcuts: [],
+          commands: [],
+          notifications: {
+            dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=new' },
+          },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
+      // enabled 应保留为 false（不应被丢弃）
+      expect(saved.notifications?.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=new');
+      expect(saved.notifications?.dingtalk?.enabled).toBe(false);
+    });
+
+    it('PUT updating one channel should not affect other channels', async () => {
+      // 已有钉钉和微信配置
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          shortcuts: [],
+          commands: [],
+          notifications: {
+            dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=dt', enabled: true },
+            wechat_work: { sendKey: 'SCT123456testkey', enabled: false },
+          },
+        }),
+        'utf-8'
+      );
+
+      const cookie = await authenticate();
+
+      // 只更新钉钉
+      const res = await fetch(`${baseUrl}/api/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          shortcuts: [],
+          commands: [],
+          notifications: {
+            dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=dt_new' },
+          },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
+      // 钉钉被更新
+      expect(saved.notifications?.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=dt_new');
+      // 微信不受影响
+      expect(saved.notifications?.wechat_work?.sendKey).toBe('SCT123456testkey');
+      expect(saved.notifications?.wechat_work?.enabled).toBe(false);
+    });
+
+    describe('PATCH /api/config/notifications/:channel/enabled', () => {
+      it('should toggle dingtalk enabled status', async () => {
+        mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+        writeFileSync(
+          configPath,
+          JSON.stringify({
+            notifications: {
+              dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc', enabled: true },
+            },
+          }),
+          'utf-8'
+        );
+
+        const cookie = await authenticate();
+        const res = await fetch(`${baseUrl}/api/config/notifications/dingtalk/enabled`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ enabled: false }),
+        });
+
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.success).toBe(true);
+        expect(body.enabled).toBe(false);
+
+        const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
+        expect(saved.notifications?.dingtalk?.enabled).toBe(false);
+        expect(saved.notifications?.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=abc');
+      });
+
+      it('should toggle wechat_work enabled status', async () => {
+        mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+        writeFileSync(
+          configPath,
+          JSON.stringify({
+            notifications: {
+              wechat_work: { sendKey: 'SCT123456testkey', enabled: true },
+            },
+          }),
+          'utf-8'
+        );
+
+        const cookie = await authenticate();
+        const res = await fetch(`${baseUrl}/api/config/notifications/wechat_work/enabled`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ enabled: false }),
+        });
+
+        expect(res.status).toBe(200);
+
+        const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
+        expect(saved.notifications?.wechat_work?.enabled).toBe(false);
+        expect(saved.notifications?.wechat_work?.sendKey).toBe('SCT123456testkey');
+      });
+
+      it('should reject invalid channel name', async () => {
+        const cookie = await authenticate();
+        const res = await fetch(`${baseUrl}/api/config/notifications/invalid_channel/enabled`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ enabled: true }),
+        });
+
+        expect(res.status).toBe(400);
+      });
+
+      it('should reject non-boolean enabled value', async () => {
+        const cookie = await authenticate();
+        const res = await fetch(`${baseUrl}/api/config/notifications/dingtalk/enabled`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ enabled: 'yes' }),
+        });
+
+        expect(res.status).toBe(400);
+      });
+
+      it('should reject when channel is not configured', async () => {
+        mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+        writeFileSync(
+          configPath,
+          JSON.stringify({ shortcuts: [], commands: [] }),
+          'utf-8'
+        );
+
+        const cookie = await authenticate();
+        const res = await fetch(`${baseUrl}/api/config/notifications/dingtalk/enabled`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ enabled: true }),
+        });
+
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.error).toContain('not configured');
+      });
     });
   });
 });

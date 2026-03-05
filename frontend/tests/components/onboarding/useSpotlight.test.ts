@@ -8,7 +8,8 @@ vi.mock('../../../src/components/onboarding/spotlight-steps.js', async () => {
   return {
     ...actual as object,
     SPOTLIGHT_STEPS: [
-      { target: '[data-spotlight="test-target"]', title: 'Test Step', description: 'Test' }
+      { target: '[data-spotlight="test-target-1"]', title: 'Test Step 1', description: 'Test 1' },
+      { target: '[data-spotlight="test-target-2"]', title: 'Test Step 2', description: 'Test 2' },
     ],
   };
 });
@@ -32,14 +33,15 @@ describe('useSpotlight', () => {
     isolationWrapper.setAttribute('data-isolated', 'true');
     isolationWrapper.innerHTML = `
       <div data-testid="console-page" style="position: relative; width: 100%; height: 100%;">
-        <div data-spotlight="test-target" style="position: absolute; left: 100px; top: 200px; width: 150px; height: 50px;"></div>
+        <div data-spotlight="test-target-1" style="position: absolute; left: 100px; top: 200px; width: 150px; height: 50px;"></div>
+        <div data-spotlight="test-target-2" style="position: absolute; left: 100px; top: 300px; width: 150px; height: 50px;"></div>
       </div>
     `;
     document.body.appendChild(isolationWrapper);
 
     // Mock getBoundingClientRect
     mockGetBoundingClientRect = vi.fn();
-    const targetElement = document.querySelector('[data-spotlight="test-target"]');
+    const targetElement = document.querySelector('[data-spotlight="test-target-1"]');
     if (targetElement) {
       Object.defineProperty(targetElement, 'getBoundingClientRect', {
         value: mockGetBoundingClientRect,
@@ -207,5 +209,116 @@ describe('useSpotlight', () => {
 
     // rect.top (150) - offsetY (-50) = 200
     expect(result.current.targetRect?.top).toBe(200);
+  });
+
+  it('should keep isLoading false when switching steps to avoid flickering', () => {
+    // 为第二个目标元素设置 mock
+    const target2 = document.querySelector('[data-spotlight="test-target-2"]');
+    const mockRect2 = vi.fn().mockReturnValue({
+      left: 100,
+      top: 300,
+      width: 150,
+      height: 50,
+    });
+    if (target2) {
+      Object.defineProperty(target2, 'getBoundingClientRect', {
+        value: mockRect2,
+        configurable: true,
+      });
+    }
+
+    mockGetBoundingClientRect.mockReturnValue({
+      left: 100,
+      top: 200,
+      width: 150,
+      height: 50,
+    });
+
+    const { result } = renderHook(() => useSpotlight());
+
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+
+    // 确认初始状态已加载
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.currentStep).toBe(0);
+
+    // 点击下一步
+    act(() => {
+      result.current.handleNext();
+    });
+
+    // 关键验证：步骤切换时不应将 isLoading 重置为 true
+    // 这样保持界面可见，避免闪动
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.currentStep).toBe(1);
+
+    // 等待新步骤的位置计算完成
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+
+    // 确认新位置已计算
+    expect(result.current.targetRect?.top).toBe(300);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('should keep isLoading false when going to previous step', () => {
+    // 为两个目标元素设置 mock
+    const target2 = document.querySelector('[data-spotlight="test-target-2"]');
+    const mockRect2 = vi.fn().mockReturnValue({
+      left: 100,
+      top: 300,
+      width: 150,
+      height: 50,
+    });
+    if (target2) {
+      Object.defineProperty(target2, 'getBoundingClientRect', {
+        value: mockRect2,
+        configurable: true,
+      });
+    }
+
+    mockGetBoundingClientRect.mockReturnValue({
+      left: 100,
+      top: 200,
+      width: 150,
+      height: 50,
+    });
+
+    const { result } = renderHook(() => useSpotlight());
+
+    // 初始化和前进到第二步
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+
+    act(() => {
+      result.current.handleNext();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+
+    expect(result.current.currentStep).toBe(1);
+    expect(result.current.isLoading).toBe(false);
+
+    // 点击上一步
+    act(() => {
+      result.current.handlePrev();
+    });
+
+    // 关键验证：返回上一步也不应重置 isLoading
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.currentStep).toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+
+    expect(result.current.targetRect?.top).toBe(200);
+    expect(result.current.isLoading).toBe(false);
   });
 });

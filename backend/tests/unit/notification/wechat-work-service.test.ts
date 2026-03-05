@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WechatWorkService } from '../../../src/notification/wechat-work-service.js';
 
 describe('WechatWorkService', () => {
-  const mockApiUrl = 'https://sctptesttoken123456.push.ft07.com/send/abc123.send';
+  const mockSendKey = 'SCT44554TYXsr5mdP3gwWdD4ed6dKJ5cd';
+  const expectedApiUrl = 'https://sctapi.ftqq.com/SCT44554TYXsr5mdP3gwWdD4ed6dKJ5cd.send';
   let service: WechatWorkService;
 
   beforeEach(() => {
-    service = new WechatWorkService(mockApiUrl);
+    service = new WechatWorkService(mockSendKey);
   });
 
   afterEach(() => {
@@ -14,7 +15,7 @@ describe('WechatWorkService', () => {
   });
 
   describe('sendNotification', () => {
-    it('should send notification with correct payload to push.ft07.com', async () => {
+    it('should send notification with correct payload to sctapi.ftqq.com', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ code: 0, message: 'success', data: {} }),
@@ -24,7 +25,7 @@ describe('WechatWorkService', () => {
       await service.sendNotification('Test Title', 'Bash', 'Test message');
 
       expect(mockFetch).toHaveBeenCalledWith(
-        mockApiUrl,
+        expectedApiUrl,
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -89,7 +90,7 @@ describe('WechatWorkService', () => {
       vi.restoreAllMocks();
     });
 
-    it('should skip notification when API URL is empty', async () => {
+    it('should skip notification when SendKey is empty', async () => {
       const emptyService = new WechatWorkService('');
       const mockFetch = vi.fn();
       global.fetch = mockFetch;
@@ -99,8 +100,8 @@ describe('WechatWorkService', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('should reject invalid URL format (not https)', async () => {
-      const invalidService = new WechatWorkService('http://test.push.ft07.com/send/key.send');
+    it('should reject invalid SendKey (not starting with SCT)', async () => {
+      const invalidService = new WechatWorkService('AB123456');
       const mockFetch = vi.fn();
       global.fetch = mockFetch;
 
@@ -109,8 +110,8 @@ describe('WechatWorkService', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('should reject invalid URL format (wrong domain)', async () => {
-      const invalidService = new WechatWorkService('https://evil.com/send/key.send');
+    it('should reject invalid SendKey (lowercase)', async () => {
+      const invalidService = new WechatWorkService('sct123456');
       const mockFetch = vi.fn();
       global.fetch = mockFetch;
 
@@ -119,8 +120,8 @@ describe('WechatWorkService', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('should reject invalid URL format (missing .send suffix)', async () => {
-      const invalidService = new WechatWorkService('https://test.push.ft07.com/send/key');
+    it('should reject invalid SendKey (contains special chars)', async () => {
+      const invalidService = new WechatWorkService('SCT_123-456');
       const mockFetch = vi.fn();
       global.fetch = mockFetch;
 
@@ -129,46 +130,25 @@ describe('WechatWorkService', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('should reject URL with SSRF attack attempts', async () => {
-      // 各种 SSRF 攻击尝试
-      const maliciousUrls = [
-        'https://evil.com@push.ft07.com/send/key.send',     // @ 用户信息注入
-        'https://push.ft07.com.evil.com/send/key.send',     // 域名欺骗
-        'https://push.ft07.com/../../../etc/passwd',        // 路径穿越
-        'https://push.ft07.com:8080/send/key.send',         // 端口注入（子域名格式不对）
-        'https://test.push.ft07.com/send/key.send?redirect=evil', // 查询参数注入
+    it('should accept valid SendKeys with different patterns', async () => {
+      const validKeys = [
+        'SCT123456abcdef',
+        'SCT44554TYXsr5mdP3gwWdD4ed6dKJ5cd',
+        'SCT1234567890',
       ];
 
-      for (const url of maliciousUrls) {
-        const service = new WechatWorkService(url);
-        const mockFetch = vi.fn();
-        global.fetch = mockFetch;
-
-        await service.sendNotification('Title', 'Tool', 'Message');
-
-        expect(mockFetch).not.toHaveBeenCalled();
-      }
-    });
-
-    it('should accept valid URL with different uid patterns', async () => {
-      const validUrls = [
-        'https://abc123.push.ft07.com/send/testkey.send',
-        'https://user-id-123.push.ft07.com/send/SCT123.send',
-        'https://a.push.ft07.com/send/b.send',
-      ];
-
-      for (const url of validUrls) {
-        const service = new WechatWorkService(url);
+      for (const key of validKeys) {
+        const s = new WechatWorkService(key);
         const mockFetch = vi.fn().mockResolvedValue({
           ok: true,
           json: async () => ({ code: 0, message: 'success', data: {} }),
         });
         global.fetch = mockFetch;
 
-        await service.sendNotification('Title', 'Tool', 'Message');
+        await s.sendNotification('Title', 'Tool', 'Message');
 
         expect(mockFetch).toHaveBeenCalledWith(
-          url,
+          `https://sctapi.ftqq.com/${key}.send`,
           expect.objectContaining({ method: 'POST' })
         );
       }
@@ -177,7 +157,7 @@ describe('WechatWorkService', () => {
 
   describe('Message format', () => {
     it('should format message with markdown structure', async () => {
-      const service = new WechatWorkService(mockApiUrl);
+      const service = new WechatWorkService(mockSendKey);
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ code: 0, message: 'success', data: {} }),
@@ -198,7 +178,7 @@ describe('WechatWorkService', () => {
     });
 
     it('should include instance URL in message', async () => {
-      const service = new WechatWorkService(mockApiUrl);
+      const service = new WechatWorkService(mockSendKey);
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ code: 0, message: 'success', data: {} }),

@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 
 interface BottomSheetProps {
   isOpen: boolean;
@@ -7,6 +7,10 @@ interface BottomSheetProps {
   children: ReactNode;
   footer?: ReactNode;
 }
+
+// 拖拽配置常量
+const DRAG_CLOSE_THRESHOLD = 100;
+const DRAG_CLOSE_VELOCITY = 300;
 
 // 检测用户是否偏好减少动效（渲染时读取，无需响应运行时变化）
 const prefersReducedMotion = typeof window !== 'undefined'
@@ -18,15 +22,22 @@ const duration = prefersReducedMotion ? 0 : 300;
  * - 滑入/滑出动画（300ms ease-out），尊重 prefers-reduced-motion
  * - 顶部大圆角 + 拖拽手柄
  * - 点击遮罩关闭
+ * - 拖拽手柄可拖拽关闭
  */
 export function BottomSheet({ isOpen, onClose, title, children, footer }: BottomSheetProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const dragStartYRef = useRef(0);
+  const dragStartTimeRef = useRef(0);
 
   // 动画状态管理
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
+      setDragY(0);
       if (prefersReducedMotion) {
         // 跳过动画，直接显示
         setIsAnimating(true);
@@ -47,10 +58,53 @@ export function BottomSheet({ isOpen, onClose, title, children, footer }: Bottom
     }
   }, [isOpen, isVisible]);
 
+  // 拖拽开始
+  const handleDragStart = useCallback((clientY: number) => {
+    setIsDragging(true);
+    dragStartYRef.current = clientY;
+    dragStartTimeRef.current = Date.now();
+    setDragY(0);
+  }, []);
+
+  // 拖拽移动
+  const handleDragMove = useCallback((clientY: number) => {
+    if (!isDragging) return;
+    const deltaY = clientY - dragStartYRef.current;
+    if (deltaY > 0) { // 只允许向下拖拽
+      setDragY(deltaY);
+    }
+  }, [isDragging]);
+
+  // 拖拽结束
+  const handleDragEnd = useCallback(() => {
+    if (!isDragging) return;
+
+    const dragDistance = dragY;
+    const dragDuration = Date.now() - dragStartTimeRef.current;
+    const velocity = dragDuration > 0 ? dragDistance / (dragDuration / 1000) : 0;
+
+    // 如果拖拽距离超过阈值或速度较快，则关闭面板
+    if (dragDistance > DRAG_CLOSE_THRESHOLD || (dragDistance > 50 && velocity > DRAG_CLOSE_VELOCITY)) {
+      onClose();
+    } else {
+      // 回弹
+      setDragY(0);
+    }
+
+    setIsDragging(false);
+  }, [isDragging, dragY, onClose]);
+
   if (!isVisible) return null;
 
-  const transitionStyle = prefersReducedMotion ? 'none' : `transform ${duration}ms ease-out`;
+  const transitionStyle = prefersReducedMotion
+    ? 'none'
+    : (isDragging ? 'none' : `transform ${duration}ms ease-out`);
   const overlayTransition = prefersReducedMotion ? 'none' : `background ${duration}ms ease-out`;
+
+  // 计算面板transform（考虑拖拽位移）
+  const sheetTransform = isDragging
+    ? `translateY(${dragY}px)`
+    : (isAnimating ? 'translateY(0)' : 'translateY(100%)');
 
   return (
     <div
@@ -74,28 +128,39 @@ export function BottomSheet({ isOpen, onClose, title, children, footer }: Bottom
         style={{
           width: '100%',
           maxWidth: 480,
-          maxHeight: '85vh',
+          // 考虑安全区域
+          maxHeight: 'calc(85vh - env(safe-area-inset-bottom, 0px))',
           borderRadius: '16px 16px 0 0',
           background: 'var(--bg-secondary)',
           boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.3)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          transform: isAnimating ? 'translateY(0)' : 'translateY(100%)',
+          transform: sheetTransform,
           transition: transitionStyle,
           paddingBottom: 'var(--safe-bottom)',
         }}
       >
         {/* 拖拽手柄 */}
-        <div style={{
-          width: 36,
-          height: 4,
-          background: 'var(--text-secondary)',
-          opacity: 0.5,
-          borderRadius: 2,
-          margin: '12px auto',
-          flexShrink: 0,
-        }} />
+        <div
+          style={{
+            width: 36,
+            height: 4,
+            background: 'var(--text-secondary)',
+            opacity: 0.5,
+            borderRadius: 2,
+            margin: '12px auto',
+            flexShrink: 0,
+            cursor: 'pointer',
+          }}
+          onTouchStart={(e) => handleDragStart(e.touches[0].clientY)}
+          onTouchMove={(e) => handleDragMove(e.touches[0].clientY)}
+          onTouchEnd={handleDragEnd}
+          onMouseDown={(e) => handleDragStart(e.clientY)}
+          onMouseMove={(e) => isDragging && handleDragMove(e.clientY)}
+          onMouseUp={handleDragEnd}
+          onMouseLeave={handleDragEnd}
+        />
 
         {/* 头部 */}
         <div style={{

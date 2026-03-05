@@ -8,8 +8,8 @@ interface NotificationSettingsProps {
   notificationStatus?: SafeNotificationConfigs;
   dingtalkWebhookUrl: string;
   onDingtalkWebhookChange: (url: string) => void;
-  wechatWorkApiUrl: string;
-  onWechatWorkApiUrlChange: (apiUrl: string) => void;
+  wechatWorkSendKey: string;
+  onWechatWorkSendKeyChange: (sendKey: string) => void;
   /** 通知渠道启用状态变更回调 */
   onChannelEnabledChange?: (channel: 'dingtalk' | 'wechat_work', enabled: boolean) => void;
 }
@@ -18,8 +18,8 @@ export function NotificationSettings({
   notificationStatus,
   dingtalkWebhookUrl,
   onDingtalkWebhookChange,
-  wechatWorkApiUrl,
-  onWechatWorkApiUrlChange,
+  wechatWorkSendKey,
+  onWechatWorkSendKeyChange,
   onChannelEnabledChange,
 }: NotificationSettingsProps) {
   // 默认展开已配置的渠道，或默认展开第一个
@@ -64,6 +64,24 @@ export function NotificationSettings({
       </NotificationChannelCard>
 
       <NotificationChannelCard
+        channelType="wechat_work"
+        status={notificationStatus?.wechat_work}
+        isExpanded={expandedChannel === 'wechat_work'}
+        onToggle={() => handleToggle('wechat_work')}
+        onEnabledChange={
+          notificationStatus?.wechat_work?.configured
+            ? (enabled) => onChannelEnabledChange?.('wechat_work', enabled)
+            : undefined
+        }
+      >
+        <WechatWorkConfigForm
+          sendKey={wechatWorkSendKey}
+          onChange={onWechatWorkSendKeyChange}
+          configured={notificationStatus?.wechat_work?.configured}
+        />
+      </NotificationChannelCard>
+
+      <NotificationChannelCard
         channelType="email"
         status={notificationStatus?.email}
         isExpanded={expandedChannel === 'email'}
@@ -79,24 +97,6 @@ export function NotificationSettings({
         onToggle={() => handleToggle('slack')}
       >
         {/* Slack 配置表单（预留） */}
-      </NotificationChannelCard>
-
-      <NotificationChannelCard
-        channelType="wechat_work"
-        status={notificationStatus?.wechat_work}
-        isExpanded={expandedChannel === 'wechat_work'}
-        onToggle={() => handleToggle('wechat_work')}
-        onEnabledChange={
-          notificationStatus?.wechat_work?.configured
-            ? (enabled) => onChannelEnabledChange?.('wechat_work', enabled)
-            : undefined
-        }
-      >
-        <WechatWorkConfigForm
-          apiUrl={wechatWorkApiUrl}
-          onChange={onWechatWorkApiUrlChange}
-          configured={notificationStatus?.wechat_work?.configured}
-        />
       </NotificationChannelCard>
     </div>
   );

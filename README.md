@@ -94,7 +94,7 @@ Get notified when Claude is waiting for input. All notifications include the ins
 }
 ```
 
-> **Note**: The legacy `dingtalk` field is still supported for backward compatibility. Both formats will be automatically migrated.
+> **Note**: Legacy config files with root-level `dingtalk` field are automatically migrated to `notifications.dingtalk` on first load.
 
 **Setup steps:**
 1. Open DingTalk group → Group Settings → Smart Group Assistant → Add Robot → Custom
@@ -107,7 +107,7 @@ Get notified when Claude is waiting for input. All notifications include the ins
 {
   "notifications": {
     "wechat_work": {
-      "apiUrl": "https://<uid>.push.ft07.com/send/<sendkey>.send"
+      "sendKey": "SCTxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
     }
   }
 }
@@ -115,7 +115,7 @@ Get notified when Claude is waiting for input. All notifications include the ins
 
 **Setup steps:**
 1. Visit [Server酱 Sendkey](https://sct.ftqq.com/sendkey) and sign in with WeChat
-2. Copy the API URL from the Sendkey page
+2. Copy your SendKey (starts with `SCT`)
 3. Paste it in your config file or in the Web UI settings
 
 ---
@@ -177,7 +177,7 @@ Config file: `~/.claude-remote/config.json`
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `webhookUrl` | string | — | DingTalk webhook URL |
-| `apiUrl` | string | — | Server酱³ API URL (WeChat) |
+| `sendKey` | string | — | Server酱³ SendKey (WeChat) |
 | `enabled` | boolean | true | Whether the channel is active |
 
 **Priority**: CLI args > config file > defaults

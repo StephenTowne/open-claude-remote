@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
+import { mergeTextareaStyle } from '../../styles/input.js';
 
 export interface InputBarRef {
   setText: (text: string) => void;
@@ -53,6 +54,7 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
     }}>
       <textarea
         ref={textareaRef}
+        data-testid="command-input"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -65,20 +67,16 @@ export const InputBar = forwardRef<InputBarRef, InputBarProps>(
         rows={1}
         placeholder="Enter command or number to select…"
         aria-label="Command input"
-        style={{
+        style={mergeTextareaStyle({
           flex: 1,
           height: 40,
-          padding: '10px 12px',
           borderRadius: 8,
           border: '1px solid var(--border-color)',
           background: 'var(--bg-tertiary)',
           color: 'var(--text-primary)',
           fontSize: 16,
-          resize: 'none',
-          overflow: 'hidden',
-          lineHeight: '20px',
           fontFamily: 'inherit',
-        }}
+        })}
       />
     </div>
   );

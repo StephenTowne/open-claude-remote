@@ -14,9 +14,8 @@ import { handleWsMessage } from '../ws/ws-handler.js';
 import { logger } from '../logger/logger.js';
 import type { PushService } from '../push/push-service.js';
 import type { TerminalRelay } from '../terminal/terminal-relay.js';
-import type { DingtalkService } from '../notification/dingtalk-service.js';
-import type { WechatWorkService } from '../notification/wechat-work-service.js';
 import type { NotificationManager } from '../notification/notification-manager.js';
+import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
 
 const WS_FLUSH_INTERVAL_MS = 16;
 const WS_MAX_CHUNK_BYTES = 32 * 1024;
@@ -29,8 +28,7 @@ export class SessionController {
   private _status: SessionStatus = 'idle';
   private buffer: OutputBuffer;
   private pushService: PushService | null = null;
-  private dingtalkService: DingtalkService | null = null;
-  private wechatWorkService: WechatWorkService | null = null;
+  private notificationServiceFactory: NotificationServiceFactory | null = null;
   private notificationManager: NotificationManager | null = null;
   private instanceUrl: string | null = null;
 
@@ -73,17 +71,10 @@ export class SessionController {
   }
 
   /**
-   * Inject DingtalkService for hook-triggered notifications.
+   * Inject NotificationServiceFactory for lazily creating notification services.
    */
-  setDingtalkService(dingtalkService: DingtalkService): void {
-    this.dingtalkService = dingtalkService;
-  }
-
-  /**
-   * Inject WechatWorkService for hook-triggered notifications.
-   */
-  setWechatWorkService(wechatWorkService: WechatWorkService): void {
-    this.wechatWorkService = wechatWorkService;
+  setNotificationServiceFactory(factory: NotificationServiceFactory): void {
+    this.notificationServiceFactory = factory;
   }
 
   /**
@@ -381,28 +372,34 @@ export class SessionController {
         break;
 
       case 'dingtalk':
-        if (this.dingtalkService) {
-          const body = notification.detail
-            ? `${notification.message}\n${notification.detail}${urlHint}`
-            : notification.message + urlHint;
-          this.dingtalkService
-            .sendNotification(notification.title, notification.tool, body)
-            .catch((err) => {
-              logger.error({ err, channel: 'dingtalk' }, 'Failed to send dingtalk notification');
-            });
+        if (this.notificationServiceFactory) {
+          const service = this.notificationServiceFactory.getDingtalkService();
+          if (service) {
+            const body = notification.detail
+              ? `${notification.message}\n${notification.detail}${urlHint}`
+              : notification.message + urlHint;
+            service
+              .sendNotification(notification.title, notification.tool, body)
+              .catch((err) => {
+                logger.error({ err, channel: 'dingtalk' }, 'Failed to send dingtalk notification');
+              });
+          }
         }
         break;
 
       case 'wechat_work':
-        if (this.wechatWorkService) {
-          const body = notification.detail
-            ? `${notification.message}\n${notification.detail}${urlHint}`
-            : notification.message + urlHint;
-          this.wechatWorkService
-            .sendNotification(notification.title, notification.tool, body)
-            .catch((err) => {
-              logger.error({ err, channel: 'wechat_work' }, 'Failed to send WeChat notification');
-            });
+        if (this.notificationServiceFactory) {
+          const service = this.notificationServiceFactory.getWechatWorkService();
+          if (service) {
+            const body = notification.detail
+              ? `${notification.message}\n${notification.detail}${urlHint}`
+              : notification.message + urlHint;
+            service
+              .sendNotification(notification.title, notification.tool, body)
+              .catch((err) => {
+                logger.error({ err, channel: 'wechat_work' }, 'Failed to send WeChat notification');
+              });
+          }
         }
         break;
     }

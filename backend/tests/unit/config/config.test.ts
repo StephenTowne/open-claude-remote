@@ -42,7 +42,7 @@ describe('createClaudeSettings', () => {
   it('should contain required hook types', () => {
     const settings = createClaudeSettings(3000);
     expect(settings.hooks).toHaveProperty('Notification');
-    expect(settings.hooks).toHaveProperty('PreToolUse');
+    expect(settings.hooks).toHaveProperty('Stop');
   });
 
   it('should use command hooks with curl', () => {
@@ -54,11 +54,11 @@ describe('createClaudeSettings', () => {
     expect(notificationHook.command).toContain('curl');
     expect(notificationHook.command).toContain('localhost:3000/api/hook');
 
-    // PreToolUse hook
-    const preToolUseHook = settings.hooks?.PreToolUse[0].hooks[0];
-    expect(preToolUseHook.type).toBe('command');
-    expect(preToolUseHook.command).toContain('curl');
-    expect(preToolUseHook.command).toContain('localhost:3000/api/hook');
+    // Stop hook
+    const stopHook = settings.hooks?.Stop[0].hooks[0];
+    expect(stopHook.type).toBe('command');
+    expect(stopHook.command).toContain('curl');
+    expect(stopHook.command).toContain('localhost:3000/api/hook');
   });
 
   it('should produce different settings for different ports', () => {
@@ -88,7 +88,7 @@ describe('createClaudeSettings', () => {
 
     // Should also have hooks
     expect(settings.hooks).toHaveProperty('Notification');
-    expect(settings.hooks).toHaveProperty('PreToolUse');
+    expect(settings.hooks).toHaveProperty('Stop');
   });
 
   it('should deep merge hooks — preserve user custom hook events', () => {
@@ -107,9 +107,9 @@ describe('createClaudeSettings', () => {
     expect(hooks).toHaveProperty('PostToolUse');
     expect(hooks.PostToolUse).toEqual(existingSettings.hooks.PostToolUse);
 
-    // 同时也有我们注入的 Notification 和 PreToolUse
+    // 同时也有我们注入的 Notification 和 Stop
     expect(hooks).toHaveProperty('Notification');
-    expect(hooks).toHaveProperty('PreToolUse');
+    expect(hooks).toHaveProperty('Stop');
   });
 
   it('should override conflicting hook event types with our config', () => {
@@ -164,7 +164,7 @@ describe('saveClaudeSettings', () => {
     const parsed = JSON.parse(content);
 
     expect(parsed.hooks).toHaveProperty('Notification');
-    expect(parsed.hooks).toHaveProperty('PreToolUse');
+    expect(parsed.hooks).toHaveProperty('Stop');
   });
 
   it('should save with pretty formatting (2-space indent)', () => {
@@ -239,6 +239,46 @@ describe('loadUserConfig', () => {
     const config = loadUserConfig(testDir);
     expect(config).toEqual({});
   });
+
+  it('should migrate legacy dingtalk config to notifications.dingtalk', () => {
+    const configPath = resolve(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify({
+      dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc123', enabled: true },
+    }), 'utf-8');
+
+    const config = loadUserConfig(testDir);
+
+    // 旧版 dingtalk 应迁移到 notifications.dingtalk
+    expect(config.notifications?.dingtalk).toEqual({
+      webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc123',
+      enabled: true,
+    });
+    // 旧版字段应被删除
+    expect((config as Record<string, unknown>).dingtalk).toBeUndefined();
+
+    // 配置文件应已更新（迁移后保存）
+    const savedConfig = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(savedConfig.notifications?.dingtalk).toBeDefined();
+    expect(savedConfig.dingtalk).toBeUndefined();
+  });
+
+  it('should not overwrite existing notifications.dingtalk when migrating', () => {
+    const configPath = resolve(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify({
+      dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=legacy' },
+      notifications: {
+        dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=new', enabled: false },
+      },
+    }), 'utf-8');
+
+    const config = loadUserConfig(testDir);
+
+    // notifications.dingtalk 已存在时，旧版不应覆盖新版
+    expect(config.notifications?.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=new');
+    expect(config.notifications?.dingtalk?.enabled).toBe(false);
+    // 旧版字段仍应被删除
+    expect((config as Record<string, unknown>).dingtalk).toBeUndefined();
+  });
 });
 
 describe('loadConfig', () => {
@@ -262,26 +302,24 @@ describe('loadConfig', () => {
     return loadConfig(cliOverrides, testDir);
   }
 
-  it('should merge claudeArgs from config file and CLI', () => {
+  it('should use CLI claudeArgs when provided (not merge with config file)', () => {
     const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
     const cliOverrides: CliOverrides = { claudeArgs: ['--settings', '/path/to/settings.json'] };
 
     const config = loadConfigWithMocks(userConfig, cliOverrides);
 
-    expect(config.claudeArgs).toEqual([
-      '--dangerously-skip-permissions',
-      '--settings',
-      '/path/to/settings.json',
-    ]);
+    // CLI 参数完全覆盖配置文件参数，避免 web-spawned 实例的参数重复累积
+    expect(config.claudeArgs).toEqual(['--settings', '/path/to/settings.json']);
   });
 
-  it('should use config file claudeArgs when CLI args are empty array', () => {
+  it('should use empty CLI claudeArgs when CLI provides empty array', () => {
     const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
     const cliOverrides: CliOverrides = { claudeArgs: [] };
 
     const config = loadConfigWithMocks(userConfig, cliOverrides);
 
-    expect(config.claudeArgs).toEqual(['--dangerously-skip-permissions']);
+    // 空数组表示用户明确要清空参数，不使用配置文件参数
+    expect(config.claudeArgs).toEqual([]);
   });
 
   it('should use CLI claudeArgs when config file args are empty', () => {
@@ -311,13 +349,14 @@ describe('loadConfig', () => {
     expect(config.claudeArgs).toEqual([]);
   });
 
-  it('should merge multiple args from both sources', () => {
+  it('should use CLI args exclusively when both sources have args', () => {
     const userConfig = { claudeArgs: ['--arg1', '--arg2'] };
     const cliOverrides: CliOverrides = { claudeArgs: ['--arg3', '--arg4'] };
 
     const config = loadConfigWithMocks(userConfig, cliOverrides);
 
-    expect(config.claudeArgs).toEqual(['--arg1', '--arg2', '--arg3', '--arg4']);
+    // CLI 参数完全覆盖配置文件参数
+    expect(config.claudeArgs).toEqual(['--arg3', '--arg4']);
   });
 });
 

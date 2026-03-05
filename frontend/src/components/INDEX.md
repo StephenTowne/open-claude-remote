@@ -7,6 +7,7 @@
 - ConnectionBanner.tsx: WS 断开时顶部警告横幅，connecting 黄色 / disconnected 红色
 - IpChangeToast.tsx: IP 变化通知弹窗，显示旧 IP → 新 IP 变化，提供"复制新地址"按钮
 - SafeArea.tsx: iOS 安全区域适配容器，paddingTop 使用 env(safe-area-inset-top)
+- SegmentedControl.tsx: iOS 风格分段控件，圆角容器 + 内部滑块指示器，支持键盘导航（方向键/Home/End），选项数 ≤4 时使用
 - Toggle.tsx: Toggle 开关组件，移动端友好（44px 点击区域），支持无障碍访问（role="switch"）
 
 ## input/
@@ -33,6 +34,7 @@
 - useDndSensors.ts: dnd-kit 拖拽传感器配置 hook，PointerSensor + KeyboardSensor，激活约束 8px
 
 ## onboarding/
+- SpotlightContext.tsx: Spotlight Context Provider，封装 useSpotlight 提供全局状态访问，useSpotlightContext 必须在 Provider 内使用
 - SpotlightGuide.tsx: Spotlight 引导组件，镂空遮罩 + 气泡提示，支持键盘导航（方向键/Enter/Esc）
 - spotlight-steps.ts: Spotlight 引导步骤配置，CSS 选择器定位，包含快捷键/命令/输入框/设置/新建实例 5 个步骤
 - useSpotlight.ts: Spotlight 状态管理 Hook，目标元素定位计算，localStorage 记录完成状态

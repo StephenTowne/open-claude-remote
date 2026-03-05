@@ -4,7 +4,7 @@ import { CommandSettings } from './CommandSettings.js';
 import { NotificationSettings } from './NotificationSettings.js';
 import { getUserConfig, updateUserConfig, updateNotificationChannelEnabled } from '../../services/api-client.js';
 import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand } from '../../config/commands.js';
-import { DINGTALK_WEBHOOK_PATTERN, WECHAT_WORK_API_URL_PATTERN, type SafeNotificationConfigs } from '#shared';
+import { DINGTALK_WEBHOOK_PATTERN, SENDKEY_PATTERN, type SafeNotificationConfigs } from '#shared';
 import { BottomSheet } from '../common/BottomSheet.js';
 
 export type WithId<T> = T & { _id: string };
@@ -22,7 +22,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
   const [shortcuts, setShortcuts] = useState<WithId<ConfigurableShortcut>[]>([]);
   const [commands, setCommands] = useState<WithId<ConfigurableCommand>[]>([]);
   const [dingtalkWebhookUrl, setDingtalkWebhookUrl] = useState('');
-  const [wechatWorkApiUrl, setWechatWorkApiUrl] = useState('');
+  const [wechatWorkSendKey, setWechatWorkSendKey] = useState('');
   const [notificationStatus, setNotificationStatus] = useState<SafeNotificationConfigs>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,10 +50,8 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
       if (config) {
         setShortcuts(config.shortcuts.map(s => withId(s)));
         setCommands(config.commands.map(c => withId(c)));
-        // 优先使用新版 notifications 结构，回退到旧版 dingtalk
-        const status: SafeNotificationConfigs = config.notifications || {
-          dingtalk: config.dingtalk,
-        };
+        // 使用 notifications 结构
+        const status: SafeNotificationConfigs = config.notifications || {};
         setNotificationStatus(status);
         setDingtalkWebhookUrl(''); // 不暴露已有 URL，用户需要重新输入才能更改
       } else {
@@ -104,13 +102,13 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         commands: commands.map(({ _id: _, ...rest }) => rest),
       };
 
-      // 构建通知配置
+      // 构建通知配置：只在用户实际输入了新 URL 时才发送对应渠道
       const notifications: NonNullable<UserConfig['notifications']> = {};
 
-      // 钉钉配置
+      // 钉钉配置：仅在用户输入了新 URL 时包含
       const trimmedUrl = dingtalkWebhookUrl.trim();
-      if (trimmedUrl || notificationStatus?.dingtalk?.configured) {
-        if (trimmedUrl && !DINGTALK_WEBHOOK_PATTERN.test(trimmedUrl)) {
+      if (trimmedUrl) {
+        if (!DINGTALK_WEBHOOK_PATTERN.test(trimmedUrl)) {
           setError('Please enter a valid DingTalk Webhook URL (starting with https://oapi.dingtalk.com/robot/send?access_token=)');
           setSaving(false);
           return;
@@ -118,18 +116,18 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         notifications.dingtalk = { webhookUrl: trimmedUrl };
       }
 
-      // 微信配置
-      const trimmedApiUrl = wechatWorkApiUrl.trim();
-      if (trimmedApiUrl || notificationStatus?.wechat_work?.configured) {
-        if (trimmedApiUrl && !WECHAT_WORK_API_URL_PATTERN.test(trimmedApiUrl)) {
-          setError('Please enter a valid Server酱³ API URL (https://<uid>.push.ft07.com/send/<sendkey>.send)');
+      // 微信配置：仅在用户输入了新 SendKey 时包含
+      const trimmedSendKey = wechatWorkSendKey.trim();
+      if (trimmedSendKey) {
+        if (!SENDKEY_PATTERN.test(trimmedSendKey)) {
+          setError('Please enter a valid SendKey (starts with SCT, at least 13 characters)');
           setSaving(false);
           return;
         }
-        notifications.wechat_work = { apiUrl: trimmedApiUrl };
+        notifications.wechat_work = { sendKey: trimmedSendKey };
       }
 
-      // 如果有通知配置，添加到 config
+      // 如果有通知配置变更，添加到 config
       if (Object.keys(notifications).length > 0) {
         config.notifications = notifications;
       }
@@ -137,19 +135,15 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
       const ok = await updateUserConfig(config);
       if (ok) {
         setSuccess(true);
-        // 更新已配置状态
+        // 仅更新有新 URL 输入的渠道状态，保留已有 configured/enabled
         const newStatus: SafeNotificationConfigs = { ...notificationStatus };
-        if (trimmedUrl || notificationStatus?.dingtalk?.configured) {
-          newStatus.dingtalk = { configured: !!trimmedUrl };
-          if (trimmedUrl) {
-            setDingtalkWebhookUrl(''); // 保存后清空输入框
-          }
+        if (trimmedUrl) {
+          newStatus.dingtalk = { ...notificationStatus?.dingtalk, configured: true, enabled: notificationStatus?.dingtalk?.enabled };
+          setDingtalkWebhookUrl(''); // 保存后清空输入框
         }
-        if (trimmedApiUrl || notificationStatus?.wechat_work?.configured) {
-          newStatus.wechat_work = { configured: !!trimmedApiUrl };
-          if (trimmedApiUrl) {
-            setWechatWorkApiUrl(''); // 保存后清空输入框
-          }
+        if (trimmedSendKey) {
+          newStatus.wechat_work = { ...notificationStatus?.wechat_work, configured: true, enabled: notificationStatus?.wechat_work?.enabled };
+          setWechatWorkSendKey(''); // 保存后清空输入框
         }
         setNotificationStatus(newStatus);
         onConfigSaved?.();
@@ -260,8 +254,8 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
           notificationStatus={notificationStatus}
           dingtalkWebhookUrl={dingtalkWebhookUrl}
           onDingtalkWebhookChange={setDingtalkWebhookUrl}
-          wechatWorkApiUrl={wechatWorkApiUrl}
-          onWechatWorkApiUrlChange={setWechatWorkApiUrl}
+          wechatWorkSendKey={wechatWorkSendKey}
+          onWechatWorkSendKeyChange={setWechatWorkSendKey}
           onChannelEnabledChange={handleChannelEnabledChange}
         />
       )}

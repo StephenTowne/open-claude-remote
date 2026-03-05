@@ -1,55 +1,38 @@
-import { WECHAT_WORK_API_URL_PATTERN } from '#shared';
+import { SENDKEY_PATTERN, buildWechatWorkApiUrl } from '#shared';
 import { logger } from '../logger/logger.js';
-
-/** Server酱³ 允许的域名 */
-const ALLOWED_HOST = 'push.ft07.com';
 
 /** HTTP 请求超时时间（毫秒） */
 const REQUEST_TIMEOUT_MS = 5000;
 
 /**
  * 企业微信通知服务（Server酱³ 实现）
- * API URL 格式: https://<uid>.push.ft07.com/send/<sendkey>.send
+ * 使用 SendKey 调用官方 API: https://sctapi.ftqq.com/<sendkey>.send
  */
 export class WechatWorkService {
   private validatedApiUrl: string | null = null;
 
-  constructor(private apiUrl: string) {
-    if (this.validateApiUrl(apiUrl)) {
-      this.validatedApiUrl = apiUrl;
+  constructor(sendKey: string) {
+    if (this.validateSendKey(sendKey)) {
+      this.validatedApiUrl = buildWechatWorkApiUrl(sendKey);
     }
   }
 
   /**
-   * 验证 API URL 是否合法
-   * - 必须匹配 Server酱³ URL 格式
-   * - 域名必须为 push.ft07.com
+   * 验证 SendKey 是否合法
+   * - 必须以 SCT 开头
+   * - 后面跟随字母数字组合
    */
-  private validateApiUrl(apiUrl: string): boolean {
-    if (!apiUrl) {
+  private validateSendKey(sendKey: string): boolean {
+    if (!sendKey) {
       return false;
     }
 
-    // 严格正则验证
-    if (!WECHAT_WORK_API_URL_PATTERN.test(apiUrl)) {
-      logger.warn({ apiUrl: apiUrl.substring(0, 40) + '...' }, 'Invalid Server酱 API URL format, rejecting');
+    if (!SENDKEY_PATTERN.test(sendKey)) {
+      logger.warn({ sendKey: sendKey.substring(0, 10) + '...' }, 'Invalid Server酱 SendKey format, rejecting');
       return false;
     }
 
-    // 二次验证域名（SSRF 防护）
-    try {
-      const parsedUrl = new URL(apiUrl);
-      const hostname = parsedUrl.hostname;
-      // 必须以 push.ft07.com 结尾（支持子域名）
-      if (!hostname.endsWith('.' + ALLOWED_HOST) && hostname !== ALLOWED_HOST) {
-        logger.warn({ hostname }, 'Invalid hostname, must be push.ft07.com subdomain');
-        return false;
-      }
-      return true;
-    } catch {
-      logger.warn({ apiUrl }, 'Failed to parse API URL');
-      return false;
-    }
+    return true;
   }
 
   /**

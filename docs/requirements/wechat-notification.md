@@ -6,11 +6,12 @@ Add WeChat notification channel support via Server酱³ integration, allowing us
 
 ## Acceptance Criteria
 
-- [x] Users can configure Server酱³ API URL in settings
-- [x] API URL format: `https://<uid>.push.ft07.com/send/<sendkey>.send`
+- [x] Users can configure Server酱³ SendKey in settings
+- [x] SendKey format: starts with `SCT` followed by alphanumeric characters
+- [x] API URL is auto-generated: `https://sctapi.ftqq.com/<sendkey>.send`
 - [x] Notifications include: title, tool name, message content, and instance URL
 - [x] Message format is consistent with DingTalk (Markdown)
-- [x] SSRF protection: only allow requests to `push.ft07.com` subdomains
+- [x] SendKey validation: must match `SCT[a-zA-Z0-9]+` pattern
 - [x] Each notification channel can be independently enabled/disabled
 
 ## Configuration
@@ -19,7 +20,7 @@ Add WeChat notification channel support via Server酱³ integration, allowing us
 {
   "notifications": {
     "wechat_work": {
-      "apiUrl": "https://<uid>.push.ft07.com/send/<sendkey>.send",
+      "sendKey": "SCTxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
       "enabled": true
     }
   }

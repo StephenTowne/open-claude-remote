@@ -116,7 +116,7 @@ describe('NotificationManager', () => {
     it('should return true when wechat_work is configured without enabled field', () => {
       writeFileSync(configPath, JSON.stringify({
         notifications: {
-          wechat_work: { apiUrl: 'https://test.push.ft07.com/send/abc.send' },
+          wechat_work: { sendKey: 'SCT123456abcdef' },
         },
       }));
 
@@ -128,7 +128,7 @@ describe('NotificationManager', () => {
       writeFileSync(configPath, JSON.stringify({
         notifications: {
           wechat_work: {
-            apiUrl: 'https://test.push.ft07.com/send/abc.send',
+            sendKey: 'SCT123456abcdef',
             enabled: false,
           },
         },
@@ -249,7 +249,7 @@ describe('NotificationManager', () => {
       writeFileSync(configPath, JSON.stringify({
         notifications: {
           wechat_work: {
-            apiUrl: 'https://test.push.ft07.com/send/abc.send',
+            sendKey: 'SCT123456abcdef',
             enabled: false,
           },
         },
@@ -261,7 +261,7 @@ describe('NotificationManager', () => {
       writeFileSync(configPath, JSON.stringify({
         notifications: {
           wechat_work: {
-            apiUrl: 'https://test.push.ft07.com/send/abc.send',
+            sendKey: 'SCT123456abcdef',
             enabled: true,
           },
         },
