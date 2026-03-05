@@ -8,16 +8,19 @@ interface NotificationSettingsProps {
   notificationStatus?: SafeNotificationConfigs;
   dingtalkWebhookUrl: string;
   onDingtalkWebhookChange: (url: string) => void;
-  wechatWorkSendkey: string;
-  onWechatWorkSendkeyChange: (sendkey: string) => void;
+  wechatWorkApiUrl: string;
+  onWechatWorkApiUrlChange: (apiUrl: string) => void;
+  /** 通知渠道启用状态变更回调 */
+  onChannelEnabledChange?: (channel: 'dingtalk' | 'wechat_work', enabled: boolean) => void;
 }
 
 export function NotificationSettings({
   notificationStatus,
   dingtalkWebhookUrl,
   onDingtalkWebhookChange,
-  wechatWorkSendkey,
-  onWechatWorkSendkeyChange,
+  wechatWorkApiUrl,
+  onWechatWorkApiUrlChange,
+  onChannelEnabledChange,
 }: NotificationSettingsProps) {
   // 默认展开已配置的渠道，或默认展开第一个
   const [expandedChannel, setExpandedChannel] = useState<NotificationChannelType | null>('dingtalk');
@@ -47,6 +50,11 @@ export function NotificationSettings({
         status={notificationStatus?.dingtalk}
         isExpanded={expandedChannel === 'dingtalk'}
         onToggle={() => handleToggle('dingtalk')}
+        onEnabledChange={
+          notificationStatus?.dingtalk?.configured
+            ? (enabled) => onChannelEnabledChange?.('dingtalk', enabled)
+            : undefined
+        }
       >
         <DingtalkConfigForm
           webhookUrl={dingtalkWebhookUrl}
@@ -78,10 +86,15 @@ export function NotificationSettings({
         status={notificationStatus?.wechat_work}
         isExpanded={expandedChannel === 'wechat_work'}
         onToggle={() => handleToggle('wechat_work')}
+        onEnabledChange={
+          notificationStatus?.wechat_work?.configured
+            ? (enabled) => onChannelEnabledChange?.('wechat_work', enabled)
+            : undefined
+        }
       >
         <WechatWorkConfigForm
-          sendkey={wechatWorkSendkey}
-          onChange={onWechatWorkSendkeyChange}
+          apiUrl={wechatWorkApiUrl}
+          onChange={onWechatWorkApiUrlChange}
           configured={notificationStatus?.wechat_work?.configured}
         />
       </NotificationChannelCard>

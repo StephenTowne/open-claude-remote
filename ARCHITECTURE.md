@@ -95,8 +95,8 @@ sequenceDiagram
 | Method | Path | Auth | Handler |
 |--------|------|------|---------|
 | POST | `/api/auth` | No | auth-routes.ts → AuthModule.handleAuth |
-| GET | `/api/config` | Session | config-routes.ts → 用户配置（快捷键/命令/钉钉） |
-| PUT | `/api/config` | Session | config-routes.ts → 更新用户配置（含钉钉 Webhook） |
+| GET | `/api/config` | Session | config-routes.ts → 用户配置（快捷键/命令/通知渠道） |
+| PUT | `/api/config` | Session | config-routes.ts → 更新用户配置（含多渠道通知配置） |
 | GET | `/api/status` | Session | status-routes.ts → SessionController 状态 |
 | GET | `/api/health` | No | health-routes.ts → 健康检查 |
 | POST | `/api/hook` | Localhost only | hook-routes.ts → HookReceiver.processHook |
@@ -192,16 +192,23 @@ sequenceDiagram
 **Shared** (`shared/src/INDEX.md`):
 - instance.ts: 类型定义 + 常量
 
-### 钉钉通知
-**Backend** (`backend/src/notification/`):
+### 外部通知
+**Backend** (`backend/src/notification/INDEX.md`):
 - dingtalk-service.ts: 钉钉群机器人 Webhook 通知服务
+- wechat-work-service.ts: Server酱微信通知服务（SCT/sctp 双格式）
 
 **Backend**:
-- api/config-routes.ts: 钉钉配置 API（配置读取/更新）
-- session/session-controller.ts: 需要输入时触发钉钉通知
+- api/config-routes.ts: 通知配置 API（配置读取/更新，多渠道合并）
+- session/session-controller.ts: 需要输入时触发各渠道通知
+- hooks/hook-receiver.ts: ALL_CHANNELS 定义通知渠道列表
 
 **Frontend**:
-- components/settings/SettingsModal.tsx: 钉钉配置 Tab
+- components/settings/SettingsModal.tsx: 通知配置管理
+- components/settings/DingtalkConfigForm.tsx: 钉钉 Webhook 配置
+- components/settings/WechatWorkConfigForm.tsx: Server酱³ API URL 配置
+
+**Shared**:
+- notification-types.ts: 多渠道通知类型定义、验证、迁移工具
 
 ### 推送通知
 **Backend**:

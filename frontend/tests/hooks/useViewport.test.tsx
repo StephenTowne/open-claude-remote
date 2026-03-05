@@ -122,7 +122,7 @@ describe('useViewport', () => {
       vv.height = 600;
       vv.offsetTop = 300;
       vv.triggerResize();
-      vi.advanceTimersByTime(60); // 50ms 防抖 + 余量
+      vi.advanceTimersByTime(10); // 防抖为 0，少量延迟即可
     });
 
     // 由于没有活跃的输入元素，仍然不需要补偿
@@ -178,7 +178,7 @@ describe('useViewport', () => {
       vv.height = 600;
       vv.offsetTop = 300;
       vv.triggerResize();
-      vi.advanceTimersByTime(60);
+      vi.advanceTimersByTime(10);
     });
 
     // 输入框被遮挡（bottom: 950 > vv.height + vv.offsetTop - 10 = 890）
@@ -219,7 +219,7 @@ describe('useViewport', () => {
       vv.height = 700;
       vv.offsetTop = 150;
       vv.triggerScroll();
-      vi.advanceTimersByTime(60);
+      vi.advanceTimersByTime(10);
     });
 
     // 无遮挡，使用默认值
@@ -268,7 +268,7 @@ describe('useViewport', () => {
     // 初始无遮挡
     expect(result.current.needsCompensation).toBe(false);
 
-    // 模拟 focus 事件
+    // 模拟 focusin 事件
     act(() => {
       Object.defineProperty(document, 'activeElement', {
         configurable: true,
@@ -277,8 +277,21 @@ describe('useViewport', () => {
       document.dispatchEvent(new Event('focusin', { bubbles: true }));
     });
 
-    // focus 事件应立即触发遮挡检测
+    // focusin 事件应立即设置 needsCompensation
     expect(result.current.needsCompensation).toBe(true);
+    // 但 offsetTop 需要等待 visualViewport.resize 更新
+    // 这是修复"跳动"问题的关键：focusin 时不立即应用 transform
+    expect(result.current.offsetTop).toBe(0);
+
+    // 模拟 visualViewport.resize 提供稳定的 offsetTop 值
+    act(() => {
+      vv.height = 600;
+      vv.offsetTop = 300;
+      vv.triggerResize();
+      vi.advanceTimersByTime(10);
+    });
+
+    // resize 后才设置 offsetTop
     expect(result.current.offsetTop).toBe(300);
 
     // 模拟 focusout：输入框失焦，恢复默认值
@@ -354,7 +367,17 @@ describe('useViewport', () => {
       document.dispatchEvent(new Event('focusin', { bubbles: true }));
     });
 
-    // 检测到遮挡，启用补偿
+    // focusin 只设置 needsCompensation，offsetTop 需要 resize 事件更新
+    expect(result.current.needsCompensation).toBe(true);
+    expect(result.current.offsetTop).toBe(0);
+
+    // 模拟 visualViewport.resize 事件
+    act(() => {
+      vv.triggerResize();
+      vi.advanceTimersByTime(10);
+    });
+
+    // resize 后设置 offsetTop
     expect(result.current.needsCompensation).toBe(true);
     expect(result.current.offsetTop).toBe(200);
 

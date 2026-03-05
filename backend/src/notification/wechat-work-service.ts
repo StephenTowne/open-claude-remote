@@ -1,55 +1,55 @@
-import { WECHAT_WORK_SENDKEY_PATTERN } from '#shared';
+import { WECHAT_WORK_API_URL_PATTERN } from '#shared';
 import { logger } from '../logger/logger.js';
 
-/** Server酱允许的域名 */
-const ALLOWED_HOSTS = ['sctapi.ftqq.com', 'push.ft07.com'];
+/** Server酱³ 允许的域名 */
+const ALLOWED_HOST = 'push.ft07.com';
 
 /** HTTP 请求超时时间（毫秒） */
 const REQUEST_TIMEOUT_MS = 5000;
 
 /**
- * 企业微信通知服务（Server酱实现）
- * 参考文档: https://sct.ftqq.com/
+ * 企业微信通知服务（Server酱³ 实现）
+ * API URL 格式: https://<uid>.push.ft07.com/send/<sendkey>.send
  */
 export class WechatWorkService {
-  private validatedSendkey: string | null = null;
-  private apiUrl: string | null = null;
+  private validatedApiUrl: string | null = null;
 
-  constructor(private sendkey: string) {
-    const result = this.validateSendkey(sendkey);
-    this.validatedSendkey = result.validated;
-    this.apiUrl = result.apiUrl;
+  constructor(private apiUrl: string) {
+    if (this.validateApiUrl(apiUrl)) {
+      this.validatedApiUrl = apiUrl;
+    }
   }
 
   /**
-   * 验证 sendkey 并构建 API URL
-   * - SCT 开头 → https://sctapi.ftqq.com/{sendkey}.send
-   * - sctp 开头 → https://{sendkey}.push.ft07.com/send
+   * 验证 API URL 是否合法
+   * - 必须匹配 Server酱³ URL 格式
+   * - 域名必须为 push.ft07.com
    */
-  private validateSendkey(sendkey: string): { validated: string | null; apiUrl: string | null } {
-    if (!sendkey) {
-      return { validated: null, apiUrl: null };
+  private validateApiUrl(apiUrl: string): boolean {
+    if (!apiUrl) {
+      return false;
     }
 
-    // 严格正则验证：仅允许字母数字，防止特殊字符构造恶意 URL
-    if (!WECHAT_WORK_SENDKEY_PATTERN.test(sendkey)) {
-      logger.warn({ sendkey: sendkey.substring(0, 8) + '...' }, 'Invalid sendkey format, rejecting');
-      return { validated: null, apiUrl: null };
+    // 严格正则验证
+    if (!WECHAT_WORK_API_URL_PATTERN.test(apiUrl)) {
+      logger.warn({ apiUrl: apiUrl.substring(0, 40) + '...' }, 'Invalid Server酱 API URL format, rejecting');
+      return false;
     }
 
-    // 标准 sendkey (SCT...)
-    if (sendkey.startsWith('SCT')) {
-      return {
-        validated: sendkey,
-        apiUrl: `https://sctapi.ftqq.com/${sendkey}.send`,
-      };
+    // 二次验证域名（SSRF 防护）
+    try {
+      const parsedUrl = new URL(apiUrl);
+      const hostname = parsedUrl.hostname;
+      // 必须以 push.ft07.com 结尾（支持子域名）
+      if (!hostname.endsWith('.' + ALLOWED_HOST) && hostname !== ALLOWED_HOST) {
+        logger.warn({ hostname }, 'Invalid hostname, must be push.ft07.com subdomain');
+        return false;
+      }
+      return true;
+    } catch {
+      logger.warn({ apiUrl }, 'Failed to parse API URL');
+      return false;
     }
-
-    // Turbo sendkey (sctp...)
-    return {
-      validated: sendkey,
-      apiUrl: `https://${sendkey}.push.ft07.com/send`,
-    };
   }
 
   /**
@@ -61,25 +61,8 @@ export class WechatWorkService {
    * @param message 详细消息
    */
   async sendNotification(title: string, tool: string, message: string): Promise<void> {
-    if (!this.validatedSendkey || !this.apiUrl) {
-      logger.warn('WeChat sendkey is empty or invalid, skipping notification');
-      return;
-    }
-
-    // SSRF 防护：验证 URL 域名
-    try {
-      const parsedUrl = new URL(this.apiUrl);
-      const hostname = parsedUrl.hostname;
-      // 检查是否以允许的域名结尾（支持子域名）
-      const isAllowed = ALLOWED_HOSTS.some(allowed =>
-        hostname === allowed || hostname.endsWith('.' + allowed)
-      );
-      if (!isAllowed) {
-        logger.warn({ hostname }, 'Invalid WeChat API hostname, rejecting for SSRF protection');
-        return;
-      }
-    } catch {
-      logger.warn({ apiUrl: this.apiUrl }, 'Invalid WeChat API URL format, rejecting');
+    if (!this.validatedApiUrl) {
+      logger.warn('WeChat API URL is empty or invalid, skipping notification');
       return;
     }
 
@@ -95,7 +78,7 @@ export class WechatWorkService {
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(this.apiUrl, {
+      const response = await fetch(this.validatedApiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',

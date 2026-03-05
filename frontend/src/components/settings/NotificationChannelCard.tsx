@@ -1,11 +1,14 @@
 import { NOTIFICATION_CHANNELS } from '#shared';
 import type { NotificationChannelType, SafeNotificationChannelStatus } from '#shared';
+import { Toggle } from '../common/Toggle.js';
 
 interface NotificationChannelCardProps {
   channelType: NotificationChannelType;
   status?: SafeNotificationChannelStatus;
   isExpanded: boolean;
   onToggle: () => void;
+  /** 启用状态变更回调（仅已配置渠道有效） */
+  onEnabledChange?: (enabled: boolean) => void;
   children?: React.ReactNode;
 }
 
@@ -14,11 +17,13 @@ export function NotificationChannelCard({
   status,
   isExpanded,
   onToggle,
+  onEnabledChange,
   children,
 }: NotificationChannelCardProps) {
   const meta = NOTIFICATION_CHANNELS[channelType];
   const isImplemented = meta?.implemented ?? false;
   const isConfigured = status?.configured ?? false;
+  const isEnabled = status?.enabled ?? true; // undefined 表示默认启用
 
   // 图标映射
   const iconMap: Record<string, string> = {
@@ -26,6 +31,10 @@ export function NotificationChannelCard({
     email: '📧',
     slack: '💬',
     wechat_work: '💼',
+  };
+
+  const handleToggleClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // 防止触发展开/收起
   };
 
   return (
@@ -73,9 +82,9 @@ export function NotificationChannelCard({
                     width: 8,
                     height: 8,
                     borderRadius: '50%',
-                    background: 'var(--status-running)',
+                    background: isEnabled ? 'var(--status-running)' : 'var(--text-muted)',
                   }}
-                  title="Configured"
+                  title={isEnabled ? 'Enabled' : 'Disabled'}
                 />
               )}
             </div>
@@ -91,6 +100,16 @@ export function NotificationChannelCard({
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* 已配置渠道显示 Toggle 开关 */}
+          {isConfigured && onEnabledChange && (
+            <div onClick={handleToggleClick}>
+              <Toggle
+                checked={isEnabled}
+                onChange={onEnabledChange}
+                aria-label={`Toggle ${meta?.displayName ?? channelType}`}
+              />
+            </div>
+          )}
           {!isImplemented && (
             <span
               style={{

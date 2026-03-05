@@ -11,6 +11,7 @@ import { HookReceiver } from '../hooks/hook-receiver.js';
 import { PushService } from '../push/push-service.js';
 import { InstanceSpawner } from '../registry/instance-spawner.js';
 import type { SessionController } from '../session/session-controller.js';
+import type { NotificationManager } from '../notification/notification-manager.js';
 import type { InstanceInfo } from '#shared';
 
 export interface ApiRouterOptions {
@@ -21,6 +22,7 @@ export interface ApiRouterOptions {
   listInstances?: () => Promise<InstanceInfo[]>;
   currentInstanceId?: string;
   instanceSpawner?: InstanceSpawner;
+  notificationManager?: NotificationManager;
 }
 
 export function createApiRouter(opts: ApiRouterOptions): Router;
@@ -54,7 +56,7 @@ export function createApiRouter(
   router.use(createAuthRoutes(opts.authModule));
   router.use(createStatusRoutes(opts.authModule, opts.getController));
   router.use(createHookRoutes(opts.hookReceiver));
-  router.use(createConfigRoutes(opts.authModule));
+  router.use(createConfigRoutes(opts.authModule, opts.notificationManager));
 
   if (opts.pushService) {
     router.use(createPushRoutes(opts.authModule, opts.pushService));

@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { ShortcutSettings } from './ShortcutSettings.js';
 import { CommandSettings } from './CommandSettings.js';
 import { NotificationSettings } from './NotificationSettings.js';
-import { getUserConfig, updateUserConfig } from '../../services/api-client.js';
+import { getUserConfig, updateUserConfig, updateNotificationChannelEnabled } from '../../services/api-client.js';
 import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand } from '../../config/commands.js';
-import { DINGTALK_WEBHOOK_PATTERN, WECHAT_WORK_SENDKEY_PATTERN, type SafeNotificationConfigs } from '#shared';
+import { DINGTALK_WEBHOOK_PATTERN, WECHAT_WORK_API_URL_PATTERN, type SafeNotificationConfigs } from '#shared';
 import { BottomSheet } from '../common/BottomSheet.js';
 
 export type WithId<T> = T & { _id: string };
@@ -22,7 +22,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
   const [shortcuts, setShortcuts] = useState<WithId<ConfigurableShortcut>[]>([]);
   const [commands, setCommands] = useState<WithId<ConfigurableCommand>[]>([]);
   const [dingtalkWebhookUrl, setDingtalkWebhookUrl] = useState('');
-  const [wechatWorkSendkey, setWechatWorkSendkey] = useState('');
+  const [wechatWorkApiUrl, setWechatWorkApiUrl] = useState('');
   const [notificationStatus, setNotificationStatus] = useState<SafeNotificationConfigs>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +69,29 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
     }
   };
 
+  /**
+   * 处理通知渠道启用状态变更
+   * 即时生效，无需点击 Save
+   */
+  const handleChannelEnabledChange = async (channel: 'dingtalk' | 'wechat_work', enabled: boolean) => {
+    // 乐观更新：立即切换 Toggle 状态
+    const prevStatus = notificationStatus;
+    setNotificationStatus((prev) => ({
+      ...prev,
+      [channel]: { ...prev[channel], configured: true, enabled },
+    }));
+
+    try {
+      await updateNotificationChannelEnabled(channel, enabled);
+    } catch (err) {
+      // 失败回滚
+      setNotificationStatus(prevStatus);
+      console.error('Failed to update channel enabled status:', err);
+      setError('Failed to update channel status');
+      setTimeout(() => setError(null), 2000);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -96,14 +119,14 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
       }
 
       // 微信配置
-      const trimmedSendkey = wechatWorkSendkey.trim();
-      if (trimmedSendkey || notificationStatus?.wechat_work?.configured) {
-        if (trimmedSendkey && !WECHAT_WORK_SENDKEY_PATTERN.test(trimmedSendkey)) {
-          setError('Please enter a valid WeChat Sendkey (starting with SCT or sctp)');
+      const trimmedApiUrl = wechatWorkApiUrl.trim();
+      if (trimmedApiUrl || notificationStatus?.wechat_work?.configured) {
+        if (trimmedApiUrl && !WECHAT_WORK_API_URL_PATTERN.test(trimmedApiUrl)) {
+          setError('Please enter a valid Server酱³ API URL (https://<uid>.push.ft07.com/send/<sendkey>.send)');
           setSaving(false);
           return;
         }
-        notifications.wechat_work = { sendkey: trimmedSendkey };
+        notifications.wechat_work = { apiUrl: trimmedApiUrl };
       }
 
       // 如果有通知配置，添加到 config
@@ -122,10 +145,10 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
             setDingtalkWebhookUrl(''); // 保存后清空输入框
           }
         }
-        if (trimmedSendkey || notificationStatus?.wechat_work?.configured) {
-          newStatus.wechat_work = { configured: !!trimmedSendkey };
-          if (trimmedSendkey) {
-            setWechatWorkSendkey(''); // 保存后清空输入框
+        if (trimmedApiUrl || notificationStatus?.wechat_work?.configured) {
+          newStatus.wechat_work = { configured: !!trimmedApiUrl };
+          if (trimmedApiUrl) {
+            setWechatWorkApiUrl(''); // 保存后清空输入框
           }
         }
         setNotificationStatus(newStatus);
@@ -237,8 +260,9 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
           notificationStatus={notificationStatus}
           dingtalkWebhookUrl={dingtalkWebhookUrl}
           onDingtalkWebhookChange={setDingtalkWebhookUrl}
-          wechatWorkSendkey={wechatWorkSendkey}
-          onWechatWorkSendkeyChange={setWechatWorkSendkey}
+          wechatWorkApiUrl={wechatWorkApiUrl}
+          onWechatWorkApiUrlChange={setWechatWorkApiUrl}
+          onChannelEnabledChange={handleChannelEnabledChange}
         />
       )}
     </BottomSheet>

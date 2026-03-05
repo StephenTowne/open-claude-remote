@@ -1,21 +1,21 @@
 import { useState } from 'react';
-import { WECHAT_WORK_SENDKEY_PATTERN } from '#shared';
+import { WECHAT_WORK_API_URL_PATTERN } from '#shared';
 
 interface WechatWorkConfigFormProps {
-  sendkey: string;
-  onChange: (sendkey: string) => void;
+  apiUrl: string;
+  onChange: (apiUrl: string) => void;
   configured?: boolean;
 }
 
 export function WechatWorkConfigForm({
-  sendkey,
+  apiUrl,
   onChange,
   configured,
 }: WechatWorkConfigFormProps) {
   const [showValidation, setShowValidation] = useState(false);
 
-  const isValid = sendkey === '' || WECHAT_WORK_SENDKEY_PATTERN.test(sendkey);
-  const showError = showValidation && !isValid && sendkey !== '';
+  const isValid = apiUrl === '' || WECHAT_WORK_API_URL_PATTERN.test(apiUrl);
+  const showError = showValidation && !isValid && apiUrl !== '';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -29,13 +29,13 @@ export function WechatWorkConfigForm({
             color: 'var(--text-primary)',
           }}
         >
-          Sendkey
+          API URL
         </label>
         <input
-          type="text"
+          type="url"
           autoComplete="off"
-          placeholder="SCTxxx or sctpxxx"
-          value={sendkey}
+          placeholder="https://<uid>.push.ft07.com/send/<sendkey>.send"
+          value={apiUrl}
           onChange={(e) => {
             onChange(e.target.value);
             // 输入时不清除验证状态，保持用户看到的反馈
@@ -60,12 +60,12 @@ export function WechatWorkConfigForm({
               color: 'var(--status-error)',
             }}
           >
-            Please enter a valid Sendkey starting with SCT or sctp
+            Please enter a valid Server酱³ API URL
           </div>
         )}
       </div>
 
-      {configured && !sendkey && (
+      {configured && !apiUrl && (
         <div
           style={{
             padding: 10,
@@ -75,7 +75,7 @@ export function WechatWorkConfigForm({
             color: 'var(--status-running)',
           }}
         >
-          ✓ Configured. Enter a new Sendkey to update.
+          ✓ Configured. Enter a new API URL to update.
         </div>
       )}
 
@@ -86,12 +86,12 @@ export function WechatWorkConfigForm({
         }}
       >
         <a
-          href="https://sct.ftqq.com/"
+          href="https://sct.ftqq.com/sendkey"
           target="_blank"
           rel="noopener noreferrer"
           style={{ color: 'var(--status-running)' }}
         >
-          How to get Server酱 Sendkey?
+          How to get Server酱³ API URL?
         </a>
       </div>
     </div>

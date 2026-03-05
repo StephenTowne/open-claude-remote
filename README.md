@@ -80,6 +80,8 @@ Get notified when Claude is waiting for input. All notifications include the ins
 
 **Web Push** — works even when the browser is in the background or the screen is locked. Just allow notifications when prompted.
 
+**Channel Toggle** — each notification channel has a toggle switch in the settings. Toggle to enable/disable without deleting the configuration. Changes take effect immediately across all running instances.
+
 **DingTalk** — configure a DingTalk bot webhook to receive notifications on your team channel:
 
 ```json
@@ -99,22 +101,22 @@ Get notified when Claude is waiting for input. All notifications include the ins
 2. For security settings, select "Custom Keywords" and add `Claude` (the message title includes this keyword)
 3. Copy the Webhook URL to your config file or paste it in the Web UI settings
 
-**WeChat (Server酱)** — configure Server酱 to receive notifications on WeChat:
+**WeChat (Server酱³)** — configure Server酱³ to receive notifications on WeChat:
 
 ```json
 {
   "notifications": {
     "wechat_work": {
-      "sendkey": "SCTyour-sendkey-here"
+      "apiUrl": "https://<uid>.push.ft07.com/send/<sendkey>.send"
     }
   }
 }
 ```
 
 **Setup steps:**
-1. Visit [Server酱](https://sct.ftqq.com/) and sign in with WeChat
-2. Create a new sendkey (SCT... for standard, sctp... for Turbo)
-3. Copy the sendkey to your config file or paste it in the Web UI settings
+1. Visit [Server酱 Sendkey](https://sct.ftqq.com/sendkey) and sign in with WeChat
+2. Copy the API URL from the Sendkey page
+3. Paste it in your config file or in the Web UI settings
 
 ---
 
@@ -168,7 +170,15 @@ Config file: `~/.claude-remote/config.json`
 | `commands` | array | see below | Custom command buttons |
 | `workspaces` | string[] | [] | Allowed working directories for web-spawned instances |
 | `settingsDirs` | string[] | ["~/.claude/", "~/.claude-remote/settings/"] | Directories to scan for settings files |
-| `notifications` | object | — | Notification channels config (DingTalk, etc.) |
+| `notifications` | object | — | Notification channels config (see below) |
+
+**Notification channel config:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `webhookUrl` | string | — | DingTalk webhook URL |
+| `apiUrl` | string | — | Server酱³ API URL (WeChat) |
+| `enabled` | boolean | true | Whether the channel is active |
 
 **Priority**: CLI args > config file > defaults
 

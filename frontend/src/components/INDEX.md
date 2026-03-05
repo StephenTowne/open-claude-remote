@@ -2,12 +2,12 @@
 # frontend/src/components/ - React UI 组件，按功能域子目录组织
 
 ## common/
+- ActionSheetSelect.tsx: 通用 ActionSheet 选择器，从底部弹出大面板（70vh）+ 搜索过滤 + 键盘导航，替代下拉面板方案
 - BottomSheet.tsx: 通用底部抽屉组件，滑入/滑出动画 + 拖拽手柄 + 点击遮罩关闭
 - ConnectionBanner.tsx: WS 断开时顶部警告横幅，connecting 黄色 / disconnected 红色
 - IpChangeToast.tsx: IP 变化通知弹窗，显示旧 IP → 新 IP 变化，提供"复制新地址"按钮
 - SafeArea.tsx: iOS 安全区域适配容器，paddingTop 使用 env(safe-area-inset-top)
-- SettingsFileSelector.tsx: Settings 文件选择器，可搜索过滤 + 显示 displayName/directory + 键盘导航
-- WorkspaceSelector.tsx: 工作目录选择器，可搜索过滤 + 智能路径截取（.../parent/current）+ 键盘导航（↑↓/Enter/Esc）
+- Toggle.tsx: Toggle 开关组件，移动端友好（44px 点击区域），支持无障碍访问（role="switch"）
 
 ## input/
 - CommandPicker.tsx: 命令快捷选择器，两行布局（快捷键行 + 命令行），快捷键直接发送 ANSI 序列，命令点击填入输入框
@@ -28,6 +28,7 @@
 - NotificationSettings.tsx: 通知设置面板，支持多渠道通知（钉钉/Email/Slack/微信）的开关与配置管理
 - NotificationChannelCard.tsx: 通知渠道卡片组件，包含图标、描述、状态指示及折叠/展开动画
 - DingtalkConfigForm.tsx: 钉钉通知配置表单，包含 Webhook URL 验证及保存状态提示
+- WechatWorkConfigForm.tsx: Server酱³ 微信通知配置表单，API URL 输入 + 正则验证 + 已配置状态提示
 - SortableItemShell.tsx: 可排序列表项外壳，集成拖拽手柄/toggle开关/删除按钮，用于设置项行布局
 - useDndSensors.ts: dnd-kit 拖拽传感器配置 hook，PointerSensor + KeyboardSensor，激活约束 8px
 

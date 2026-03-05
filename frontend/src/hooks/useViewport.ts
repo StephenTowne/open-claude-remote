@@ -60,30 +60,31 @@ export function useViewport() {
     }
   }, [checkOcclusion]);
 
-  // 立即更新（无防抖），用于 focus 事件
+  // focusin/focusout 时只检测遮挡状态，不设置 offsetTop
+  // 原因：浏览器原生滚动会处理输入框可见性
+  // 等待 visualViewport.resize 提供稳定的值后再补偿
+  // 这避免了双重补偿（浏览器原生滚动 + JS transform）导致的"跳动"
   const updateViewportImmediate = useCallback(() => {
     const vv = window.visualViewport;
     if (!vv) return;
 
-    // 立即检测并更新（不等待键盘动画完成）
     const occluded = checkOcclusion();
     setNeedsCompensation(occluded);
 
-    if (occluded) {
-      setOffsetTop(vv.offsetTop);
-    } else {
-      // focusout 时重置为默认值，保持 hook 状态自洽
+    // focusout 时重置为默认值
+    if (!occluded) {
       setOffsetTop(0);
     }
+    // focusin 时不设置 offsetTop，等待 visualViewport.resize
   }, [checkOcclusion]);
 
   // 防抖处理：用于 visualViewport 变化事件
-  // 键盘弹起动画通常 100-300ms，使用较短防抖避免明显延迟
+  // 防抖设为 0，尽快响应 visualViewport 变化
   const debouncedUpdate = useCallback(() => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
-    debounceTimerRef.current = setTimeout(updateViewport, 50);
+    debounceTimerRef.current = setTimeout(updateViewport, 0);
   }, [updateViewport]);
 
   useEffect(() => {

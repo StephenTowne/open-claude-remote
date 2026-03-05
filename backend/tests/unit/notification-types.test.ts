@@ -6,7 +6,7 @@ import {
   validateDingtalkConfig,
   validateWechatWorkConfig,
   DINGTALK_WEBHOOK_PATTERN,
-  WECHAT_WORK_SENDKEY_PATTERN,
+  WECHAT_WORK_API_URL_PATTERN,
   type DingtalkConfig,
   type NotificationConfigs,
 } from '#shared';
@@ -63,25 +63,25 @@ describe('notification-types', () => {
     it('should preserve wechat_work config from new notifications structure', () => {
       const newConfig: NotificationConfigs = {
         dingtalk: { webhookUrl: 'https://new.webhook.url' },
-        wechat_work: { sendkey: 'SCTtestkey123' },
+        wechat_work: { apiUrl: 'https://test.push.ft07.com/send/abc.send' },
       };
 
       const result = mergeNotificationConfigs(newConfig, undefined);
 
       expect(result.dingtalk?.webhookUrl).toBe('https://new.webhook.url');
-      expect(result.wechat_work?.sendkey).toBe('SCTtestkey123');
+      expect(result.wechat_work?.apiUrl).toBe('https://test.push.ft07.com/send/abc.send');
     });
 
     it('should preserve wechat_work config even when dingtalk falls back to old config', () => {
       const newConfig: NotificationConfigs = {
-        wechat_work: { sendkey: 'sctptestkey456' },
+        wechat_work: { apiUrl: 'https://test.push.ft07.com/send/xyz.send' },
       };
       const oldDingtalk: DingtalkConfig = { webhookUrl: 'https://old.webhook.url' };
 
       const result = mergeNotificationConfigs(newConfig, oldDingtalk);
 
       expect(result.dingtalk?.webhookUrl).toBe('https://old.webhook.url');
-      expect(result.wechat_work?.sendkey).toBe('sctptestkey456');
+      expect(result.wechat_work?.apiUrl).toBe('https://test.push.ft07.com/send/xyz.send');
     });
   });
 
@@ -94,7 +94,7 @@ describe('notification-types', () => {
       const result = getNotificationStatus(configs);
 
       expect(result).toEqual({
-        dingtalk: { configured: true },
+        dingtalk: { configured: true, enabled: undefined },
       });
     });
 
@@ -108,19 +108,19 @@ describe('notification-types', () => {
       expect(result.dingtalk?.configured).toBe(false);
     });
 
-    it('should return configured true when wechat_work has sendkey', () => {
+    it('should return configured true when wechat_work has apiUrl', () => {
       const configs: NotificationConfigs = {
-        wechat_work: { sendkey: 'SCTtestkey123' },
+        wechat_work: { apiUrl: 'https://test.push.ft07.com/send/abc.send' },
       };
 
       const result = getNotificationStatus(configs);
 
-      expect(result.wechat_work).toEqual({ configured: true });
+      expect(result.wechat_work).toEqual({ configured: true, enabled: undefined });
     });
 
-    it('should return configured false when wechat_work sendkey is empty', () => {
+    it('should return configured false when wechat_work apiUrl is empty', () => {
       const configs: NotificationConfigs = {
-        wechat_work: { sendkey: '' },
+        wechat_work: { apiUrl: '' },
       };
 
       const result = getNotificationStatus(configs);
@@ -131,19 +131,71 @@ describe('notification-types', () => {
     it('should return both dingtalk and wechat_work status', () => {
       const configs: NotificationConfigs = {
         dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc123' },
-        wechat_work: { sendkey: 'SCTtestkey123' },
+        wechat_work: { apiUrl: 'https://test.push.ft07.com/send/abc.send' },
       };
 
       const result = getNotificationStatus(configs);
 
-      expect(result.dingtalk).toEqual({ configured: true });
-      expect(result.wechat_work).toEqual({ configured: true });
+      expect(result.dingtalk).toEqual({ configured: true, enabled: undefined });
+      expect(result.wechat_work).toEqual({ configured: true, enabled: undefined });
     });
 
     it('should return empty object when configs is undefined', () => {
       const result = getNotificationStatus(undefined);
 
       expect(result).toEqual({});
+    });
+
+    it('should return enabled true when dingtalk is explicitly enabled', () => {
+      const configs: NotificationConfigs = {
+        dingtalk: {
+          webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc123',
+          enabled: true,
+        },
+      };
+
+      const result = getNotificationStatus(configs);
+
+      expect(result.dingtalk).toEqual({ configured: true, enabled: true });
+    });
+
+    it('should return enabled false when dingtalk is explicitly disabled', () => {
+      const configs: NotificationConfigs = {
+        dingtalk: {
+          webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc123',
+          enabled: false,
+        },
+      };
+
+      const result = getNotificationStatus(configs);
+
+      expect(result.dingtalk).toEqual({ configured: true, enabled: false });
+    });
+
+    it('should return enabled true when wechat_work is explicitly enabled', () => {
+      const configs: NotificationConfigs = {
+        wechat_work: {
+          apiUrl: 'https://test.push.ft07.com/send/abc.send',
+          enabled: true,
+        },
+      };
+
+      const result = getNotificationStatus(configs);
+
+      expect(result.wechat_work).toEqual({ configured: true, enabled: true });
+    });
+
+    it('should return enabled false when wechat_work is explicitly disabled', () => {
+      const configs: NotificationConfigs = {
+        wechat_work: {
+          apiUrl: 'https://test.push.ft07.com/send/abc.send',
+          enabled: false,
+        },
+      };
+
+      const result = getNotificationStatus(configs);
+
+      expect(result.wechat_work).toEqual({ configured: true, enabled: false });
     });
   });
 
@@ -170,20 +222,28 @@ describe('notification-types', () => {
   });
 
   describe('validateWechatWorkConfig', () => {
-    it('should return true for valid SCT sendkey', () => {
-      expect(validateWechatWorkConfig({ sendkey: 'SCTtesttoken123456' })).toBe(true);
+    it('should return true for valid API URL', () => {
+      expect(validateWechatWorkConfig({ apiUrl: 'https://test.push.ft07.com/send/abc123.send' })).toBe(true);
     });
 
-    it('should return true for valid sctp sendkey', () => {
-      expect(validateWechatWorkConfig({ sendkey: 'sctptesttoken123456' })).toBe(true);
+    it('should return true for valid API URL with different uid', () => {
+      expect(validateWechatWorkConfig({ apiUrl: 'https://user-id-123.push.ft07.com/send/SCTkey.send' })).toBe(true);
     });
 
-    it('should return false for invalid sendkey format', () => {
-      expect(validateWechatWorkConfig({ sendkey: 'invalid-format' })).toBe(false);
+    it('should return false for invalid URL format (wrong domain)', () => {
+      expect(validateWechatWorkConfig({ apiUrl: 'https://evil.com/send/key.send' })).toBe(false);
     });
 
-    it('should return false for empty sendkey', () => {
-      expect(validateWechatWorkConfig({ sendkey: '' })).toBe(false);
+    it('should return false for invalid URL format (not https)', () => {
+      expect(validateWechatWorkConfig({ apiUrl: 'http://test.push.ft07.com/send/key.send' })).toBe(false);
+    });
+
+    it('should return false for invalid URL format (missing .send)', () => {
+      expect(validateWechatWorkConfig({ apiUrl: 'https://test.push.ft07.com/send/key' })).toBe(false);
+    });
+
+    it('should return false for empty apiUrl', () => {
+      expect(validateWechatWorkConfig({ apiUrl: '' })).toBe(false);
     });
 
     it('should return false when config is undefined', () => {
@@ -191,27 +251,31 @@ describe('notification-types', () => {
     });
   });
 
-  describe('WECHAT_WORK_SENDKEY_PATTERN', () => {
-    it('should match valid sendkeys', () => {
-      const validKeys = ['SCTtesttoken123', 'sctptesttoken456', 'SCTabcDEF789'];
-      validKeys.forEach(key => {
-        expect(WECHAT_WORK_SENDKEY_PATTERN.test(key)).toBe(true);
+  describe('WECHAT_WORK_API_URL_PATTERN', () => {
+    it('should match valid API URLs', () => {
+      const validUrls = [
+        'https://test.push.ft07.com/send/abc123.send',
+        'https://user-id-123.push.ft07.com/send/SCTkey.send',
+        'https://a.push.ft07.com/send/b.send',
+      ];
+      validUrls.forEach(url => {
+        expect(WECHAT_WORK_API_URL_PATTERN.test(url)).toBe(true);
       });
     });
 
-    it('should not match invalid sendkeys', () => {
-      const invalidKeys = [
-        'XXXtesttoken',     // wrong prefix
-        'sct123',           // lowercase sct (not SCT or sctp)
-        'SCT',              // prefix only, no content
-        'sctp',             // prefix only, no content
-        'SCT@evil.com',     // special characters
-        'sctp.evil.com',    // dots
-        'SCT test',         // spaces
-        '',                 // empty
+    it('should not match invalid URLs', () => {
+      const invalidUrls = [
+        'http://test.push.ft07.com/send/key.send',      // not https
+        'https://evil.com/send/key.send',               // wrong domain
+        'https://push.ft07.com/send/key.send',          // missing uid subdomain
+        'https://test.push.ft07.com/send/key',          // missing .send suffix
+        'https://test.push.ft07.com/key.send',          // missing /send path
+        'https://test.ft07.com/send/key.send',          // wrong subdomain
+        'not-a-url',                                     // not a URL
+        '',                                              // empty
       ];
-      invalidKeys.forEach(key => {
-        expect(WECHAT_WORK_SENDKEY_PATTERN.test(key)).toBe(false);
+      invalidUrls.forEach(url => {
+        expect(WECHAT_WORK_API_URL_PATTERN.test(url)).toBe(false);
       });
     });
   });

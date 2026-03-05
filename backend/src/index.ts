@@ -18,6 +18,7 @@ import { createApiRouter } from './api/router.js';
 import { PushService } from './push/push-service.js';
 import { DingtalkService } from './notification/dingtalk-service.js';
 import { WechatWorkService } from './notification/wechat-work-service.js';
+import { createNotificationManager } from './notification/notification-manager.js';
 import { logger, setInstanceContext } from './logger/logger.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { findAvailablePort } from './registry/port-finder.js';
@@ -103,6 +104,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 9. Setup Push service
   const pushService = new PushService(sharedConfigDir);
 
+  // 9.1. Create NotificationManager for dynamic enabled status checking
+  const notificationManager = createNotificationManager();
+
   // 9.5. Setup Dingtalk service (if configured)
   const userConfigPath = resolve(sharedConfigDir, 'config.json');
   let dingtalkService: DingtalkService | null = null;
@@ -114,7 +118,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
         dingtalk?: { webhookUrl: string; enabled?: boolean };
         notifications?: {
           dingtalk?: { webhookUrl: string; enabled?: boolean };
-          wechat_work?: { sendkey: string; enabled?: boolean };
+          wechat_work?: { apiUrl: string; enabled?: boolean };
         };
       };
 
@@ -127,8 +131,8 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
 
       // 微信配置：仅使用新版 notifications 结构
       const wechatConfig = userConfig.notifications?.wechat_work;
-      if (wechatConfig?.sendkey && wechatConfig.enabled !== false) {
-        wechatWorkService = new WechatWorkService(wechatConfig.sendkey);
+      if (wechatConfig?.apiUrl && wechatConfig.enabled !== false) {
+        wechatWorkService = new WechatWorkService(wechatConfig.apiUrl);
         logger.info('WeChat notification service initialized');
       }
     }
@@ -151,6 +155,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     listInstances: () => registry.list(),
     currentInstanceId: instanceId,
     instanceSpawner,
+    notificationManager,
   }));
 
   // 12. Serve frontend static files (if built)
@@ -184,6 +189,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 16. Create Session Controller (with relay for dynamic master switch)
   sessionController = new SessionController(ptyManager, wsServer, hookReceiver, config.maxBufferLines, relay);
   sessionController.setPushService(pushService);
+  sessionController.setNotificationManager(notificationManager);
   if (dingtalkService) {
     sessionController.setDingtalkService(dingtalkService);
   }

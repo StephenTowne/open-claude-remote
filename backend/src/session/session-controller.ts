@@ -1,5 +1,6 @@
 import { WebSocket } from 'ws';
 import type { SessionStatus } from '#shared';
+import type { NotificationChannel } from '../hooks/hook-types.js';
 import { PtyManager } from '../pty/pty-manager.js';
 import { OutputBuffer } from '../pty/output-buffer.js';
 import { WsServer, type ClientType } from '../ws/ws-server.js';
@@ -7,7 +8,6 @@ import { HookReceiver } from '../hooks/hook-receiver.js';
 import {
   type HookNotification,
   type TaskCompletedData,
-  type NotificationChannel,
   HookEventType,
 } from '../hooks/hook-types.js';
 import { handleWsMessage } from '../ws/ws-handler.js';
@@ -16,6 +16,7 @@ import type { PushService } from '../push/push-service.js';
 import type { TerminalRelay } from '../terminal/terminal-relay.js';
 import type { DingtalkService } from '../notification/dingtalk-service.js';
 import type { WechatWorkService } from '../notification/wechat-work-service.js';
+import type { NotificationManager } from '../notification/notification-manager.js';
 
 const WS_FLUSH_INTERVAL_MS = 16;
 const WS_MAX_CHUNK_BYTES = 32 * 1024;
@@ -30,6 +31,7 @@ export class SessionController {
   private pushService: PushService | null = null;
   private dingtalkService: DingtalkService | null = null;
   private wechatWorkService: WechatWorkService | null = null;
+  private notificationManager: NotificationManager | null = null;
   private instanceUrl: string | null = null;
 
   private wsPendingChunks: string[] = [];
@@ -82,6 +84,13 @@ export class SessionController {
    */
   setWechatWorkService(wechatWorkService: WechatWorkService): void {
     this.wechatWorkService = wechatWorkService;
+  }
+
+  /**
+   * Inject NotificationManager for dynamic enabled status checking.
+   */
+  setNotificationManager(manager: NotificationManager): void {
+    this.notificationManager = manager;
   }
 
   /**
@@ -335,6 +344,15 @@ export class SessionController {
     channel: NotificationChannel,
     notification: HookNotification
   ): void {
+    // websocket 和 push 渠道不做 enabled 检查（始终发送）
+    if (channel !== 'websocket' && channel !== 'push') {
+      // 检查渠道是否启用
+      if (this.notificationManager && !this.notificationManager.isEnabled(channel)) {
+        logger.debug({ channel }, 'Notification channel disabled, skipping');
+        return;
+      }
+    }
+
     // 构造 URL 提示信息
     const urlHint = this.instanceUrl ? `\n\nInstance: ${this.instanceUrl}` : '';
 

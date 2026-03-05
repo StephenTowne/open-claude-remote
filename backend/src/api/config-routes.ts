@@ -19,6 +19,8 @@ import {
   getNotificationStatus,
   type DingtalkConfig,
 } from '#shared';
+import type { NotificationChannel } from '../hooks/hook-types.js';
+import type { NotificationManager } from '../notification/notification-manager.js';
 
 const CONFIG_DIR = join(homedir(), '.claude-remote');
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
@@ -129,7 +131,7 @@ async function saveUserConfig(config: UserConfig): Promise<void> {
   await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
-export function createConfigRoutes(authModule: AuthModule): Router {
+export function createConfigRoutes(authModule: AuthModule, notificationManager?: NotificationManager): Router {
   const router = Router();
 
   // 复用 auth 路由以支持测试认证
@@ -231,6 +233,79 @@ export function createConfigRoutes(authModule: AuthModule): Router {
     } catch (error) {
       logger.error({ error }, 'Failed to update config');
       res.status(500).json({ error: 'Failed to save config' });
+    }
+  });
+
+  /**
+   * PATCH /api/config/notifications/:channel/enabled - 更新通知渠道启用状态
+   */
+  router.patch('/config/notifications/:channel/enabled', authModule.requireAuth.bind(authModule), async (req, res) => {
+    try {
+      const { channel } = req.params;
+      const { enabled } = req.body;
+
+      // 验证参数
+      const validChannels: NotificationChannel[] = ['dingtalk', 'wechat_work'];
+      if (!validChannels.includes(channel as NotificationChannel)) {
+        res.status(400).json({ error: 'Invalid channel type' });
+        return;
+      }
+      if (typeof enabled !== 'boolean') {
+        res.status(400).json({ error: 'enabled must be a boolean' });
+        return;
+      }
+
+      // 文件锁保护 read-modify-write，返回结果供外部统一处理响应
+      const result = await withFileLockAsync(CONFIG_LOCK, async () => {
+        const config = (await loadUserConfig()) ?? {};
+        const notifications = config.notifications ?? {};
+
+        // 检查渠道是否已配置
+        if (channel === 'dingtalk') {
+          // 钉钉：检查新版和旧版配置
+          const dtConfig = notifications.dingtalk ?? config.dingtalk;
+          if (!dtConfig?.webhookUrl) {
+            return { error: 'Channel not configured' } as const;
+          }
+          // 更新新版结构
+          config.notifications = {
+            ...notifications,
+            dingtalk: { ...dtConfig, enabled },
+          };
+          // 双写旧版结构
+          if (config.dingtalk) {
+            config.dingtalk = { ...config.dingtalk, enabled };
+          }
+        } else if (channel === 'wechat_work') {
+          const wcConfig = notifications.wechat_work;
+          if (!wcConfig?.apiUrl) {
+            return { error: 'Channel not configured' } as const;
+          }
+          config.notifications = {
+            ...notifications,
+            wechat_work: { ...wcConfig, enabled },
+          };
+        }
+
+        await saveUserConfig(config);
+        return { error: null } as const;
+      });
+
+      if (result.error) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+
+      // 主动刷新缓存（当前实例即时生效）
+      if (notificationManager) {
+        notificationManager.refresh(channel as NotificationChannel);
+      }
+
+      logger.info({ channel, enabled }, 'Notification channel enabled status updated');
+      res.json({ success: true, channel, enabled });
+    } catch (error) {
+      logger.error({ error }, 'Failed to update notification channel enabled status');
+      res.status(500).json({ error: 'Failed to update notification channel status' });
     }
   });
 
