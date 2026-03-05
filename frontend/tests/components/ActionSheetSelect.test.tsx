@@ -38,6 +38,96 @@ describe('ActionSheetSelect', () => {
       expect(screen.getByText('Select an option...')).toBeDefined();
     });
 
+    it('移动端打开面板不自动聚焦搜索框（显示点击搜索占位符）', async () => {
+      // 模拟触屏设备
+      Object.defineProperty(window, 'ontouchstart', {
+        value: {},
+        writable: true,
+        configurable: true,
+      });
+
+      render(
+        <ActionSheetSelect
+          options={mockOptions}
+          value={null}
+          onChange={mockOnChange}
+          searchPlaceholder="Search items..."
+        />
+      );
+
+      const trigger = screen.getByRole('button');
+      fireEvent.click(trigger);
+
+      await waitFor(() => {
+        // 应该显示搜索占位符文本，而不是真正的输入框
+        expect(screen.getByText('Search items...')).toBeDefined();
+      });
+
+      // 不应该直接显示输入框（避免键盘弹出）
+      expect(screen.queryByPlaceholderText('Search items...')).toBeNull();
+
+      // 清理
+      delete (window as { ontouchstart?: unknown }).ontouchstart;
+    });
+
+    it('桌面端打开面板自动聚焦搜索框', async () => {
+      // 确保不是触屏设备
+      delete (window as { ontouchstart?: unknown }).ontouchstart;
+
+      render(
+        <ActionSheetSelect
+          options={mockOptions}
+          value={null}
+          onChange={mockOnChange}
+          searchPlaceholder="Search items..."
+        />
+      );
+
+      const trigger = screen.getByRole('button');
+      fireEvent.click(trigger);
+
+      await waitFor(() => {
+        // 桌面端应该直接显示输入框（带有聚焦）
+        expect(screen.getByPlaceholderText('Search items...')).toBeDefined();
+      });
+    });
+
+    it('点击搜索占位符后切换到输入框', async () => {
+      // 模拟触屏设备
+      Object.defineProperty(window, 'ontouchstart', {
+        value: {},
+        writable: true,
+        configurable: true,
+      });
+
+      render(
+        <ActionSheetSelect
+          options={mockOptions}
+          value={null}
+          onChange={mockOnChange}
+          searchPlaceholder="Tap to search..."
+        />
+      );
+
+      const trigger = screen.getByRole('button');
+      fireEvent.click(trigger);
+
+      await waitFor(() => {
+        expect(screen.getByText('Tap to search...')).toBeDefined();
+      });
+
+      // 点击占位符区域
+      fireEvent.click(screen.getByText('Tap to search...'));
+
+      await waitFor(() => {
+        // 应该切换为输入框
+        expect(screen.getByPlaceholderText('Tap to search...')).toBeDefined();
+      });
+
+      // 清理
+      delete (window as { ontouchstart?: unknown }).ontouchstart;
+    });
+
     it('渲染触发器显示选中项的 label', () => {
       render(
         <ActionSheetSelect

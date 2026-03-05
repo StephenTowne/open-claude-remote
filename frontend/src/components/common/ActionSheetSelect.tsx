@@ -64,6 +64,7 @@ export function ActionSheetSelect<T>({
   const [isAnimating, setIsAnimating] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [searchActive, setSearchActive] = useState(false);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +103,9 @@ export function ActionSheetSelect<T>({
     setIsOpen(true);
     setHighlightedIndex(-1);
     setSearchValue('');
+    // 移动端不激活搜索框，桌面端自动激活
+    const isTouchDevice = typeof window !== 'undefined' && 'ontouchstart' in window;
+    setSearchActive(!isTouchDevice);
   }, [disabled, options.length]);
 
   // 关闭面板
@@ -136,12 +140,12 @@ export function ActionSheetSelect<T>({
     }
   }, [isOpen]);
 
-  // 打开后聚焦搜索框
+  // 打开后聚焦搜索框（仅桌面端）
   useEffect(() => {
-    if (isOpen && isAnimating) {
+    if (isOpen && isAnimating && searchActive) {
       searchInputRef.current?.focus();
     }
-  }, [isOpen, isAnimating]);
+  }, [isOpen, isAnimating, searchActive]);
 
   // 键盘导航
   const handleKeyDown = useCallback(
@@ -198,6 +202,12 @@ export function ActionSheetSelect<T>({
         ref={triggerRef}
         type="button"
         onClick={handleOpen}
+        onTouchStart={() => {
+          // 失焦当前焦点元素，防止移动端软键盘自动弹出
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        }}
         disabled={disabled}
         id={id}
         style={{
@@ -234,21 +244,38 @@ export function ActionSheetSelect<T>({
             <div style={styles.handle} />
 
             {/* 搜索框 */}
-            <div style={styles.searchContainer}>
+            <div
+              style={{
+                ...styles.searchContainer,
+                ...(searchActive ? {} : styles.searchContainerInactive),
+              }}
+            >
               <SearchIcon />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchValue}
-                onChange={(e) => {
-                  setSearchValue(e.target.value);
-                  setHighlightedIndex(-1);
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder={searchPlaceholder}
-                autoComplete="off"
-                style={styles.searchInput}
-              />
+              {searchActive ? (
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchValue}
+                  onChange={(e) => {
+                    setSearchValue(e.target.value);
+                    setHighlightedIndex(-1);
+                  }}
+                  onKeyDown={handleKeyDown}
+                  placeholder={searchPlaceholder}
+                  autoComplete="off"
+                  style={styles.searchInput}
+                />
+              ) : (
+                <div
+                  onClick={() => {
+                    setSearchActive(true);
+                    setTimeout(() => searchInputRef.current?.focus(), 0);
+                  }}
+                  style={styles.searchPlaceholder}
+                >
+                  {searchPlaceholder}
+                </div>
+              )}
             </div>
 
             {/* 选项列表 */}
@@ -379,14 +406,15 @@ const styles: Record<string, React.CSSProperties> = {
   sheet: {
     width: '100%',
     maxWidth: 480,
-    height: '70vh',
-    maxHeight: '70vh',
+    height: '80vh',
+    maxHeight: '80vh',
     borderRadius: '16px 16px 0 0',
     background: 'var(--bg-secondary)',
     boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.3)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
+    paddingTop: 'env(safe-area-inset-top, 0)',
     paddingBottom: 'var(--safe-bottom)',
   },
 
@@ -422,6 +450,19 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-primary)',
     fontSize: 14,
     fontFamily: 'var(--font-mono)',
+  },
+
+  searchContainerInactive: {
+    background: 'var(--bg-tertiary)',
+  },
+
+  searchPlaceholder: {
+    flex: 1,
+    color: 'var(--text-secondary)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 14,
+    padding: '6px 0',
+    cursor: 'pointer',
   },
 
   listContainer: {

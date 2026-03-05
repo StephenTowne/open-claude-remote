@@ -73,6 +73,7 @@
 * 涉及 WebSocket 消息变更 → 先读 `shared/ws-protocol.ts`
 * 涉及编写测试 → 先读 `docs/rules/test_rules.md`
 * 涉及打印日志 → 先读 `docs/rules/log_rules.md`
+* 涉及移动端输入/键盘 → 先读 `docs/rules/mobile_keyboard_rules.md`
 
 # Token 效率（Token Efficiency）
 * 计划已明确文件和行号时，直接用 offset/limit 精确读取，禁止读全文
