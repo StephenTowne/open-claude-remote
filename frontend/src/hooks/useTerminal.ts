@@ -163,6 +163,7 @@ export function useTerminal(
     });
     termRef.current = term;
     fitAddonRef.current = fitAddon;
+    lastViewportYRef.current = term.buffer.active.viewportY;
 
     const adaptToPtySizeInner = (_ptyCols: number, _ptyRows?: number) => {
       fitAddon.fit();
@@ -252,6 +253,7 @@ export function useTerminal(
     if (autoFollowRef.current && !hasUserIntent) {
       programScrollTimestampRef.current = Date.now();
       term.scrollToBottom();
+      lastViewportYRef.current = term.buffer.active.viewportY;
       return;
     }
 
@@ -317,6 +319,7 @@ export function useTerminal(
     // 标记为程序滚动
     programScrollTimestampRef.current = Date.now();
     term.scrollToBottom();
+    lastViewportYRef.current = term.buffer.active.viewportY;
   }, []);
 
   const setAutoFollow = useCallback((enabled: boolean) => {

@@ -160,7 +160,10 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
 
   // 12. Serve frontend static files (if built)
   const __dirname = dirname(fileURLToPath(import.meta.url));
-  const frontendDist = resolve(__dirname, '../../../frontend-dist');
+  // 开发模式 (tsx backend/src/index.ts): __dirname = backend/src/ → ../../frontend-dist
+  // 生产构建 (node dist/backend/src/index.js): __dirname = dist/backend/src/ → ../../../frontend-dist
+  const isDistBuild = __dirname.includes('/dist/');
+  const frontendDist = resolve(__dirname, isDistBuild ? '../../../frontend-dist' : '../../frontend-dist');
 
   if (existsSync(frontendDist)) {
     app.use(express.static(frontendDist));

@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { useAppStore } from './stores/app-store.js';
 import { AuthPage } from './pages/AuthPage.js';
 import { ConsolePage } from './pages/ConsolePage.js';
+import { SpotlightProvider } from './components/onboarding/SpotlightContext.js';
+import { SpotlightGuide } from './components/onboarding/SpotlightGuide.js';
 import { getStatus, authenticate } from './services/api-client.js';
 import { loadToken, clearToken } from './services/token-storage.js';
 
@@ -105,5 +107,10 @@ export function App() {
     return <AuthPage />;
   }
 
-  return <ConsolePage />;
+  return (
+    <SpotlightProvider>
+      <ConsolePage />
+      <SpotlightGuide />
+    </SpotlightProvider>
+  );
 }

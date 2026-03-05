@@ -134,63 +134,74 @@ export function InstanceTabs({ onSwitch, onCopySuccess }: InstanceTabsProps) {
           display: 'flex',
           background: 'var(--bg-secondary)',
           borderBottom: '1px solid var(--border-color)',
-          overflowX: 'auto',
           flexShrink: 0,
         }}
       >
-        {/* Tab 列表 - 始终渲染 */}
-        {instances.map((inst) => {
-          const isActive = inst.instanceId === activeInstanceId;
-          return (
-            <button
-              key={inst.instanceId}
-              onClick={() => handleTabClick(inst.instanceId)}
-              onTouchStart={(e) => handleTouchStart(inst, e)}
-              onTouchEnd={handleTouchEnd}
-              onTouchMove={handleTouchEnd}
-              onContextMenu={(e) => handleContextMenu(inst, e)}
-              style={{
-                padding: '8px 16px',
-                background: 'transparent',
-                border: 'none',
-                borderBottom: isActive ? '2px solid var(--accent-color, #007aff)' : '2px solid transparent',
-                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                fontSize: 13,
-                fontWeight: isActive ? 600 : 400,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-              }}
-            >
-              {inst.name}
-              <span style={{
-                marginLeft: 6,
-                fontSize: 11,
-                color: 'var(--text-tertiary, var(--text-secondary))',
-                opacity: 0.7,
-              }}>
-                :{inst.port}
-              </span>
-            </button>
-          );
-        })}
+        {/* Tab 列表 - 可滚动区域 */}
+        <div
+          style={{
+            display: 'flex',
+            overflowX: 'auto',
+            padding: '0 4px 0 16px',
+            flex: 1,
+          }}
+        >
+          {instances.map((inst) => {
+            const isActive = inst.instanceId === activeInstanceId;
+            return (
+              <button
+                key={inst.instanceId}
+                onClick={() => handleTabClick(inst.instanceId)}
+                onTouchStart={(e) => handleTouchStart(inst, e)}
+                onTouchEnd={handleTouchEnd}
+                onTouchMove={handleTouchEnd}
+                onContextMenu={(e) => handleContextMenu(inst, e)}
+                style={{
+                  padding: '8px 16px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: isActive ? '2px solid var(--accent-color, #007aff)' : '2px solid transparent',
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontSize: 13,
+                  fontWeight: isActive ? 600 : 400,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                {inst.name}
+                <span style={{
+                  marginLeft: 6,
+                  fontSize: 11,
+                  color: 'var(--text-tertiary, var(--text-secondary))',
+                  opacity: 0.7,
+                }}>
+                  :{inst.port}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-        {/* "+" 按钮 */}
+        {/* 固定的 "+" 按钮 */}
         <button
           onClick={() => setIsCreateModalOpen(true)}
           aria-label="Create new instance"
           style={{
-            padding: '10px 16px',
+            width: 44,
+            height: 44,
+            padding: 0,
             background: 'transparent',
             border: 'none',
-            borderLeft: instances.length > 1 ? '1px solid var(--border-color)' : 'none',
+            borderLeft: '1px solid var(--border-color)',
             color: 'var(--text-secondary)',
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: 600,
             cursor: 'pointer',
-            whiteSpace: 'nowrap',
             flexShrink: 0,
-            marginLeft: instances.length > 1 ? 'auto' : 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
           +

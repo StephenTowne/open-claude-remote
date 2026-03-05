@@ -123,6 +123,7 @@ describe('ConsolePage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
     capturedHandleMessage = null;
     capturedOnSwitch = null;
     viewportState.offsetTop = 0;
@@ -525,6 +526,65 @@ describe('ConsolePage', () => {
     });
 
     expect(mockWrite).not.toHaveBeenCalled();
+  });
+
+  it('should mark instance as disconnected when session_ended message is received', async () => {
+    render(<ConsolePage />);
+
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'session_ended',
+      });
+    });
+
+    // session_ended 应该触发 setSessionStatus('idle') 和 setInstanceConnectionStatus(instanceId, 'disconnected')
+    expect(useAppStore.getState().sessionStatus).toBe('idle');
+    expect(useAppStore.getState().instanceConnectionStatus['inst-1']).toBe('disconnected');
+  });
+
+  it('should trigger auto switch immediately when session_ended is received', async () => {
+    mockedAuthenticateToInstance.mockResolvedValue(true);
+
+    useInstanceStore.setState({
+      instances: [
+        {
+          instanceId: 'inst-1',
+          name: 'Current',
+          host: '127.0.0.1',
+          port: 3000,
+          pid: 12345,
+          cwd: '/tmp/current',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: true,
+        },
+        {
+          instanceId: 'inst-2',
+          name: 'Other',
+          host: '127.0.0.1',
+          port: 3001,
+          pid: 12346,
+          cwd: '/tmp/other',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: false,
+        },
+      ],
+    });
+
+    render(<ConsolePage />);
+
+    // 收到 session_ended 后立即标记为 disconnected，触发自动切换
+    await act(async () => {
+      capturedHandleMessage?.({
+        type: 'session_ended',
+      });
+    });
+
+    // 验证：应该立即（不等待轮询）切换到另一个实例
+    await waitFor(() => {
+      expect(useInstanceStore.getState().activeInstanceId).toBe('inst-2');
+    });
+
+    expect(screen.getByText('已切换到 3001')).toBeDefined();
   });
 
   it('should write error message to terminal when error message is received', async () => {

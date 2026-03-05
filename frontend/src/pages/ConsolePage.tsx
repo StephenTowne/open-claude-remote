@@ -7,7 +7,6 @@ import { CommandPicker } from '../components/input/CommandPicker.js';
 import { ConnectionBanner } from '../components/common/ConnectionBanner.js';
 import { IpChangeToast } from '../components/common/IpChangeToast.js';
 import { InstanceTabs } from '../components/instances/InstanceTabs.js';
-import { SpotlightGuide } from '../components/onboarding/SpotlightGuide.js';
 import { ScrollToBottomButton } from '../components/terminal/ScrollToBottomButton.js';
 import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useTerminal } from '../hooks/useTerminal.js';
@@ -25,6 +24,7 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
   const inputBarRef = useRef<InputBarRef>(null);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
   const setIpChangeInfo = useAppStore((s) => s.setIpChangeInfo);
+  const setInstanceConnectionStatus = useAppStore((s) => s.setInstanceConnectionStatus);
   const { showNotification } = useLocalNotification();
 
   // 用 ref 打破循环依赖：handleMessage ↔ write，send ↔ onResize
@@ -69,6 +69,10 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
         break;
       case 'session_ended':
         setSessionStatus('idle');
+        // 立即标记连接断开，触发自动切换（不等 WebSocket onclose）
+        if (instanceId) {
+          setInstanceConnectionStatus(instanceId, 'disconnected');
+        }
         break;
       case 'error':
         writeRef.current(`\r\n\x1b[31m[Error] ${msg.message}\x1b[0m\r\n`);
@@ -389,7 +393,6 @@ export function ConsolePage() {
         />
       </div>
       {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}
-      <SpotlightGuide />
     </div>
   );
 }
