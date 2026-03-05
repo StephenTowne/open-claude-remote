@@ -15,6 +15,7 @@ import { logger } from '../logger/logger.js';
 import type { PushService } from '../push/push-service.js';
 import type { TerminalRelay } from '../terminal/terminal-relay.js';
 import type { DingtalkService } from '../notification/dingtalk-service.js';
+import type { WechatWorkService } from '../notification/wechat-work-service.js';
 
 const WS_FLUSH_INTERVAL_MS = 16;
 const WS_MAX_CHUNK_BYTES = 32 * 1024;
@@ -28,6 +29,7 @@ export class SessionController {
   private buffer: OutputBuffer;
   private pushService: PushService | null = null;
   private dingtalkService: DingtalkService | null = null;
+  private wechatWorkService: WechatWorkService | null = null;
   private instanceUrl: string | null = null;
 
   private wsPendingChunks: string[] = [];
@@ -73,6 +75,13 @@ export class SessionController {
    */
   setDingtalkService(dingtalkService: DingtalkService): void {
     this.dingtalkService = dingtalkService;
+  }
+
+  /**
+   * Inject WechatWorkService for hook-triggered notifications.
+   */
+  setWechatWorkService(wechatWorkService: WechatWorkService): void {
+    this.wechatWorkService = wechatWorkService;
   }
 
   /**
@@ -362,6 +371,19 @@ export class SessionController {
             .sendNotification(notification.title, notification.tool, body)
             .catch((err) => {
               logger.error({ err, channel: 'dingtalk' }, 'Failed to send dingtalk notification');
+            });
+        }
+        break;
+
+      case 'wechat_work':
+        if (this.wechatWorkService) {
+          const body = notification.detail
+            ? `${notification.message}\n${notification.detail}${urlHint}`
+            : notification.message + urlHint;
+          this.wechatWorkService
+            .sendNotification(notification.title, notification.tool, body)
+            .catch((err) => {
+              logger.error({ err, channel: 'wechat_work' }, 'Failed to send WeChat notification');
             });
         }
         break;

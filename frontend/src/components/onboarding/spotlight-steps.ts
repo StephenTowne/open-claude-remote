@@ -58,6 +58,15 @@ export const SPOTLIGHT_STEPS: SpotlightStep[] = [
     spotlightPadding: 4,
     spotlightRadius: 16,
   },
+  {
+    id: 'instance-tabs',
+    target: '[data-testid="instance-tabs"]',
+    title: 'Copy Instance',
+    description: 'Long press a tab to copy that instance with all settings.',
+    tooltipPosition: 'bottom',
+    spotlightPadding: 4,
+    spotlightRadius: 8,
+  },
 ];
 
 export const STORAGE_KEY = 'claude_remote_spotlight_done';

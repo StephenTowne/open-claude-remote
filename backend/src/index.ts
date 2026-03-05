@@ -17,6 +17,7 @@ import { TerminalRelay } from './terminal/terminal-relay.js';
 import { createApiRouter } from './api/router.js';
 import { PushService } from './push/push-service.js';
 import { DingtalkService } from './notification/dingtalk-service.js';
+import { WechatWorkService } from './notification/wechat-work-service.js';
 import { logger, setInstanceContext } from './logger/logger.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { findAvailablePort } from './registry/port-finder.js';
@@ -105,17 +106,34 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 9.5. Setup Dingtalk service (if configured)
   const userConfigPath = resolve(sharedConfigDir, 'config.json');
   let dingtalkService: DingtalkService | null = null;
+  let wechatWorkService: WechatWorkService | null = null;
   try {
     if (existsSync(userConfigPath)) {
       const userConfigContent = readFileSync(userConfigPath, 'utf-8');
-      const userConfig = JSON.parse(userConfigContent) as { dingtalk?: { webhookUrl: string } };
-      if (userConfig.dingtalk?.webhookUrl) {
-        dingtalkService = new DingtalkService(userConfig.dingtalk.webhookUrl);
+      const userConfig = JSON.parse(userConfigContent) as {
+        dingtalk?: { webhookUrl: string; enabled?: boolean };
+        notifications?: {
+          dingtalk?: { webhookUrl: string; enabled?: boolean };
+          wechat_work?: { sendkey: string; enabled?: boolean };
+        };
+      };
+
+      // 钉钉配置：优先使用新版 notifications 结构，回退到旧版
+      const dingtalkConfig = userConfig.notifications?.dingtalk ?? userConfig.dingtalk;
+      if (dingtalkConfig?.webhookUrl && dingtalkConfig.enabled !== false) {
+        dingtalkService = new DingtalkService(dingtalkConfig.webhookUrl);
         logger.info('Dingtalk notification service initialized');
+      }
+
+      // 微信配置：仅使用新版 notifications 结构
+      const wechatConfig = userConfig.notifications?.wechat_work;
+      if (wechatConfig?.sendkey && wechatConfig.enabled !== false) {
+        wechatWorkService = new WechatWorkService(wechatConfig.sendkey);
+        logger.info('WeChat notification service initialized');
       }
     }
   } catch (err) {
-    logger.warn({ err }, 'Failed to load dingtalk config, skipping');
+    logger.warn({ err }, 'Failed to load notification config, skipping');
   }
 
   // 10. Session controller reference (set after PTY spawn)
@@ -168,6 +186,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   sessionController.setPushService(pushService);
   if (dingtalkService) {
     sessionController.setDingtalkService(dingtalkService);
+  }
+  if (wechatWorkService) {
+    sessionController.setWechatWorkService(wechatWorkService);
   }
   // 设置实例 URL（初始化）
   const instanceUrl = `http://${config.displayIp}:${actualPort}`;

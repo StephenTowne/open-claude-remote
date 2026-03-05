@@ -233,6 +233,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            autoComplete="off"
             placeholder="Defaults to working directory name"
             style={{
               width: '100%',
@@ -293,6 +294,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
             type="text"
             value={claudeArgs}
             onChange={(e) => setClaudeArgs(e.target.value)}
+            autoComplete="off"
             placeholder="e.g., chat --model claude-sonnet-4-6"
             style={{
               width: '100%',

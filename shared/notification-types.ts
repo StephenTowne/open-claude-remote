@@ -9,12 +9,20 @@ export type NotificationChannelType = 'dingtalk' | 'email' | 'slack' | 'wechat_w
 /** 钉钉渠道配置 */
 export interface DingtalkConfig {
   webhookUrl: string;
+  enabled?: boolean; // 是否启用，默认 true
+}
+
+/** 企业微信（Server酱）渠道配置 */
+export interface WechatWorkConfig {
+  sendkey: string;
+  enabled?: boolean; // 是否启用，默认 true
 }
 
 /** 所有通知渠道配置（存储格式） */
 export interface NotificationConfigs {
   dingtalk?: DingtalkConfig;
-  // 预留其他渠道: email?: EmailConfig; slack?: SlackConfig; wechatWork?: WechatWorkConfig;
+  wechat_work?: WechatWorkConfig;
+  // 预留其他渠道: email?: EmailConfig; slack?: SlackConfig;
 }
 
 /** 安全的通知渠道状态（API 返回，不包含敏感信息） */
@@ -69,10 +77,11 @@ export const NOTIFICATION_CHANNELS: NotificationChannelMetas = {
     implemented: false,
   },
   wechat_work: {
-    displayName: 'WeChat Work',
+    displayName: 'WeChat',
     icon: 'wechat-work',
-    description: 'Send notifications to WeChat Work group via robot webhook',
-    implemented: false,
+    description: 'Send notifications to WeChat via Server酱',
+    helpUrl: 'https://sct.ftqq.com/',
+    implemented: true,
   },
 } as const;
 
@@ -111,6 +120,11 @@ export function mergeNotificationConfigs(
     result.dingtalk = oldDingtalk;
   }
 
+  // 企业微信配置：直接透传
+  if (notifications?.wechat_work) {
+    result.wechat_work = notifications.wechat_work;
+  }
+
   return result;
 }
 
@@ -124,6 +138,10 @@ export function getNotificationStatus(configs?: NotificationConfigs): SafeNotifi
 
   if (configs?.dingtalk) {
     result.dingtalk = { configured: !!configs.dingtalk.webhookUrl };
+  }
+
+  if (configs?.wechat_work) {
+    result.wechat_work = { configured: !!configs.wechat_work.sendkey };
   }
 
   return result;
@@ -142,4 +160,20 @@ export const DINGTALK_WEBHOOK_PATTERN = /^https:\/\/oapi\.dingtalk\.com\/robot\/
 export function validateDingtalkConfig(config?: DingtalkConfig): boolean {
   if (!config) return false;
   return DINGTALK_WEBHOOK_PATTERN.test(config.webhookUrl);
+}
+
+/**
+ * Server酱 Sendkey 格式验证
+ * 支持标准 sendkey (SCT...) 和 Turbo sendkey (sctp...)
+ */
+export const WECHAT_WORK_SENDKEY_PATTERN = /^(SCT[a-zA-Z0-9]+|sctp[a-zA-Z0-9]+)$/;
+
+/**
+ * 验证企业微信配置是否合法
+ * @param config 企业微信配置
+ * @returns 是否合法
+ */
+export function validateWechatWorkConfig(config?: WechatWorkConfig): boolean {
+  if (!config) return false;
+  return WECHAT_WORK_SENDKEY_PATTERN.test(config.sendkey);
 }

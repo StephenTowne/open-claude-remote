@@ -30,7 +30,7 @@ export function AuthPage() {
       padding: 24,
       background: 'var(--bg-primary)',
     }}>
-      <form onSubmit={handleSubmit} style={{
+      <form onSubmit={handleSubmit} autoComplete="off" style={{
         width: '100%',
         maxWidth: 400,
         display: 'flex',

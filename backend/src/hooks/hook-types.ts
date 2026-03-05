@@ -226,7 +226,7 @@ export enum HookEventType {
 /**
  * 通知渠道类型
  */
-export type NotificationChannel = 'websocket' | 'push' | 'dingtalk';
+export type NotificationChannel = 'websocket' | 'push' | 'dingtalk' | 'wechat_work';
 
 /**
  * 扩展的通知结构

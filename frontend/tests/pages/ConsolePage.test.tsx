@@ -7,7 +7,6 @@ import { authenticateToInstance } from '../../src/services/instance-api.js';
 import { authenticate } from '../../src/services/api-client.js';
 
 const viewportState = {
-  height: 900,
   offsetTop: 0,
   needsCompensation: false,
 };
@@ -126,7 +125,6 @@ describe('ConsolePage', () => {
     vi.clearAllMocks();
     capturedHandleMessage = null;
     capturedOnSwitch = null;
-    viewportState.height = 900;
     viewportState.offsetTop = 0;
     viewportState.needsCompensation = false;
     mockScrollToBottom.mockClear();
@@ -170,7 +168,6 @@ describe('ConsolePage', () => {
   });
 
   it('should show virtual key bar when keyboard is closed', () => {
-    viewportState.height = 900;
     viewportState.offsetTop = 0;
 
     render(<ConsolePage />);
@@ -179,19 +176,19 @@ describe('ConsolePage', () => {
     expect(screen.getAllByText('Esc').length).toBeGreaterThan(0);
   });
 
-  it('should hide virtual key bar and apply fixed positioning when keyboard is open', () => {
-    // 模拟键盘打开：needsCompensation=true，height 变小，offsetTop 增加
-    viewportState.height = 720;
+  it('should hide virtual key bar and apply transform when keyboard is open', () => {
+    // 模拟键盘打开：needsCompensation=true，offsetTop 增加
     viewportState.offsetTop = 180;
     viewportState.needsCompensation = true;
 
     render(<ConsolePage />);
 
     const root = screen.getByTestId('console-page');
-    // 使用 fixed 定位跟随 visualViewport
+    // 使用 fixed 定位保持高度不变，用 transform 实现平滑滚动
     expect(root.style.position).toBe('fixed');
-    expect(root.style.top).toBe('180px');
-    expect(root.style.height).toBe('720px');
+    expect(root.style.top).toBe('0px');
+    // transform 用于平滑滚动（替代动态修改 top/height）
+    expect(root.style.transform).toBe('translateY(-180px)');
     // 当键盘打开时，虚拟键栏应该隐藏，不再有 Esc 按钮
     expect(screen.queryAllByText('Esc')).toHaveLength(0);
   });

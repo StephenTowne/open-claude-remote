@@ -2,21 +2,21 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 /**
  * Detects software keyboard height on mobile using the Visual Viewport API.
- * Returns the visual viewport height and offset.
+ * Returns the visual viewport offset for smooth keyboard compensation.
  *
  * 检测逻辑：
- * - 追踪 visualViewport 的 height 和 offsetTop
- * - 页面可以使用 fixed 定位，绑定在 visualViewport 上，避免键盘遮挡
- * - 同时监听 resize 和 scroll 事件，捕获工具栏变化
- *
- * 混合布局策略：
- * - 默认使用浏览器原生行为（CSS dvh），避免抖动
+ * - 追踪 visualViewport 的 offsetTop
+ * - 使用 transform: translateY() 实现平滑滚动，避免布局重计算
  * - 仅在检测到输入框被键盘遮挡时启用 visualViewport 补偿
+ *
+ * 简化策略：
+ * - 不再动态修改 height，保持 100dvh 不变
+ * - 只返回 offsetTop 和 needsCompensation，供 CSS transform 使用
  */
 export function useViewport() {
-  // 默认使用 window.innerHeight
-  const [height, setHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 0);
+  // offsetTop: visualViewport 距离页面顶部的偏移量（键盘弹出时为正值）
   const [offsetTop, setOffsetTop] = useState(0);
+  // needsCompensation: 是否需要进行视口补偿（输入框被键盘遮挡）
   const [needsCompensation, setNeedsCompensation] = useState(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -42,9 +42,6 @@ export function useViewport() {
   const updateViewport = useCallback(() => {
     const vv = window.visualViewport;
     if (!vv) {
-      if (typeof window !== 'undefined') {
-        setHeight(window.innerHeight);
-      }
       setOffsetTop(0);
       setNeedsCompensation(false);
       return;
@@ -55,12 +52,10 @@ export function useViewport() {
     setNeedsCompensation(occluded);
 
     if (occluded) {
-      // 只有被遮挡时才使用 visualViewport 值
-      setHeight(vv.height);
+      // 只有被遮挡时才使用 visualViewport offsetTop
       setOffsetTop(vv.offsetTop);
     } else {
       // 否则使用默认值，让浏览器原生处理
-      setHeight(window.innerHeight);
       setOffsetTop(0);
     }
   }, [checkOcclusion]);
@@ -75,11 +70,9 @@ export function useViewport() {
     setNeedsCompensation(occluded);
 
     if (occluded) {
-      setHeight(vv.height);
       setOffsetTop(vv.offsetTop);
     } else {
       // focusout 时重置为默认值，保持 hook 状态自洽
-      setHeight(window.innerHeight);
       setOffsetTop(0);
     }
   }, [checkOcclusion]);
@@ -99,7 +92,6 @@ export function useViewport() {
 
     // 初始化时使用默认值（不防抖），让浏览器原生处理
     // 只有后续检测到遮挡时才启用补偿
-    setHeight(window.innerHeight);
     setOffsetTop(0);
 
     // 同时监听 resize 和 scroll 事件
@@ -123,5 +115,5 @@ export function useViewport() {
     };
   }, [debouncedUpdate, updateViewportImmediate]);
 
-  return { height, offsetTop, needsCompensation };
+  return { offsetTop, needsCompensation };
 }

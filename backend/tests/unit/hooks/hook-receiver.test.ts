@@ -123,7 +123,7 @@ describe('HookReceiver', () => {
       expect(result.notification!.tool).toBe('Bash');
       expect(result.notification!.eventType).toBe(HookEventType.PERMISSION_REQUEST);
       expect(result.notification!.message).toContain('npm test');
-      expect(result.notification!.channels).toEqual(['websocket', 'push', 'dingtalk']);
+      expect(result.notification!.channels).toEqual(['websocket', 'push', 'dingtalk', 'wechat_work']);
       expect(handler).toHaveBeenCalled();
     });
 
@@ -192,7 +192,7 @@ describe('HookReceiver', () => {
       expect(result.notification!.tool).toBe('AskUserQuestion');
       expect(result.notification!.message).toContain('Which approach do you prefer?');
       expect(result.notification!.message).toContain('Continue?');
-      expect(result.notification!.channels).toEqual(['websocket', 'push', 'dingtalk']);
+      expect(result.notification!.channels).toEqual(['websocket', 'push', 'dingtalk', 'wechat_work']);
       expect(handler).toHaveBeenCalled();
     });
 

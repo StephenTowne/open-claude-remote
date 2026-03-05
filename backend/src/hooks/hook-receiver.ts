@@ -27,7 +27,7 @@ export interface HookResult {
 }
 
 // 需要发送所有渠道通知的事件类型
-const ALL_CHANNELS: NotificationChannel[] = ['websocket', 'push', 'dingtalk'];
+const ALL_CHANNELS: NotificationChannel[] = ['websocket', 'push', 'dingtalk', 'wechat_work'];
 // 仅 WebSocket 通知
 const WEBSOCKET_ONLY: NotificationChannel[] = ['websocket'];
 

@@ -2,17 +2,22 @@ import { useState } from 'react';
 import type { NotificationChannelType, SafeNotificationConfigs } from '#shared';
 import { NotificationChannelCard } from './NotificationChannelCard.js';
 import { DingtalkConfigForm } from './DingtalkConfigForm.js';
+import { WechatWorkConfigForm } from './WechatWorkConfigForm.js';
 
 interface NotificationSettingsProps {
   notificationStatus?: SafeNotificationConfigs;
   dingtalkWebhookUrl: string;
   onDingtalkWebhookChange: (url: string) => void;
+  wechatWorkSendkey: string;
+  onWechatWorkSendkeyChange: (sendkey: string) => void;
 }
 
 export function NotificationSettings({
   notificationStatus,
   dingtalkWebhookUrl,
   onDingtalkWebhookChange,
+  wechatWorkSendkey,
+  onWechatWorkSendkeyChange,
 }: NotificationSettingsProps) {
   // 默认展开已配置的渠道，或默认展开第一个
   const [expandedChannel, setExpandedChannel] = useState<NotificationChannelType | null>('dingtalk');
@@ -74,7 +79,11 @@ export function NotificationSettings({
         isExpanded={expandedChannel === 'wechat_work'}
         onToggle={() => handleToggle('wechat_work')}
       >
-        {/* WeChat Work 配置表单（预留） */}
+        <WechatWorkConfigForm
+          sendkey={wechatWorkSendkey}
+          onChange={onWechatWorkSendkeyChange}
+          configured={notificationStatus?.wechat_work?.configured}
+        />
       </NotificationChannelCard>
     </div>
   );

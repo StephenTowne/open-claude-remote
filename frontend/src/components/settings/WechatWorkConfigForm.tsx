@@ -1,21 +1,21 @@
 import { useState } from 'react';
-import { DINGTALK_WEBHOOK_PATTERN } from '#shared';
+import { WECHAT_WORK_SENDKEY_PATTERN } from '#shared';
 
-interface DingtalkConfigFormProps {
-  webhookUrl: string;
-  onChange: (url: string) => void;
+interface WechatWorkConfigFormProps {
+  sendkey: string;
+  onChange: (sendkey: string) => void;
   configured?: boolean;
 }
 
-export function DingtalkConfigForm({
-  webhookUrl,
+export function WechatWorkConfigForm({
+  sendkey,
   onChange,
   configured,
-}: DingtalkConfigFormProps) {
+}: WechatWorkConfigFormProps) {
   const [showValidation, setShowValidation] = useState(false);
 
-  const isValid = webhookUrl === '' || DINGTALK_WEBHOOK_PATTERN.test(webhookUrl);
-  const showError = showValidation && !isValid && webhookUrl !== '';
+  const isValid = sendkey === '' || WECHAT_WORK_SENDKEY_PATTERN.test(sendkey);
+  const showError = showValidation && !isValid && sendkey !== '';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -29,13 +29,13 @@ export function DingtalkConfigForm({
             color: 'var(--text-primary)',
           }}
         >
-          Webhook URL
+          Sendkey
         </label>
         <input
-          type="url"
+          type="text"
           autoComplete="off"
-          placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
-          value={webhookUrl}
+          placeholder="SCTxxx or sctpxxx"
+          value={sendkey}
           onChange={(e) => {
             onChange(e.target.value);
             // 输入时不清除验证状态，保持用户看到的反馈
@@ -60,12 +60,12 @@ export function DingtalkConfigForm({
               color: 'var(--status-error)',
             }}
           >
-            Please enter a valid DingTalk Webhook URL starting with https://oapi.dingtalk.com/robot/send?access_token=
+            Please enter a valid Sendkey starting with SCT or sctp
           </div>
         )}
       </div>
 
-      {configured && !webhookUrl && (
+      {configured && !sendkey && (
         <div
           style={{
             padding: 10,
@@ -75,7 +75,7 @@ export function DingtalkConfigForm({
             color: 'var(--status-running)',
           }}
         >
-          ✓ Configured. Enter a new URL to update.
+          ✓ Configured. Enter a new Sendkey to update.
         </div>
       )}
 
@@ -86,12 +86,12 @@ export function DingtalkConfigForm({
         }}
       >
         <a
-          href="https://open.dingtalk.com/document/robots/custom-robot-access"
+          href="https://sct.ftqq.com/"
           target="_blank"
           rel="noopener noreferrer"
           style={{ color: 'var(--status-running)' }}
         >
-          How to get DingTalk group bot Webhook?
+          How to get Server酱 Sendkey?
         </a>
       </div>
     </div>

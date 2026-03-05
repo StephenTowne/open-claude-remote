@@ -32,7 +32,7 @@ export function InstanceTabs({ onSwitch, onCopySuccess }: InstanceTabsProps) {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
 
-  const showTabs = instances.length > 1;
+  // 始终显示 tabs，让用户可以长按复制
 
   // 点击菜单外部关闭
   useEffect(() => {
@@ -128,15 +128,18 @@ export function InstanceTabs({ onSwitch, onCopySuccess }: InstanceTabsProps) {
 
   return (
     <>
-      <div style={{
-        display: 'flex',
-        background: 'var(--bg-secondary)',
-        borderBottom: '1px solid var(--border-color)',
-        overflowX: 'auto',
-        flexShrink: 0,
-      }}>
-        {/* Tab 列表 */}
-        {showTabs && instances.map((inst) => {
+      <div
+        data-testid="instance-tabs"
+        style={{
+          display: 'flex',
+          background: 'var(--bg-secondary)',
+          borderBottom: '1px solid var(--border-color)',
+          overflowX: 'auto',
+          flexShrink: 0,
+        }}
+      >
+        {/* Tab 列表 - 始终渲染 */}
+        {instances.map((inst) => {
           const isActive = inst.instanceId === activeInstanceId;
           return (
             <button
@@ -180,14 +183,14 @@ export function InstanceTabs({ onSwitch, onCopySuccess }: InstanceTabsProps) {
             padding: '10px 16px',
             background: 'transparent',
             border: 'none',
-            borderLeft: showTabs ? '1px solid var(--border-color)' : 'none',
+            borderLeft: instances.length > 1 ? '1px solid var(--border-color)' : 'none',
             color: 'var(--text-secondary)',
             fontSize: 20,
             fontWeight: 600,
             cursor: 'pointer',
             whiteSpace: 'nowrap',
             flexShrink: 0,
-            marginLeft: showTabs ? 'auto' : 0,
+            marginLeft: instances.length > 1 ? 'auto' : 0,
           }}
         >
           +

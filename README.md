@@ -99,6 +99,23 @@ Get notified when Claude is waiting for input. All notifications include the ins
 2. For security settings, select "Custom Keywords" and add `Claude` (the message title includes this keyword)
 3. Copy the Webhook URL to your config file or paste it in the Web UI settings
 
+**WeChat (Server酱)** — configure Server酱 to receive notifications on WeChat:
+
+```json
+{
+  "notifications": {
+    "wechat_work": {
+      "sendkey": "SCTyour-sendkey-here"
+    }
+  }
+}
+```
+
+**Setup steps:**
+1. Visit [Server酱](https://sct.ftqq.com/) and sign in with WeChat
+2. Create a new sendkey (SCT... for standard, sctp... for Turbo)
+3. Copy the sendkey to your config file or paste it in the Web UI settings
+
 ---
 
 ## Usage

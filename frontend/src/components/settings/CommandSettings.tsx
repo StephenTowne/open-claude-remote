@@ -242,6 +242,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                     }
                   }}
                   onBlur={() => saveEdit(index)}
+                  autoComplete="off"
                   placeholder="Enter command…"
                   aria-label={`Command ${index + 1}`}
                   style={{

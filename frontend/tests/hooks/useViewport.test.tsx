@@ -54,7 +54,7 @@ describe('useViewport', () => {
     vi.restoreAllMocks();
   });
 
-  it('should return window.innerHeight and 0 offsetTop when visualViewport is unavailable', () => {
+  it('should return 0 offsetTop when visualViewport is unavailable', () => {
     Object.defineProperty(window, 'visualViewport', {
       configurable: true,
       value: undefined,
@@ -66,12 +66,11 @@ describe('useViewport', () => {
 
     const { result } = renderHook(() => useViewport());
 
-    expect(result.current.height).toBe(900);
     expect(result.current.offsetTop).toBe(0);
     expect(result.current.needsCompensation).toBe(false);
   });
 
-  it('should return window.innerHeight by default (no occlusion)', () => {
+  it('should return 0 offsetTop by default (no occlusion)', () => {
     const vv = createVisualViewportMock(800, 0);
 
     Object.defineProperty(window, 'innerHeight', {
@@ -92,13 +91,12 @@ describe('useViewport', () => {
 
     const { result } = renderHook(() => useViewport());
 
-    // 默认使用 window.innerHeight，不做补偿
-    expect(result.current.height).toBe(900);
+    // 默认不做补偿
     expect(result.current.offsetTop).toBe(0);
     expect(result.current.needsCompensation).toBe(false);
   });
 
-  it('should use visualViewport values when input is occluded by keyboard', () => {
+  it('should not use visualViewport values when no active input', () => {
     vi.useFakeTimers();
 
     const vv = createVisualViewportMock(900, 0);
@@ -116,7 +114,6 @@ describe('useViewport', () => {
     const { result } = renderHook(() => useViewport());
 
     // 初始状态：无遮挡
-    expect(result.current.height).toBe(900);
     expect(result.current.offsetTop).toBe(0);
     expect(result.current.needsCompensation).toBe(false);
 
@@ -130,7 +127,6 @@ describe('useViewport', () => {
 
     // 由于没有活跃的输入元素，仍然不需要补偿
     expect(result.current.needsCompensation).toBe(false);
-    expect(result.current.height).toBe(900); // 回退到 window.innerHeight
     expect(result.current.offsetTop).toBe(0);
 
     vi.useRealTimers();
@@ -175,7 +171,6 @@ describe('useViewport', () => {
     const { result } = renderHook(() => useViewport());
 
     // 初始状态
-    expect(result.current.height).toBe(900);
     expect(result.current.needsCompensation).toBe(false);
 
     // 模拟键盘弹出：viewport height 缩小
@@ -188,7 +183,6 @@ describe('useViewport', () => {
 
     // 输入框被遮挡（bottom: 950 > vv.height + vv.offsetTop - 10 = 890）
     expect(result.current.needsCompensation).toBe(true);
-    expect(result.current.height).toBe(600);
     expect(result.current.offsetTop).toBe(300);
 
     vi.useRealTimers();
@@ -217,11 +211,10 @@ describe('useViewport', () => {
     const { result } = renderHook(() => useViewport());
 
     // 初始状态
-    expect(result.current.height).toBe(900);
     expect(result.current.needsCompensation).toBe(false);
 
     // 通过 scroll 事件更新（模拟华为工具栏变化场景）
-    // 无输入框被遮挡时，仍使用 window.innerHeight
+    // 无输入框被遮挡时，仍使用默认值
     act(() => {
       vv.height = 700;
       vv.offsetTop = 150;
@@ -230,7 +223,6 @@ describe('useViewport', () => {
     });
 
     // 无遮挡，使用默认值
-    expect(result.current.height).toBe(900);
     expect(result.current.needsCompensation).toBe(false);
 
     vi.useRealTimers();
@@ -287,7 +279,6 @@ describe('useViewport', () => {
 
     // focus 事件应立即触发遮挡检测
     expect(result.current.needsCompensation).toBe(true);
-    expect(result.current.height).toBe(600);
     expect(result.current.offsetTop).toBe(300);
 
     // 模拟 focusout：输入框失焦，恢复默认值
@@ -301,7 +292,6 @@ describe('useViewport', () => {
 
     // focusout 后应重置为默认值
     expect(result.current.needsCompensation).toBe(false);
-    expect(result.current.height).toBe(900);
     expect(result.current.offsetTop).toBe(0);
 
     vi.useRealTimers();
@@ -351,7 +341,6 @@ describe('useViewport', () => {
 
     // 初始状态：无遮挡
     expect(result.current.needsCompensation).toBe(false);
-    expect(result.current.height).toBe(900);
 
     // 模拟键盘弹起：设置 activeElement 并触发 focusin
     act(() => {
@@ -367,13 +356,12 @@ describe('useViewport', () => {
 
     // 检测到遮挡，启用补偿
     expect(result.current.needsCompensation).toBe(true);
-    expect(result.current.height).toBe(650);
     expect(result.current.offsetTop).toBe(200);
 
     vi.useRealTimers();
   });
 
-  it('should return window.innerHeight when input is not occluded', () => {
+  it('should return 0 offsetTop when input is not occluded', () => {
     vi.useFakeTimers();
 
     const vv = createVisualViewportMock(850, 50);
@@ -413,7 +401,6 @@ describe('useViewport', () => {
 
     // 输入框未被遮挡，使用默认值
     expect(result.current.needsCompensation).toBe(false);
-    expect(result.current.height).toBe(900);
     expect(result.current.offsetTop).toBe(0);
 
     vi.useRealTimers();

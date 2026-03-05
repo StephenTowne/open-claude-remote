@@ -4,7 +4,7 @@ import { CommandSettings } from './CommandSettings.js';
 import { NotificationSettings } from './NotificationSettings.js';
 import { getUserConfig, updateUserConfig } from '../../services/api-client.js';
 import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand } from '../../config/commands.js';
-import { DINGTALK_WEBHOOK_PATTERN, type SafeNotificationConfigs } from '#shared';
+import { DINGTALK_WEBHOOK_PATTERN, WECHAT_WORK_SENDKEY_PATTERN, type SafeNotificationConfigs } from '#shared';
 import { BottomSheet } from '../common/BottomSheet.js';
 
 export type WithId<T> = T & { _id: string };
@@ -22,6 +22,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
   const [shortcuts, setShortcuts] = useState<WithId<ConfigurableShortcut>[]>([]);
   const [commands, setCommands] = useState<WithId<ConfigurableCommand>[]>([]);
   const [dingtalkWebhookUrl, setDingtalkWebhookUrl] = useState('');
+  const [wechatWorkSendkey, setWechatWorkSendkey] = useState('');
   const [notificationStatus, setNotificationStatus] = useState<SafeNotificationConfigs>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,33 +80,55 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         shortcuts: shortcuts.map(({ _id: _, ...rest }) => rest),
         commands: commands.map(({ _id: _, ...rest }) => rest),
       };
-      // 更新通知配置
+
+      // 构建通知配置
+      const notifications: NonNullable<UserConfig['notifications']> = {};
+
+      // 钉钉配置
       const trimmedUrl = dingtalkWebhookUrl.trim();
-      // 如果用户输入了新的 webhook URL，或者用户清空了输入框且之前已配置，则更新配置
       if (trimmedUrl || notificationStatus?.dingtalk?.configured) {
         if (trimmedUrl && !DINGTALK_WEBHOOK_PATTERN.test(trimmedUrl)) {
           setError('Please enter a valid DingTalk Webhook URL (starting with https://oapi.dingtalk.com/robot/send?access_token=)');
           setSaving(false);
           return;
         }
-        // 使用新版 notifications 结构
-        config.notifications = {
-          dingtalk: { webhookUrl: trimmedUrl },
-        };
+        notifications.dingtalk = { webhookUrl: trimmedUrl };
       }
+
+      // 微信配置
+      const trimmedSendkey = wechatWorkSendkey.trim();
+      if (trimmedSendkey || notificationStatus?.wechat_work?.configured) {
+        if (trimmedSendkey && !WECHAT_WORK_SENDKEY_PATTERN.test(trimmedSendkey)) {
+          setError('Please enter a valid WeChat Sendkey (starting with SCT or sctp)');
+          setSaving(false);
+          return;
+        }
+        notifications.wechat_work = { sendkey: trimmedSendkey };
+      }
+
+      // 如果有通知配置，添加到 config
+      if (Object.keys(notifications).length > 0) {
+        config.notifications = notifications;
+      }
+
       const ok = await updateUserConfig(config);
       if (ok) {
         setSuccess(true);
         // 更新已配置状态
+        const newStatus: SafeNotificationConfigs = { ...notificationStatus };
         if (trimmedUrl || notificationStatus?.dingtalk?.configured) {
-          setNotificationStatus({
-            ...notificationStatus,
-            dingtalk: { configured: !!trimmedUrl },
-          });
+          newStatus.dingtalk = { configured: !!trimmedUrl };
           if (trimmedUrl) {
             setDingtalkWebhookUrl(''); // 保存后清空输入框
           }
         }
+        if (trimmedSendkey || notificationStatus?.wechat_work?.configured) {
+          newStatus.wechat_work = { configured: !!trimmedSendkey };
+          if (trimmedSendkey) {
+            setWechatWorkSendkey(''); // 保存后清空输入框
+          }
+        }
+        setNotificationStatus(newStatus);
         onConfigSaved?.();
         setTimeout(() => setSuccess(false), 2000);
       } else {
@@ -214,6 +237,8 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
           notificationStatus={notificationStatus}
           dingtalkWebhookUrl={dingtalkWebhookUrl}
           onDingtalkWebhookChange={setDingtalkWebhookUrl}
+          wechatWorkSendkey={wechatWorkSendkey}
+          onWechatWorkSendkeyChange={setWechatWorkSendkey}
         />
       )}
     </BottomSheet>

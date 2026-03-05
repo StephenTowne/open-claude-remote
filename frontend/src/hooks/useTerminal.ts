@@ -30,14 +30,24 @@ export function useTerminal(
   const pendingResizeValueRef = useRef<{ cols: number; rows: number } | null>(null);
   const lastReportedResizeRef = useRef<{ cols: number; rows: number } | null>(null);
 
-  // 用于取消程序滚动的 RAF 回调
-  const scrollRafIdRef = useRef<number | null>(null);
-
+  // 自动跟随状态
   const autoFollowRef = useRef(true);
   const isAtBottomRef = useRef(true);
-  // 计数器机制：只跳过指定数量的程序滚动事件，避免持续输出时用户滚动被忽略
-  const scrollEventSkipCountRef = useRef(0);
   const [showScrollHint, setShowScrollHint] = useState(false);
+
+  // 用户滚动意图检测（带时间戳）
+  const userScrollIntentRef = useRef<'up' | null>(null);
+  const userScrollTimestampRef = useRef(0);
+
+  // 程序滚动时间戳（用于区分程序/用户滚动）
+  const programScrollTimestampRef = useRef(0);
+
+  // 上一次视口位置（用于计算滚动方向）
+  const lastViewportYRef = useRef(0);
+
+  // 阈值配置
+  const USER_INTENT_DURATION_MS = 2000;  // 用户意图持续时间
+  const PROGRAM_SCROLL_THRESHOLD_MS = 50; // 程序滚动事件判断阈值
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -170,21 +180,35 @@ export function useTerminal(
 
     // 监听滚动事件，实现智能 auto-follow
     term.onScroll(() => {
-      // 计数器机制：跳过程序触发的滚动事件
-      // 每次 scrollToBottom 调用前设置 count = 1，只跳过一个 onScroll 事件
-      // 避免 PTY 持续输出时用户滚动被忽略的问题
-      if (scrollEventSkipCountRef.current > 0) {
-        scrollEventSkipCountRef.current--;
+      const now = Date.now();
+
+      // 如果是程序滚动触发的事件，跳过
+      if (now - programScrollTimestampRef.current < PROGRAM_SCROLL_THRESHOLD_MS) {
         return;
       }
 
       const buffer = term.buffer.active;
-      const atBottom = buffer.viewportY === buffer.length - term.rows;
+      const viewportY = buffer.viewportY;
+      const atBottom = viewportY === buffer.length - term.rows;
+
+      // 检测用户向上滚动意图
+      const prevViewportY = lastViewportYRef.current;
+      const scrollDelta = prevViewportY - viewportY; // 正值 = 向上滚动
+
+      if (scrollDelta > 0 && !atBottom) {
+        // 用户向上滚动了，记录意图
+        userScrollIntentRef.current = 'up';
+        userScrollTimestampRef.current = now;
+        autoFollowRef.current = false;
+      }
+
+      lastViewportYRef.current = viewportY;
       isAtBottomRef.current = atBottom;
 
-      // 用户向上滚动且不在底部时，自动关闭 auto-follow
-      if (!atBottom && autoFollowRef.current) {
-        autoFollowRef.current = false;
+      // 滚动到底部时恢复自动跟随
+      if (atBottom) {
+        userScrollIntentRef.current = null;
+        autoFollowRef.current = true;
       }
 
       // 驱动 UI 按钮显隐（ref → state 桥接）
@@ -205,10 +229,6 @@ export function useTerminal(
         clearTimeout(writeFlushTimeoutRef.current);
         writeFlushTimeoutRef.current = null;
       }
-      if (scrollRafIdRef.current !== null) {
-        cancelAnimationFrame(scrollRafIdRef.current);
-        scrollRafIdRef.current = null;
-      }
       flushWriteQueue();
       term.dispose();
       termRef.current = null;
@@ -223,18 +243,19 @@ export function useTerminal(
     const term = termRef.current;
     if (!term) return;
 
-    if (autoFollowRef.current) {
-      scrollRafIdRef.current = requestAnimationFrame(() => {
-        scrollRafIdRef.current = null;
-        // RAF 后自动重置计数器，确保下次用户滚动能正常响应
-      });
-      // 设置计数器为 1，只跳过一个 onScroll 事件
-      scrollEventSkipCountRef.current = 1;
+    const now = Date.now();
+
+    // 检查用户是否最近有向上滚动的意图
+    const hasUserIntent = userScrollIntentRef.current === 'up' &&
+      (now - userScrollTimestampRef.current < USER_INTENT_DURATION_MS);
+
+    if (autoFollowRef.current && !hasUserIntent) {
+      programScrollTimestampRef.current = Date.now();
       term.scrollToBottom();
       return;
     }
 
-    // auto-follow 关闭时，检测新内容是否将用户推离底部
+    // 检测是否在底部
     const buffer = term.buffer.active;
     const atBottom = buffer.viewportY === buffer.length - term.rows;
     if (atBottom !== isAtBottomRef.current) {
@@ -293,18 +314,15 @@ export function useTerminal(
     const term = termRef.current;
     if (!term) return;
 
-    scrollRafIdRef.current = requestAnimationFrame(() => {
-      scrollRafIdRef.current = null;
-      // RAF 后自动重置计数器，确保下次用户滚动能正常响应
-    });
-    // 设置计数器为 1，只跳过一个 onScroll 事件
-    scrollEventSkipCountRef.current = 1;
+    // 标记为程序滚动
+    programScrollTimestampRef.current = Date.now();
     term.scrollToBottom();
   }, []);
 
   const setAutoFollow = useCallback((enabled: boolean) => {
     autoFollowRef.current = enabled;
     if (enabled) {
+      userScrollIntentRef.current = null;  // 清除用户意图
       setShowScrollHint(false);
     }
   }, []);
