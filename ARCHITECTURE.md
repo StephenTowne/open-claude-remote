@@ -130,6 +130,7 @@ sequenceDiagram
 - terminal/terminal-relay.ts: PC 终端 stdin/stdout 透传
 - session/session-controller.ts: 核心协调器
 - attach.ts: attach 命令入口
+- update.ts: update 命令——检测包管理器 + 查询 npm registry + 执行全局更新
 
 ### Hook 通知
 **Backend**:
@@ -307,6 +308,7 @@ claude-code-remote/
 │   └── src/
 │       ├── cli.ts           # CLI 入口（动态 import 确保 CLI_MODE 早于 logger 加载）
 │       ├── cli-utils.ts     # CLI 参数解析工具函数
+│       ├── update.ts        # update 子命令（自动检测 npm/pnpm 并更新）
 │       ├── index.ts         # 服务入口
 │       ├── api/             # REST API 路由
 │       ├── auth/            # Token 验证、Session Cookie

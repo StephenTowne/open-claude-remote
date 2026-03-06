@@ -16,14 +16,30 @@ for arg in "$@"; do
 done
 
 echo "=== Step 1: Stop running instances ==="
-cd "$PROJECT_ROOT"
-if [ -f "node_modules/.pnpm/tsx@*/node_modules/tsx/dist/cli.mjs" ] || command -v tsx &>/dev/null; then
-  pnpm stop 2>/dev/null && echo "  Stopped registered instances" || echo "  No instances to stop (or pnpm stop unavailable)"
+# Kill registered instances via registry PID list (no pnpm/tsx dependency)
+INSTANCES_FILE="$RUNTIME_DIR/instances.json"
+if [ -f "$INSTANCES_FILE" ]; then
+  # Extract PIDs using lightweight JSON parsing (no jq dependency required)
+  PIDS=$(grep -o '"pid":[[:space:]]*[0-9]*' "$INSTANCES_FILE" | grep -o '[0-9]*')
+  if [ -n "$PIDS" ]; then
+    for pid in $PIDS; do
+      if kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null && echo "  Sent SIGTERM to PID $pid" || true
+      fi
+    done
+    # Brief wait for graceful shutdown
+    sleep 1
+    echo "  Cleared registered instances"
+  else
+    echo "  No registered instances found"
+  fi
+  # Clear the registry file
+  echo '{"version":1,"instances":[]}' > "$INSTANCES_FILE"
 else
-  echo "  Skipped pnpm stop (tsx not available)"
+  echo "  No instances registry found"
 fi
 
-# Kill any lingering processes
+# Kill any lingering processes (fallback for unregistered orphans)
 pkill -f "tsx backend/src" 2>/dev/null && echo "  Killed tsx dev processes" || true
 pkill -f "node dist/backend/src" 2>/dev/null && echo "  Killed node production processes" || true
 
@@ -55,17 +71,14 @@ if command -v pnpm &>/dev/null && pnpm ls -g 2>/dev/null | grep -q "claude-remot
 else
   echo "  [pnpm] No global link found"
 fi
-# npx cache
-if [ -d "$HOME/.npm/_npx" ]; then
-  rm -rf "$HOME/.npm/_npx" && echo "  Cleared npx cache (~/.npm/_npx/)"
-fi
 
 if [ "$KEEP_RUNTIME" = false ]; then
   echo ""
   echo "=== Step 5: Clean runtime data ==="
   rm -f "$RUNTIME_DIR/instances.json" && echo "  Removed instances.json"
   rm -rf "$RUNTIME_DIR/logs" && echo "  Removed logs/"
-  echo "  Kept: config.json, vapid-keys.json, push-subscriptions.json, settings/"
+  rm -rf "$RUNTIME_DIR/settings" && echo "  Removed settings/"
+  echo "  Kept: config.json, vapid-keys.json, push-subscriptions.json"
 else
   echo ""
   echo "=== Step 5: Skipped runtime cleanup (--keep-runtime) ==="

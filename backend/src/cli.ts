@@ -30,6 +30,17 @@ void (async () => {
 
     const options = parseCliArgs(process.argv);
 
+    if (options.version) {
+      const { getCurrentVersion } = await import('./update.js');
+      try {
+        const version = getCurrentVersion();
+        process.stdout.write(`claude-remote v${version}\n`);
+      } catch {
+        process.stdout.write('claude-remote (unknown version)\n');
+      }
+      process.exit(0);
+    }
+
     if (options.help) {
       showHelp();
       process.exit(0);
@@ -39,6 +50,13 @@ void (async () => {
     if (options.attach) {
       const { attachInstance } = await import('./attach.js');
       await attachInstance({ target: options.attach });
+      return;
+    }
+
+    // Handle update subcommand
+    if (options.update) {
+      const { updatePackage } = await import('./update.js');
+      await updatePackage();
       return;
     }
 
@@ -56,6 +74,21 @@ void (async () => {
         'Install it with:\n' +
         '  npm install -g @anthropic-ai/claude-code\n\n' +
         'For more info: https://docs.anthropic.com/en/docs/claude-code\n'
+      );
+      process.exit(1);
+    }
+
+    // Fix node-pty spawn-helper permissions proactively at startup
+    try {
+      const { ensureSpawnHelperPermissions } = await import('./pty/fix-pty-permissions.js');
+      ensureSpawnHelperPermissions();
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      process.stderr.write(
+        '\n[ERROR] Failed to fix node-pty permissions.\n' +
+        `  Reason: ${detail}\n\n` +
+        '  Try fixing manually:\n' +
+        '    chmod +x node_modules/node-pty/prebuilds/*/spawn-helper\n\n'
       );
       process.exit(1);
     }

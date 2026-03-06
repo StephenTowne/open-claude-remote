@@ -13,11 +13,11 @@ bash .claude/skills/clean-for-npm-test/scripts/clean.sh
 
 ## What it cleans
 
-1. **Stop services**: `pnpm stop` + kill lingering `tsx`/`node` processes
+1. **Stop services**: Kill registered instances via `~/.claude-remote/instances.json` PIDs + kill lingering `tsx`/`node` processes (no pnpm/tsx dependency)
 2. **Build artifacts**: `dist/`, `frontend-dist/`, `backend/shared-dist/`, `*.tsbuildinfo`, `*.tgz`
 3. **Dependencies**: `node_modules/`
-4. **Global link**: `npm uninstall -g @caoruhua/open-claude-remote`
-5. **Runtime data**: `~/.claude-remote/instances.json` and `logs/` (keeps config.json, vapid-keys.json, push-subscriptions.json, settings/)
+4. **Global link**: `npm uninstall -g @caoruhua/open-claude-remote` (+ pnpm if available)
+5. **Runtime data**: `~/.claude-remote/instances.json`, `logs/`, and `settings/` (keeps config.json, vapid-keys.json, push-subscriptions.json)
 
 ## Options
 

@@ -141,6 +141,12 @@ claude-remote attach my-project  # by name
 
 # Headless mode (no local terminal, web UI only)
 claude-remote --no-terminal
+
+# Check version
+claude-remote --version
+
+# Update to latest version
+claude-remote update
 ```
 
 ### Stopping

@@ -72,4 +72,30 @@ describe('parseCliArgs', () => {
     expect(options.noTerminal).toBe(true);
     expect(options.port).toBe(3001);
   });
+
+  it('should parse "update" subcommand', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'update']);
+    expect(options.update).toBe(true);
+  });
+
+  it('should not pass "update" to claudeArgs', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'update']);
+    expect(options.claudeArgs).toEqual([]);
+  });
+
+  it('should parse --version flag', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--version']);
+    expect(options.version).toBe(true);
+  });
+
+  it('should not pass --version to claudeArgs', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--version']);
+    expect(options.claudeArgs).toEqual([]);
+  });
+
+  it('should still pass -v to claudeArgs (not intercepted)', () => {
+    const options = parseCliArgs(['node', 'cli.js', '-v']);
+    expect(options.version).toBe(false);
+    expect(options.claudeArgs).toEqual(['-v']);
+  });
 });
