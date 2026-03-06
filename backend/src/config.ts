@@ -227,7 +227,7 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
     authRateLimit: userConfig.authRateLimit ?? DEFAULT_AUTH_RATE_LIMIT,
     maxBufferLines: userConfig.maxBufferLines ?? DEFAULT_MAX_BUFFER_LINES,
     instanceName: cliOverrides.instanceName ?? userConfig.instanceName ?? basename(claudeCwd),
-    logDir: resolve(dirname(fileURLToPath(import.meta.url)), '../..', 'logs'),
+    logDir: process.env.LOG_DIR ?? resolve(homedir(), CLAUDE_REMOTE_DIR, 'logs'),
     sessionCookieName: createSessionCookieName(port),
   };
 
