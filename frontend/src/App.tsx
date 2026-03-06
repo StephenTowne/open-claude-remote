@@ -2,8 +2,10 @@ import { useEffect } from 'react';
 import { useAppStore } from './stores/app-store.js';
 import { AuthPage } from './pages/AuthPage.js';
 import { ConsolePage } from './pages/ConsolePage.js';
+import { SpotlightProvider } from './components/onboarding/SpotlightContext.js';
+import { SpotlightGuide } from './components/onboarding/SpotlightGuide.js';
 import { getStatus, authenticate } from './services/api-client.js';
-import { loadToken, clearToken } from './services/token-storage.js';
+import { loadToken, saveToken, clearToken } from './services/token-storage.js';
 
 /**
  * 从 URL 提取 token 参数并清理 URL
@@ -37,6 +39,7 @@ export function App() {
           if (ok) {
             setAuthenticated(true);
             setCachedToken(urlToken);
+            saveToken(urlToken); // 持久化到 sessionStorage，支持跨实例重连
           } else {
             // 认证失败，存储预填充 token 供登录页使用
             sessionStorage.setItem('prefill_token', urlToken);
@@ -105,5 +108,10 @@ export function App() {
     return <AuthPage />;
   }
 
-  return <ConsolePage />;
+  return (
+    <SpotlightProvider>
+      <ConsolePage />
+      <SpotlightGuide />
+    </SpotlightProvider>
+  );
 }

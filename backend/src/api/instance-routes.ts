@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { existsSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
-import type { InstanceInfo, InstanceListItem } from '@claude-remote/shared';
+import type { InstanceInfo, InstanceListItem, SettingsFile } from '#shared';
 import { AuthModule } from '../auth/auth-middleware.js';
 import { createAuthRoutes } from './auth-routes.js';
 import { InstanceSpawner, type SpawnOptions } from '../registry/instance-spawner.js';
-import { loadUserConfig } from '../config.js';
+import { loadUserConfig, getSettingsDirs, scanSettingsFiles } from '../config.js';
 import { logger } from '../logger/logger.js';
 
 /**
@@ -52,6 +52,10 @@ export interface InstanceConfigResponse {
   workspaces: string[];
   /** Claude 参数 */
   claudeArgs: string[];
+  /** 可用的 settings 文件列表 */
+  settingsFiles: SettingsFile[];
+  /** 扫描的 settings 目录列表（用于显示） */
+  settingsDirs: string[];
 }
 
 export function createInstanceRoutes(
@@ -83,10 +87,14 @@ export function createInstanceRoutes(
     try {
       const config = loadUserConfig();
       const allowedCwds = await getAllowedCwds(listInstances);
+      const settingsDirs = getSettingsDirs(config);
+      const settingsFiles = scanSettingsFiles(settingsDirs);
 
       const response: InstanceConfigResponse = {
         workspaces: allowedCwds,
         claudeArgs: config.claudeArgs ?? [],
+        settingsFiles,
+        settingsDirs,
       };
       res.json(response);
     } catch (error) {
@@ -134,8 +142,13 @@ export function createInstanceRoutes(
         return;
       }
 
-      // 合并默认参数
-      const finalClaudeArgs = claudeArgs ?? userConfig.claudeArgs ?? [];
+      // 合并参数：配置文件 + 前端传入，去重以防止重复
+      // 特殊情况：前端传空数组表示显式清空参数
+      const userClaudeArgs = userConfig.claudeArgs ?? [];
+      const finalClaudeArgs =
+        claudeArgs !== undefined && claudeArgs.length === 0
+          ? [] // 前端显式传空数组 = 清空
+          : Array.from(new Set([...userClaudeArgs, ...(claudeArgs ?? [])]));
 
       const spawnOptions: SpawnOptions = {
         cwd: absoluteCwd,

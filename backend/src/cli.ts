@@ -2,65 +2,113 @@
 /**
  * claude-remote CLI entry point
  *
- * 用法：
+ * Usage:
  *   claude-remote [options] [--] [claude args...]
  *   claude-remote attach <port|name>
  *
- * 代理层选项：
- *   --port <number>      服务端口 (默认: 3000, 被占用时自动递增)
- *   --host <ip>          绑定地址 (默认: 自动检测 LAN IP)
- *   --token <string>     认证 Token (默认: 共享 Token)
- *   --name <string>      实例名称 (默认: 工作目录名)
- *   --help, -h           显示帮助信息
+ * Options:
+ *   --port <number>      Server port (default: 3000, auto-increments if busy)
+ *   --host <ip>          Bind address (default: auto-detect LAN IP)
+ *   --token <string>     Auth token (default: shared token)
+ *   --name <string>      Instance name (default: working directory name)
+ *   --help, -h           Show help
  *
- * 其他所有参数透传给 claude 命令。
+ * All other arguments are passed through to the claude command.
  *
- * 注意：此文件不能有任何静态 import，因为 ESM 会提升它们到模块顶部执行，
- * 导致 CLI_MODE 设置在 logger 模块加载之后才生效。
+ * Note: This file must not have any static imports because ESM hoists them
+ * to execute at module top-level, which would cause CLI_MODE to be set
+ * after the logger module has already loaded.
  */
 
-// 必须在任何模块加载之前设置 CLI_MODE，因为 logger.ts 在模块顶层读取此变量
+// Must set CLI_MODE before any module loads, as logger.ts reads it at module top-level
 process.env.CLI_MODE = 'true';
 
-// 所有模块必须使用动态 import
+// All modules must use dynamic import
 void (async () => {
-  const { fileURLToPath } = await import('node:url');
+  try {
+    const { parseCliArgs, showHelp } = await import('./cli-utils.js');
 
-  const { parseCliArgs, showHelp } = await import('./cli-utils.js');
+    const options = parseCliArgs(process.argv);
 
-  const options = parseCliArgs(process.argv);
+    if (options.version) {
+      const { getCurrentVersion } = await import('./update.js');
+      try {
+        const version = getCurrentVersion();
+        process.stdout.write(`claude-remote v${version}\n`);
+      } catch {
+        process.stdout.write('claude-remote (unknown version)\n');
+      }
+      process.exit(0);
+    }
 
-  if (options.help) {
-    showHelp();
-    process.exit(0);
+    if (options.help) {
+      showHelp();
+      process.exit(0);
+    }
+
+    // Handle attach subcommand
+    if (options.attach) {
+      const { attachInstance } = await import('./attach.js');
+      await attachInstance({ target: options.attach });
+      return;
+    }
+
+    // Handle update subcommand
+    if (options.update) {
+      const { updatePackage } = await import('./update.js');
+      await updatePackage();
+      return;
+    }
+
+    // Set NO_TERMINAL flag for headless mode
+    if (options.noTerminal) {
+      process.env.NO_TERMINAL = 'true';
+    }
+
+    // Only check Claude CLI — the sole runtime dependency for npm users
+    const { checkDependency } = await import('./deps/detector.js');
+    const claudeCheck = await checkDependency('claude');
+    if (!claudeCheck.installed) {
+      process.stderr.write(
+        '\n[ERROR] Claude CLI is not installed.\n\n' +
+        'Install it with:\n' +
+        '  npm install -g @anthropic-ai/claude-code\n\n' +
+        'For more info: https://docs.anthropic.com/en/docs/claude-code\n'
+      );
+      process.exit(1);
+    }
+
+    // Fix node-pty spawn-helper permissions proactively at startup
+    try {
+      const { ensureSpawnHelperPermissions } = await import('./pty/fix-pty-permissions.js');
+      ensureSpawnHelperPermissions();
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      process.stderr.write(
+        '\n[ERROR] Failed to fix node-pty permissions.\n' +
+        `  Reason: ${detail}\n\n` +
+        '  Try fixing manually:\n' +
+        '    chmod +x node_modules/node-pty/prebuilds/*/spawn-helper\n\n'
+      );
+      process.exit(1);
+    }
+
+    // Build CLI overrides for config
+    const cliOverrides = {
+      port: options.port,
+      host: options.host,
+      token: options.token,
+      instanceName: options.name,
+      claudeArgs: options.claudeArgs.length > 0 ? options.claudeArgs : undefined,
+      noTerminal: options.noTerminal,
+    };
+
+    // Dynamically load startServer
+    const { startServer } = await import('./index.js');
+    await startServer(cliOverrides);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`\n[ERROR] Failed to start: ${message}\n`);
+    process.exit(1);
   }
-
-  // 处理 attach 子命令
-  if (options.attach) {
-    const { attachInstance } = await import('./attach.js');
-    await attachInstance({ target: options.attach });
-    return;
-  }
-
-  // Set NO_TERMINAL flag for headless mode
-  if (options.noTerminal) {
-    process.env.NO_TERMINAL = 'true';
-  }
-
-  // 动态导入 CliOverrides 类型（仅类型，编译后会移除）
-  const { loadConfig, createSessionCookieName } = await import('./config.js');
-
-  // Build CLI overrides for config
-  const cliOverrides = {
-    port: options.port,
-    host: options.host,
-    token: options.token,
-    instanceName: options.name,
-    claudeArgs: options.claudeArgs.length > 0 ? options.claudeArgs : undefined,
-    noTerminal: options.noTerminal,
-  };
-
-  // 动态加载 startServer
-  const { startServer } = await import('./index.js');
-  await startServer(cliOverrides);
 })();

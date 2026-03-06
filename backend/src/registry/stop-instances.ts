@@ -1,8 +1,8 @@
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { CLAUDE_REMOTE_DIR } from '@claude-remote/shared';
-import type { InstanceInfo } from '@claude-remote/shared';
+import { CLAUDE_REMOTE_DIR } from '#shared';
+import type { InstanceInfo } from '#shared';
 import { logger } from '../logger/logger.js';
 import { InstanceRegistryManager } from './instance-registry.js';
 

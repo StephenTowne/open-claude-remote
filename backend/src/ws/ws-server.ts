@@ -1,7 +1,7 @@
 import { Server as HttpServer, IncomingMessage } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { WS_HEARTBEAT_INTERVAL_MS, MAX_WS_MESSAGE_SIZE } from '@claude-remote/shared';
-import type { ServerMessage } from '@claude-remote/shared';
+import { WS_HEARTBEAT_INTERVAL_MS, MAX_WS_MESSAGE_SIZE } from '#shared';
+import type { ServerMessage } from '#shared';
 import { AuthModule } from '../auth/auth-middleware.js';
 import { logger } from '../logger/logger.js';
 
@@ -202,7 +202,7 @@ export class WsServer {
         if (!client.alive) {
           logger.info('Terminating unresponsive WebSocket client');
           client.ws.terminate();
-          this.clients.delete(client);
+          // 不手动删除，让 close 事件处理器统一处理删除和 disconnectHandler 调用
           continue;
         }
         client.alive = false;

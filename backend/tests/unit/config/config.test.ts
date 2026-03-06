@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { rmSync, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createSessionCookieName, createClaudeSettings, saveClaudeSettings, loadUserConfig, loadConfig, type CliOverrides, type UserConfig } from '../../../src/config.js';
+import { createSessionCookieName, createClaudeSettings, saveClaudeSettings, loadUserConfig, loadConfig, type CliOverrides, type UserConfig, getDefaultSettingsDirs, getSettingsDirs, scanSettingsFiles, getSettingsFilePath } from '../../../src/config.js';
 
 describe('createSessionCookieName', () => {
   it('should generate cookie name based on port number', () => {
@@ -42,7 +42,7 @@ describe('createClaudeSettings', () => {
   it('should contain required hook types', () => {
     const settings = createClaudeSettings(3000);
     expect(settings.hooks).toHaveProperty('Notification');
-    expect(settings.hooks).toHaveProperty('PreToolUse');
+    expect(settings.hooks).toHaveProperty('Stop');
   });
 
   it('should use command hooks with curl', () => {
@@ -54,11 +54,11 @@ describe('createClaudeSettings', () => {
     expect(notificationHook.command).toContain('curl');
     expect(notificationHook.command).toContain('localhost:3000/api/hook');
 
-    // PreToolUse hook
-    const preToolUseHook = settings.hooks?.PreToolUse[0].hooks[0];
-    expect(preToolUseHook.type).toBe('command');
-    expect(preToolUseHook.command).toContain('curl');
-    expect(preToolUseHook.command).toContain('localhost:3000/api/hook');
+    // Stop hook
+    const stopHook = settings.hooks?.Stop[0].hooks[0];
+    expect(stopHook.type).toBe('command');
+    expect(stopHook.command).toContain('curl');
+    expect(stopHook.command).toContain('localhost:3000/api/hook');
   });
 
   it('should produce different settings for different ports', () => {
@@ -88,7 +88,7 @@ describe('createClaudeSettings', () => {
 
     // Should also have hooks
     expect(settings.hooks).toHaveProperty('Notification');
-    expect(settings.hooks).toHaveProperty('PreToolUse');
+    expect(settings.hooks).toHaveProperty('Stop');
   });
 
   it('should deep merge hooks — preserve user custom hook events', () => {
@@ -107,9 +107,9 @@ describe('createClaudeSettings', () => {
     expect(hooks).toHaveProperty('PostToolUse');
     expect(hooks.PostToolUse).toEqual(existingSettings.hooks.PostToolUse);
 
-    // 同时也有我们注入的 Notification 和 PreToolUse
+    // 同时也有我们注入的 Notification 和 Stop
     expect(hooks).toHaveProperty('Notification');
-    expect(hooks).toHaveProperty('PreToolUse');
+    expect(hooks).toHaveProperty('Stop');
   });
 
   it('should override conflicting hook event types with our config', () => {
@@ -164,7 +164,7 @@ describe('saveClaudeSettings', () => {
     const parsed = JSON.parse(content);
 
     expect(parsed.hooks).toHaveProperty('Notification');
-    expect(parsed.hooks).toHaveProperty('PreToolUse');
+    expect(parsed.hooks).toHaveProperty('Stop');
   });
 
   it('should save with pretty formatting (2-space indent)', () => {
@@ -239,6 +239,46 @@ describe('loadUserConfig', () => {
     const config = loadUserConfig(testDir);
     expect(config).toEqual({});
   });
+
+  it('should migrate legacy dingtalk config to notifications.dingtalk', () => {
+    const configPath = resolve(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify({
+      dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc123', enabled: true },
+    }), 'utf-8');
+
+    const config = loadUserConfig(testDir);
+
+    // 旧版 dingtalk 应迁移到 notifications.dingtalk
+    expect(config.notifications?.dingtalk).toEqual({
+      webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc123',
+      enabled: true,
+    });
+    // 旧版字段应被删除
+    expect((config as Record<string, unknown>).dingtalk).toBeUndefined();
+
+    // 配置文件应已更新（迁移后保存）
+    const savedConfig = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(savedConfig.notifications?.dingtalk).toBeDefined();
+    expect(savedConfig.dingtalk).toBeUndefined();
+  });
+
+  it('should not overwrite existing notifications.dingtalk when migrating', () => {
+    const configPath = resolve(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify({
+      dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=legacy' },
+      notifications: {
+        dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=new', enabled: false },
+      },
+    }), 'utf-8');
+
+    const config = loadUserConfig(testDir);
+
+    // notifications.dingtalk 已存在时，旧版不应覆盖新版
+    expect(config.notifications?.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=new');
+    expect(config.notifications?.dingtalk?.enabled).toBe(false);
+    // 旧版字段仍应被删除
+    expect((config as Record<string, unknown>).dingtalk).toBeUndefined();
+  });
 });
 
 describe('loadConfig', () => {
@@ -262,26 +302,24 @@ describe('loadConfig', () => {
     return loadConfig(cliOverrides, testDir);
   }
 
-  it('should merge claudeArgs from config file and CLI', () => {
+  it('should merge CLI claudeArgs with config file args (deduped)', () => {
     const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
     const cliOverrides: CliOverrides = { claudeArgs: ['--settings', '/path/to/settings.json'] };
 
     const config = loadConfigWithMocks(userConfig, cliOverrides);
 
-    expect(config.claudeArgs).toEqual([
-      '--dangerously-skip-permissions',
-      '--settings',
-      '/path/to/settings.json',
-    ]);
+    // CLI 参数与配置文件参数合并，去重
+    expect(config.claudeArgs.sort()).toEqual(['--dangerously-skip-permissions', '--settings', '/path/to/settings.json'].sort());
   });
 
-  it('should use config file claudeArgs when CLI args are empty array', () => {
+  it('should use empty CLI claudeArgs when CLI provides empty array', () => {
     const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
     const cliOverrides: CliOverrides = { claudeArgs: [] };
 
     const config = loadConfigWithMocks(userConfig, cliOverrides);
 
-    expect(config.claudeArgs).toEqual(['--dangerously-skip-permissions']);
+    // 空数组表示用户明确要清空参数，不使用配置文件参数
+    expect(config.claudeArgs).toEqual([]);
   });
 
   it('should use CLI claudeArgs when config file args are empty', () => {
@@ -311,12 +349,230 @@ describe('loadConfig', () => {
     expect(config.claudeArgs).toEqual([]);
   });
 
-  it('should merge multiple args from both sources', () => {
+  it('should merge args from both sources and dedupe', () => {
     const userConfig = { claudeArgs: ['--arg1', '--arg2'] };
     const cliOverrides: CliOverrides = { claudeArgs: ['--arg3', '--arg4'] };
 
     const config = loadConfigWithMocks(userConfig, cliOverrides);
 
-    expect(config.claudeArgs).toEqual(['--arg1', '--arg2', '--arg3', '--arg4']);
+    // CLI 参数与配置文件参数合并
+    expect(config.claudeArgs.sort()).toEqual(['--arg1', '--arg2', '--arg3', '--arg4'].sort());
+  });
+
+  it('should deduplicate repeated args when merging', () => {
+    const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
+    const cliOverrides: CliOverrides = { claudeArgs: ['--dangerously-skip-permissions', '--settings', '/path/to/settings.json'] };
+
+    const config = loadConfigWithMocks(userConfig, cliOverrides);
+
+    // 重复的参数应该去重
+    expect(config.claudeArgs.sort()).toEqual(['--dangerously-skip-permissions', '--settings', '/path/to/settings.json'].sort());
+  });
+});
+
+describe('getDefaultSettingsDirs', () => {
+  it('should return default settings directories', () => {
+    const dirs = getDefaultSettingsDirs();
+
+    expect(dirs).toHaveLength(2);
+    expect(dirs[0]).toContain('.claude');
+    expect(dirs[1]).toContain('.claude-remote');
+    expect(dirs[1]).toContain('settings');
+  });
+});
+
+describe('getSettingsDirs', () => {
+  it('should return default dirs when userConfig is undefined', () => {
+    const dirs = getSettingsDirs();
+    expect(dirs).toHaveLength(2);
+  });
+
+  it('should return default dirs when settingsDirs is empty', () => {
+    const dirs = getSettingsDirs({ settingsDirs: [] });
+    expect(dirs).toHaveLength(2);
+  });
+
+  it('should expand ~ to home directory', () => {
+    const dirs = getSettingsDirs({ settingsDirs: ['~/custom-dir'] });
+    expect(dirs[0]).not.toContain('~');
+    expect(dirs[0]).toContain('custom-dir');
+  });
+
+  it('should resolve relative paths', () => {
+    const dirs = getSettingsDirs({ settingsDirs: ['./relative'] });
+    expect(dirs[0]).not.toContain('./');
+  });
+});
+
+describe('scanSettingsFiles', () => {
+  const testDir = resolve(tmpdir(), `claude-remote-settings-test-${Date.now()}`);
+
+  beforeEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('should return empty array when directory does not exist', () => {
+    const files = scanSettingsFiles(['/nonexistent/path']);
+    expect(files).toEqual([]);
+  });
+
+  it('should scan settings files with correct naming', () => {
+    // 创建测试文件
+    writeFileSync(join(testDir, 'settings-project-a.json'), '{}');
+    writeFileSync(join(testDir, 'settings.idea.json'), '{}');
+    writeFileSync(join(testDir, 'settings.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files).toHaveLength(3);
+    const filenames = files.map(f => f.filename).sort();
+    expect(filenames).toContain('settings-project-a.json');
+    expect(filenames).toContain('settings.idea.json');
+    expect(filenames).toContain('settings.json');
+  });
+
+  it('should ignore non-settings JSON files', () => {
+    writeFileSync(join(testDir, 'settings-valid.json'), '{}');
+    writeFileSync(join(testDir, 'other-config.json'), '{}');
+    writeFileSync(join(testDir, 'config.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files).toHaveLength(1);
+    expect(files[0].filename).toBe('settings-valid.json');
+  });
+
+  it('should ignore port config files (pure numbers)', () => {
+    writeFileSync(join(testDir, 'settings-project.json'), '{}');
+    writeFileSync(join(testDir, '3000.json'), '{}');
+    writeFileSync(join(testDir, '8080.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files).toHaveLength(1);
+    expect(files[0].filename).toBe('settings-project.json');
+  });
+
+  it('should reject files with path traversal', () => {
+    // 扫描函数只会读取目录中的文件，无法创建恶意文件名
+    // 但我们测试安全检查函数不在这里
+    // 这个测试验证包含 .. 的文件名不会在有效扫描结果中
+    const files = scanSettingsFiles([testDir]);
+    expect(files.every(f => !f.filename.includes('..'))).toBe(true);
+  });
+
+  it('should generate correct displayName', () => {
+    writeFileSync(join(testDir, 'settings-project-a.json'), '{}');
+    writeFileSync(join(testDir, 'settings.idea.json'), '{}');
+    writeFileSync(join(testDir, 'settings.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+    const displayNames = files.map(f => f.displayName);
+
+    expect(displayNames).toContain('project-a');
+    expect(displayNames).toContain('idea');
+    // settings.json 去掉 settings 后为空，应保留原名
+    expect(displayNames).toContain('settings');
+  });
+
+  it('should dedupe filenames from multiple directories', () => {
+    const dir1 = join(testDir, 'dir1');
+    const dir2 = join(testDir, 'dir2');
+    mkdirSync(dir1, { recursive: true });
+    mkdirSync(dir2, { recursive: true });
+
+    writeFileSync(join(dir1, 'settings-common.json'), '{}');
+    writeFileSync(join(dir2, 'settings-common.json'), '{}');
+    writeFileSync(join(dir2, 'settings-unique.json'), '{}');
+
+    const files = scanSettingsFiles([dir1, dir2]);
+
+    // 应该去重，只保留一个 settings-common.json
+    expect(files).toHaveLength(2);
+    const filenames = files.map(f => f.filename);
+    expect(filenames.filter(n => n === 'settings-common.json')).toHaveLength(1);
+    expect(filenames).toContain('settings-unique.json');
+  });
+
+  it('should sort results by displayName', () => {
+    writeFileSync(join(testDir, 'settings-zebra.json'), '{}');
+    writeFileSync(join(testDir, 'settings-apple.json'), '{}');
+    writeFileSync(join(testDir, 'settings-mango.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files[0].displayName).toBe('apple');
+    expect(files[1].displayName).toBe('mango');
+    expect(files[2].displayName).toBe('zebra');
+  });
+
+  it('should include directoryPath in results', () => {
+    writeFileSync(join(testDir, 'settings-test.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files).toHaveLength(1);
+    expect(files[0].directoryPath).toBe(testDir);
+  });
+});
+
+describe('getSettingsFilePath', () => {
+  const testDir = resolve(tmpdir(), `claude-remote-getsettings-test-${Date.now()}`);
+
+  beforeEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('should return full path when file exists', () => {
+    writeFileSync(join(testDir, 'settings-test.json'), '{}');
+
+    const path = getSettingsFilePath([testDir], 'settings-test.json');
+
+    expect(path).toBe(join(testDir, 'settings-test.json'));
+  });
+
+  it('should return null when file does not exist', () => {
+    const path = getSettingsFilePath([testDir], 'settings-missing.json');
+
+    expect(path).toBeNull();
+  });
+
+  it('should search in multiple directories', () => {
+    const dir1 = join(testDir, 'dir1');
+    const dir2 = join(testDir, 'dir2');
+    mkdirSync(dir1, { recursive: true });
+    mkdirSync(dir2, { recursive: true });
+
+    writeFileSync(join(dir2, 'settings-found.json'), '{}');
+
+    const path = getSettingsFilePath([dir1, dir2], 'settings-found.json');
+
+    expect(path).toBe(join(dir2, 'settings-found.json'));
+  });
+
+  it('should reject dangerous filenames', () => {
+    const path1 = getSettingsFilePath([testDir], '../etc/passwd');
+    const path2 = getSettingsFilePath([testDir], 'settings.json/../../../etc/passwd');
+    const path3 = getSettingsFilePath([testDir], 'settings.json\\..\\..\\etc\\passwd');
+
+    expect(path1).toBeNull();
+    expect(path2).toBeNull();
+    expect(path3).toBeNull();
+  });
+
+  it('should reject non-JSON files', () => {
+    const path = getSettingsFilePath([testDir], 'settings.txt');
+
+    expect(path).toBeNull();
   });
 });

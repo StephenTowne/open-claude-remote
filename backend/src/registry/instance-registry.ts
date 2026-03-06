@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { REGISTRY_FILENAME } from '@claude-remote/shared';
-import type { InstanceInfo, InstanceRegistry } from '@claude-remote/shared';
+import { REGISTRY_FILENAME } from '#shared';
+import type { InstanceInfo, InstanceRegistry } from '#shared';
 import { logger } from '../logger/logger.js';
 import { withFileLock, withFileLockAsync } from '../utils/file-lock.js';
 

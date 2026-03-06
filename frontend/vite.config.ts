@@ -1,8 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '#shared': resolve(__dirname, '../shared'),
+    },
+  },
   server: {
     port: 5173,
     proxy: {
@@ -14,6 +20,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: '../frontend-dist',
+    emptyOutDir: true,
   },
 });

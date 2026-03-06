@@ -9,10 +9,12 @@ import {
   DEFAULT_COMMANDS as SHARED_DEFAULT_COMMANDS,
   type ConfigurableShortcut,
   type ConfigurableCommand,
-} from '@claude-remote/shared';
-import { basename, dirname, resolve } from 'node:path';
+  type NotificationConfigs,
+  type SettingsFile,
+} from '#shared';
+import { basename, dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { detectLanIp, detectNonLoopbackIp } from './utils/network.js';
@@ -60,12 +62,13 @@ export interface UserConfig {
   /** 预设工作目录列表 */
   workspaces?: string[];
 
-  // === 钉钉通知配置 ===
-  /** 钉钉群机器人 Webhook 配置 */
-  dingtalk?: {
-    /** Webhook URL */
-    webhookUrl: string;
-  };
+  // === 多渠道通知配置 ===
+  /** 多渠道通知配置 */
+  notifications?: NotificationConfigs;
+
+  // === Settings 文件配置 ===
+  /** Settings 文件扫描目录列表（默认: ["~/.claude/", "~/.claude-remote/settings/"]） */
+  settingsDirs?: string[];
 }
 
 /**
@@ -121,12 +124,37 @@ export function loadUserConfig(configDir?: string): UserConfig {
   try {
     const content = readFileSync(configPath, 'utf-8');
     const config = JSON.parse(content) as UserConfig;
+    const rawConfig = config as Record<string, unknown>;
+    let needsSave = false;
 
     // 向后兼容：迁移旧的 defaultClaudeArgs 到 claudeArgs
-    const rawConfig = config as Record<string, unknown>;
     if (!config.claudeArgs && rawConfig.defaultClaudeArgs) {
       config.claudeArgs = rawConfig.defaultClaudeArgs as string[];
+      delete rawConfig.defaultClaudeArgs;
+      needsSave = true;
       logger.info('Migrated defaultClaudeArgs to claudeArgs');
+    }
+
+    // 迁移旧版 dingtalk 配置到 notifications.dingtalk（仅在新版未配置时）
+    if (rawConfig.dingtalk) {
+      if (!config.notifications) {
+        config.notifications = {};
+      }
+      // 仅在 notifications.dingtalk 不存在时迁移，避免覆盖已有新版配置
+      if (!config.notifications.dingtalk) {
+        config.notifications.dingtalk = rawConfig.dingtalk as { webhookUrl: string; enabled?: boolean };
+        logger.info('Migrated legacy dingtalk config to notifications.dingtalk');
+      } else {
+        logger.info('Skipped dingtalk migration: notifications.dingtalk already exists');
+      }
+      delete rawConfig.dingtalk;
+      needsSave = true;
+    }
+
+    // 如果有迁移发生，保存更新后的配置
+    if (needsSave) {
+      writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+      logger.info({ configPath }, 'User config migrated and saved');
     }
 
     logger.info({ configPath, keys: Object.keys(config) }, 'User config loaded');
@@ -166,13 +194,25 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
   const port = cliOverrides.port ?? userConfig.port ?? DEFAULT_PORT;
   const claudeCwd = userConfig.claudeCwd ?? process.cwd();
 
-  // 合并 claudeArgs：配置文件参数在前，命令行参数在后
+  // claudeArgs 合并策略：配置文件参数 + CLI 参数，去重以防止重复
   const userArgs = userConfig.claudeArgs ?? [];
   const cliArgs = cliOverrides.claudeArgs ?? [];
-  const mergedArgs = [...userArgs, ...cliArgs];
 
+  // 计算最终参数
+  // 特殊情况：CLI 传空数组表示显式清空参数
+  const finalClaudeArgs: string[] =
+    cliOverrides.claudeArgs !== undefined && cliArgs.length === 0
+      ? [] // CLI 显式传空数组 = 清空
+      : Array.from(new Set([...userArgs, ...cliArgs])); // 合并并去重
+
+  // 日志记录
   if (userArgs.length > 0 && cliArgs.length > 0) {
-    logger.info({ userArgs, cliArgs, mergedArgs }, 'Merged claudeArgs from config file and CLI');
+    logger.info(
+      { userArgs, cliArgs, mergedArgs: finalClaudeArgs },
+      'Merged claudeArgs from config file and CLI',
+    );
+  } else if (finalClaudeArgs.length > 0) {
+    logger.debug({ mergedArgs: finalClaudeArgs }, 'Using claudeArgs');
   }
 
   const config: AppConfig = {
@@ -180,14 +220,14 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
     host: cliOverrides.host ?? userConfig.host ?? '0.0.0.0',
     displayIp,
     claudeCommand: userConfig.claudeCommand ?? 'claude',
-    claudeArgs: mergedArgs,
+    claudeArgs: finalClaudeArgs,
     claudeCwd,
     token: cliOverrides.token ?? userConfig.token ?? null,
     sessionTtlMs: userConfig.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS,
     authRateLimit: userConfig.authRateLimit ?? DEFAULT_AUTH_RATE_LIMIT,
     maxBufferLines: userConfig.maxBufferLines ?? DEFAULT_MAX_BUFFER_LINES,
     instanceName: cliOverrides.instanceName ?? userConfig.instanceName ?? basename(claudeCwd),
-    logDir: resolve(dirname(fileURLToPath(import.meta.url)), '../..', 'logs'),
+    logDir: process.env.LOG_DIR ?? resolve(homedir(), CLAUDE_REMOTE_DIR, 'logs'),
     sessionCookieName: createSessionCookieName(port),
   };
 
@@ -244,23 +284,33 @@ export function createClaudeSettings(port: number, existingSettings?: Record<str
 
   const hooksConfig = {
     hooks: {
+      // 通知事件（permission_prompt, idle_prompt, elicitation_dialog）
       Notification: [
         {
           matcher: "permission_prompt",
           hooks: [{ type: "command", command: hookCommand }]
-        }
-      ],
-      PreToolUse: [
+        },
         {
-          matcher: "AskUserQuestion",
+          matcher: "idle_prompt",
+          hooks: [{ type: "command", command: hookCommand }]
+        },
+        {
+          matcher: "elicitation_dialog",
+          hooks: [{ type: "command", command: hookCommand }]
+        },
+      ],
+      // 任务完成（用于检测用户响应后任务继续执行）
+      Stop: [
+        {
+          matcher: "",
           hooks: [{ type: "command", command: hookCommand }]
         }
-      ]
+      ],
     }
   };
 
   // 如果有现有 settings，合并 hooks 配置（保留用户自定义的其他 hook 事件）
-  // 注意：同名 hook 事件（Notification / PreToolUse）会被我们的配置覆盖，
+  // 注意：同名 hook 事件会被我们的配置覆盖，
   // 因为这些事件是 claude-remote 正常工作的必要条件
   if (existingSettings) {
     const existingHooks = (existingSettings.hooks ?? {}) as Record<string, unknown[]>;
@@ -448,5 +498,171 @@ export function extractSettingsFromArgs(args: string[]): { settingsPath: string;
   if (settingsValue) {
     return { settingsPath: settingsPath || 'inline', settingsValue, otherArgs };
   }
+  return null;
+}
+
+/**
+ * 获取默认 Settings 扫描目录列表
+ * @returns 默认目录路径数组（已展开 ~ 为实际路径）
+ */
+export function getDefaultSettingsDirs(): string[] {
+  const home = homedir();
+  return [
+    resolve(home, '.claude'),
+    resolve(home, CLAUDE_REMOTE_DIR, SETTINGS_DIR),
+  ];
+}
+
+/**
+ * 获取配置的 Settings 目录列表
+ * @param userConfig 用户配置（可选）
+ * @returns 目录路径数组（已展开 ~ 为实际路径）
+ */
+export function getSettingsDirs(userConfig?: UserConfig): string[] {
+  if (!userConfig?.settingsDirs || userConfig.settingsDirs.length === 0) {
+    return getDefaultSettingsDirs();
+  }
+
+  // 展开 ~ 为 home 目录
+  const home = homedir();
+  return userConfig.settingsDirs.map(dir => {
+    if (dir.startsWith('~/')) {
+      return resolve(home, dir.slice(2));
+    }
+    return resolve(dir);
+  });
+}
+
+/**
+ * 安全检查：文件名是否合法
+ * - 不能包含路径分隔符
+ * - 不能包含路径遍历字符
+ * - 必须以 .json 结尾
+ */
+function isSafeSettingsFilename(filename: string): boolean {
+  // 禁止路径分隔符和遍历
+  if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+    return false;
+  }
+  // 必须以 .json 结尾
+  if (!filename.endsWith('.json')) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * 检查文件名是否为有效的 settings 文件
+ * - 以 "settings" 开头（不区分大小写）
+ * - 或者为有效的自定义配置文件名（非纯数字）
+ */
+function isValidSettingsFilename(filename: string): boolean {
+  const baseName = filename.slice(0, -5); // 去掉 .json 后缀
+
+  // 排除纯数字文件名（如 3000.json，这些是端口配置）
+  if (/^\d+$/.test(baseName)) {
+    return false;
+  }
+
+  // 以 settings 开头的文件
+  if (baseName.toLowerCase().startsWith('settings')) {
+    return true;
+  }
+
+  // 可选：未来可扩展支持其他命名规则
+  return false;
+}
+
+/**
+ * 生成显示名称
+ * - 去掉 settings 前缀和 .json 后缀
+ * - 如果结果为空，使用原文件名
+ */
+function makeDisplayName(filename: string): string {
+  const baseName = filename.slice(0, -5); // 去掉 .json 后缀
+
+  // 去掉 settings 前缀（不区分大小写）
+  const withoutPrefix = baseName.replace(/^settings[-._]?/i, '');
+
+  // 如果结果为空或只有分隔符，使用原 baseName
+  return withoutPrefix.trim() || baseName;
+}
+
+/**
+ * 扫描多个目录中的 settings 文件
+ * @param settingsDirs 要扫描的目录列表
+ * @returns Settings 文件列表（已去重）
+ */
+export function scanSettingsFiles(settingsDirs: string[]): SettingsFile[] {
+  const seen = new Set<string>();
+  const results: SettingsFile[] = [];
+
+  for (const dir of settingsDirs) {
+    // 目录不存在则跳过
+    if (!existsSync(dir)) {
+      continue;
+    }
+
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        // 只处理文件
+        if (!entry.isFile()) continue;
+
+        const filename = entry.name;
+
+        // 安全检查
+        if (!isSafeSettingsFilename(filename)) continue;
+
+        // 有效性检查
+        if (!isValidSettingsFilename(filename)) continue;
+
+        // 去重（基于 filename）
+        if (seen.has(filename)) continue;
+        seen.add(filename);
+
+        // 取目录的 basename 用于显示（如 .claude 或 settings）
+        const dirDisplay = basename(dir);
+
+        results.push({
+          filename,
+          displayName: makeDisplayName(filename),
+          directory: dirDisplay,
+          directoryPath: dir,
+        });
+      }
+    } catch (err) {
+      // 目录读取失败，记录日志并跳过
+      logger.warn({ dir, err }, 'Failed to scan settings directory');
+    }
+  }
+
+  // 按显示名称排序
+  results.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  return results;
+}
+
+/**
+ * 从多个目录中查找 settings 文件的完整路径
+ * @param settingsDirs 要搜索的目录列表
+ * @param filename 文件名
+ * @returns 完整文件路径，未找到返回 null
+ */
+export function getSettingsFilePath(settingsDirs: string[], filename: string): string | null {
+  // 安全检查
+  if (!isSafeSettingsFilename(filename)) {
+    logger.warn({ filename }, 'Invalid settings filename rejected');
+    return null;
+  }
+
+  for (const dir of settingsDirs) {
+    const fullPath = join(dir, filename);
+    if (existsSync(fullPath)) {
+      return fullPath;
+    }
+  }
+
   return null;
 }

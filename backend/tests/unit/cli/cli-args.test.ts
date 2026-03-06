@@ -59,7 +59,7 @@ describe('parseCliArgs', () => {
   });
 
   it('should throw error when attach has no target argument', () => {
-    expect(() => parseCliArgs(['node', 'cli.js', 'attach'])).toThrow('attach 命令需要指定目标实例');
+    expect(() => parseCliArgs(['node', 'cli.js', 'attach'])).toThrow('attach requires a target instance');
   });
 
   it('should parse --no-terminal flag', () => {
@@ -71,5 +71,31 @@ describe('parseCliArgs', () => {
     const options = parseCliArgs(['node', 'cli.js', '--no-terminal', '--port', '3001']);
     expect(options.noTerminal).toBe(true);
     expect(options.port).toBe(3001);
+  });
+
+  it('should parse "update" subcommand', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'update']);
+    expect(options.update).toBe(true);
+  });
+
+  it('should not pass "update" to claudeArgs', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'update']);
+    expect(options.claudeArgs).toEqual([]);
+  });
+
+  it('should parse --version flag', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--version']);
+    expect(options.version).toBe(true);
+  });
+
+  it('should not pass --version to claudeArgs', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--version']);
+    expect(options.claudeArgs).toEqual([]);
+  });
+
+  it('should still pass -v to claudeArgs (not intercepted)', () => {
+    const options = parseCliArgs(['node', 'cli.js', '-v']);
+    expect(options.version).toBe(false);
+    expect(options.claudeArgs).toEqual(['-v']);
   });
 });

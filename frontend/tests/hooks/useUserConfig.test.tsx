@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, act, waitFor, cleanup } from '@testing-library/react';
 import { useUserConfig, notifyConfigChanged } from '../../src/hooks/useUserConfig.js';
 import * as apiClient from '../../src/services/api-client.js';
 
@@ -28,6 +28,7 @@ describe('useUserConfig', () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.clearAllMocks();
   });
 

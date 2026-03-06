@@ -12,6 +12,15 @@ import {
   fillDefaultShortcuts,
   fillDefaultCommands,
 } from '../config.js';
+import {
+  type NotificationConfigs,
+  type SafeNotificationConfigs,
+  getNotificationStatus,
+} from '#shared';
+import type { NotificationChannel } from '../hooks/hook-types.js';
+import type { NotificationManager } from '../notification/notification-manager.js';
+import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
+import type { WsServer } from '../ws/ws-server.js';
 
 const CONFIG_DIR = join(homedir(), '.claude-remote');
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
@@ -70,11 +79,24 @@ function validateConfigStructure(config: unknown): config is UserConfig {
     }
   }
 
-  // dingtalk 可选，如果存在必须是对象且包含 webhookUrl
-  if ('dingtalk' in cfg && cfg.dingtalk !== undefined) {
-    if (typeof cfg.dingtalk !== 'object' || cfg.dingtalk === null) return false;
-    const dt = cfg.dingtalk as Record<string, unknown>;
-    if (typeof dt.webhookUrl !== 'string') return false;
+  // notifications 可选，如果存在必须是对象
+  if ('notifications' in cfg && cfg.notifications !== undefined) {
+    if (typeof cfg.notifications !== 'object' || cfg.notifications === null) return false;
+    const notif = cfg.notifications as Record<string, unknown>;
+
+    // notifications.dingtalk 可选，如果存在必须是对象且包含 webhookUrl
+    if (notif.dingtalk !== undefined) {
+      if (typeof notif.dingtalk !== 'object' || notif.dingtalk === null) return false;
+      const dt = notif.dingtalk as Record<string, unknown>;
+      if (typeof dt.webhookUrl !== 'string') return false;
+    }
+
+    // notifications.wechat_work 可选，如果存在必须是对象且包含 sendKey
+    if (notif.wechat_work !== undefined) {
+      if (typeof notif.wechat_work !== 'object' || notif.wechat_work === null) return false;
+      const wc = notif.wechat_work as Record<string, unknown>;
+      if (typeof wc.sendKey !== 'string') return false;
+    }
   }
 
   return true;
@@ -109,7 +131,12 @@ async function saveUserConfig(config: UserConfig): Promise<void> {
   await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
-export function createConfigRoutes(authModule: AuthModule): Router {
+export function createConfigRoutes(
+  authModule: AuthModule,
+  notificationManager?: NotificationManager,
+  notificationServiceFactory?: NotificationServiceFactory,
+  wsServer?: WsServer,
+): Router {
   const router = Router();
 
   // 复用 auth 路由以支持测试认证
@@ -138,13 +165,15 @@ export function createConfigRoutes(authModule: AuthModule): Router {
         filledConfig = fillDefaultCommands(filledConfig);
       }
 
-      // 安全处理：不暴露完整 webhook URL，只返回是否已配置
-      const { token: _, dingtalk: dtConfig, ...safeConfig } = filledConfig;
+      // 安全处理：不暴露敏感字段（token、webhook URL 等）
+      const { token: _, notifications: _notif, ...safeConfig } = filledConfig;
+
+      // 构建通知配置的安全视图
+      const safeNotifications: SafeNotificationConfigs = getNotificationStatus(filledConfig.notifications);
+
       const responseConfig = {
         ...safeConfig,
-        dingtalk: {
-          configured: !!(dtConfig?.webhookUrl),
-        },
+        notifications: safeNotifications,
       };
 
       res.json({ config: responseConfig, configPath: CONFIG_FILE });
@@ -159,7 +188,7 @@ export function createConfigRoutes(authModule: AuthModule): Router {
    */
   router.put('/config', authModule.requireAuth.bind(authModule), async (req, res) => {
     try {
-      const newConfig = req.body;
+      const newConfig = req.body as UserConfig & { notifications?: NotificationConfigs };
 
       // 验证配置结构
       if (!validateConfigStructure(newConfig)) {
@@ -170,17 +199,127 @@ export function createConfigRoutes(authModule: AuthModule): Router {
       // 文件锁保护 read-modify-write，防止与其他模块并发写入冲突
       await withFileLockAsync(CONFIG_LOCK, async () => {
         // 合并现有配置和新配置（前端可能只发送部分字段）
-        const existingConfig = await loadUserConfig();
-        const mergedConfig = { ...existingConfig, ...newConfig };
+        const existingConfig = (await loadUserConfig()) ?? {};
+        const mergedConfig: UserConfig & { notifications?: NotificationConfigs } = { ...existingConfig, ...newConfig };
 
-        await saveUserConfig(mergedConfig);
+        // 处理通知配置：逐渠道深合并，保留已有字段（如 enabled）
+        if (newConfig.notifications) {
+          const existingNotif = existingConfig.notifications ?? {};
+          const merged: NotificationConfigs = { ...existingNotif };
+
+          // 逐渠道合并：新值覆盖，但保留已有字段
+          if (newConfig.notifications.dingtalk) {
+            merged.dingtalk = { ...existingNotif.dingtalk, ...newConfig.notifications.dingtalk };
+          }
+          if (newConfig.notifications.wechat_work) {
+            merged.wechat_work = { ...existingNotif.wechat_work, ...newConfig.notifications.wechat_work };
+          }
+
+          mergedConfig.notifications = merged;
+        }
+
+        await saveUserConfig(mergedConfig as UserConfig);
       });
+
+      // 触发服务缓存刷新（当前实例即时生效）
+      if (notificationServiceFactory) {
+        notificationServiceFactory.refresh();
+      }
+
+      // 广播刷新消息通知其他实例
+      if (wsServer) {
+        wsServer.broadcast({
+          type: 'service_refresh',
+          source: 'config_update',
+        });
+      }
 
       logger.info({ configPath: CONFIG_FILE }, 'User config updated');
       res.json({ success: true, configPath: CONFIG_FILE });
     } catch (error) {
       logger.error({ error }, 'Failed to update config');
       res.status(500).json({ error: 'Failed to save config' });
+    }
+  });
+
+  /**
+   * PATCH /api/config/notifications/:channel/enabled - 更新通知渠道启用状态
+   */
+  router.patch('/config/notifications/:channel/enabled', authModule.requireAuth.bind(authModule), async (req, res) => {
+    try {
+      const { channel } = req.params;
+      const { enabled } = req.body;
+
+      // 验证参数
+      const validChannels: NotificationChannel[] = ['dingtalk', 'wechat_work'];
+      if (!validChannels.includes(channel as NotificationChannel)) {
+        res.status(400).json({ error: 'Invalid channel type' });
+        return;
+      }
+      if (typeof enabled !== 'boolean') {
+        res.status(400).json({ error: 'enabled must be a boolean' });
+        return;
+      }
+
+      // 文件锁保护 read-modify-write，返回结果供外部统一处理响应
+      const result = await withFileLockAsync(CONFIG_LOCK, async () => {
+        const config = (await loadUserConfig()) ?? {};
+        const notifications = config.notifications ?? {};
+
+        // 检查渠道是否已配置
+        if (channel === 'dingtalk') {
+          const dtConfig = notifications.dingtalk;
+          if (!dtConfig?.webhookUrl) {
+            return { error: 'Channel not configured' } as const;
+          }
+          config.notifications = {
+            ...notifications,
+            dingtalk: { ...dtConfig, enabled },
+          };
+        } else if (channel === 'wechat_work') {
+          const wcConfig = notifications.wechat_work;
+          if (!wcConfig?.sendKey) {
+            return { error: 'Channel not configured' } as const;
+          }
+          config.notifications = {
+            ...notifications,
+            wechat_work: { ...wcConfig, enabled },
+          };
+        }
+
+        await saveUserConfig(config);
+        return { error: null } as const;
+      });
+
+      if (result.error) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+
+      // 主动刷新缓存（当前实例即时生效）
+      if (notificationManager) {
+        notificationManager.refresh(channel as NotificationChannel);
+      }
+
+      // 刷新服务缓存
+      if (notificationServiceFactory) {
+        notificationServiceFactory.refresh(channel as NotificationChannel);
+      }
+
+      // 广播刷新消息通知其他实例
+      if (wsServer) {
+        wsServer.broadcast({
+          type: 'service_refresh',
+          channel: channel as 'dingtalk' | 'wechat_work',
+          source: 'config_update',
+        });
+      }
+
+      logger.info({ channel, enabled }, 'Notification channel enabled status updated');
+      res.json({ success: true, channel, enabled });
+    } catch (error) {
+      logger.error({ error }, 'Failed to update notification channel enabled status');
+      res.status(500).json({ error: 'Failed to update notification channel status' });
     }
   });
 

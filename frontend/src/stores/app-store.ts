@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SessionStatus } from '@claude-remote/shared';
+import type { SessionStatus } from '#shared';
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import type { ServerMessage, ClientMessage } from '@claude-remote/shared';
+import type { ServerMessage, ClientMessage } from '#shared';
 import { useAppStore } from '../stores/app-store.js';
 import { authenticate } from '../services/api-client.js';
 import { authenticateToInstance } from '../services/instance-api.js';

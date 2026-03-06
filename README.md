@@ -1,393 +1,328 @@
 # Claude Code Remote
 
-**手机远程掌控 PC 终端的 Claude Code**
+**Control Claude Code from your mobile browser over LAN.**
 
-在局域网内通过手机浏览器实时查看终端输出、发送指令、审批工具调用——离开工位也能继续工作。
+View terminal output, send commands, and approve tool calls from your phone — keep working even when you step away from your desktop.
 
 ---
 
-## 快速开始 (3 步)
+## Quick Start
 
-### 0. 镜像配置（国内用户）
-
-国内网络可能较慢，建议先配置淘宝镜像：
+### 1. Install
 
 ```bash
-cp .npmrc.example .npmrc
+# npm
+npm install -g @caoruhua/open-claude-remote
+
+# pnpm (recommended)
+pnpm add -g @caoruhua/open-claude-remote
 ```
 
-或手动设置：
+> **Note for pnpm users**: pnpm v10 may show a warning about "Ignored build scripts: node-pty". This is expected and **does not affect functionality** — the package includes prebuilt binaries that work out of the box. To suppress the warning, run `pnpm approve-builds -g` (optional).
 
-```bash
-pnpm config set registry https://registry.npmmirror.com
-```
-
-### 1. 安装
-
-```bash
-git clone <repo-url> claude-code-remote
-cd claude-code-remote
-./install.sh
-```
-
-### 2. 启动
+### 2. Run
 
 ```bash
 claude-remote
 ```
 
-### 3. 扫码连接
+### 3. Connect
 
-PC 终端显示 ASCII 二维码 → 手机扫码 → 自动填充 Token → 开始使用
+Scan the QR code shown in your terminal with your phone. The auth token is auto-filled — you're ready to go.
+
+> On first run, `claude-remote` will automatically check for and install missing dependencies (pnpm, Claude CLI). Hooks are also configured automatically — no manual setup needed.
 
 ---
 
-## 功能亮点
+## Features
 
-### 实时终端同步
-- PC 终端完整输出实时同步到手机
-- 支持 ANSI 颜色渲染
-- 10K 行历史记录，重连自动恢复
-- **IP 变化通知**：PC 局域网 IP 变化时自动通知，提供新连接地址
+### Terminal Sync
+- Real-time terminal output streamed to your phone
+- Full ANSI color rendering via xterm.js
+- 10K-line scrollback buffer, auto-restored on reconnect
+- LAN IP change notification with new connection URL
+- Smart auto-scroll with a "scroll to bottom" floating button
 
-### 快捷按键栏
-- 一键发送 Esc、方向键、Ctrl+C 等
-- 自定义快捷键（在设置中配置）
-- 预设常用命令（/help, /clear 等）
+### Quick Actions
+- One-tap keys: Esc, Enter, Tab, arrows, Shift+Tab
+- Custom shortcuts (configurable in settings)
+- Preset commands (/clear, /compact, /resume, etc.)
 
-### 多实例管理
-- 启动多个claude-remote
-- 浏览器网页打开，顶部Tab切换无需重新认证
-- 实例掉线自动切换到下一个
-- **Web 创建实例**：通过 UI 创建新实例（点击 Tab 栏的 "+" 按钮，工作目录限制`workspaces`白名单和已启动实例的工作目录）
-- **PC Attach**：`claude-remote attach <port|name>` 接管 web 创建的实例
+### First-time Guide
+- Interactive spotlight guide on first visit
+- Highlights key UI elements with coach marks
+- Auto-skips on subsequent visits
 
-### Claude Code窗口自适应
+### Multi-Instance
+- Run multiple `claude-remote` instances simultaneously
+- Browser tab bar for switching — no re-authentication needed
+- Auto-switch when an instance goes offline
+- Spawn new instances from the web UI ("+" button)
+- Copy instance via long-press/right-click tab — pre-fills working directory, settings, and arguments
+- `claude-remote attach <port|name>` to take over a web-spawned instance
 
-**优先级**：WebApp（手机端）> Attach（PC 端）> PC 终端
+### Window Resize Priority
 
-| 场景 | 窗口控制者 | 说明 |
-|------|-------|------|
-| 无客户端连接 | PC 终端 | 正常本地使用 |
-| 仅 WebApp 连接 | WebApp | 手机端调整窗口大小|
-| 仅 Attach 连接 | Attach | PC 端 attach 接管尺寸 |
-| WebApp + Attach | WebApp | 手机端为主控，PC 端跟随 |
+When multiple clients are connected, window size is controlled by:
+**WebApp (mobile) > Attach (PC) > PC Terminal**
 
-**行为说明**：
-- 当 WebApp 在线时，Attach 客户端的 resize 请求会被忽略
-- Attach 连接后会自动同步 WebApp 设置的尺寸
-- 调整 WebApp 窗口大小，Attach 终端会跟随变化
+| Scenario | Controller | Behavior |
+|----------|-----------|----------|
+| No client connected | PC Terminal | Normal local usage |
+| WebApp only | WebApp | Mobile controls window size |
+| Attach only | Attach | PC attach controls size |
+| WebApp + Attach | WebApp | Mobile is primary, PC follows |
 
-### 通知提醒
+- Attach resize requests are ignored when WebApp is online
+- Attach auto-syncs to WebApp's window size on connect
 
-Claude 等待输入时，可通过多种方式收到提醒：
+### Notifications
 
-#### Web 推送通知（手机浏览器）
+Get notified when Claude is waiting for input. All notifications include the instance URL so you can quickly reconnect even if the IP changes.
 
-手机浏览器接收实时推送通知，即使切换到其他应用或锁屏也能收到。
+**Web Push** — works even when the browser is in the background or the screen is locked. Just allow notifications when prompted.
 
-**启用步骤**：
-1. 手机浏览器访问 Web UI
-2. 浏览器会自动请求通知权限，点击"允许"
-3. 后台自动完成订阅，无需手动配置
+**Channel Toggle** — each notification channel has a toggle switch in the settings. Toggle to enable/disable without deleting the configuration. Changes take effect immediately across all running instances.
 
-**工作原理**：
-- 浏览器使用 Push API 订阅服务器
-- p256dh 密钥由浏览器自动生成（65 字节 ECDH 公钥）
-- 订阅数据存储在 `~/.claude-remote/push-subscriptions.json`
-
-**故障排查**：
-- 确保浏览器已授予通知权限
-- 清理无效订阅：`rm ~/.claude-remote/push-subscriptions.json`，然后重新访问 Web UI
-
-#### 钉钉群通知
-
-配置钉钉群机器人 Webhook，即使手机不在身边也能收到提醒。
-
-**配置步骤**：
-1. 打开钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义
-2. 安全设置选择"自定义关键词"，添加关键词 `Claude`（消息标题已包含此词）
-3. 复制 Webhook URL
-4. 在 Web UI 设置界面 → 钉钉 Tab 中粘贴，或直接写入配置文件：
+**DingTalk** — configure a DingTalk bot webhook to receive notifications on your team channel:
 
 ```json
 {
-  "dingtalk": {
-    "webhookUrl": "https://oapi.dingtalk.com/robot/send?access_token=your-token"
+  "notifications": {
+    "dingtalk": {
+      "webhookUrl": "https://oapi.dingtalk.com/robot/send?access_token=your-token"
+    }
   }
 }
 ```
 
-### Web UI 设置界面
-- 可视化配置快捷键
-- 命令管理（自动补足 `/` 前缀）
-- 配置即时生效
+> **Note**: Legacy config files with root-level `dingtalk` field are automatically migrated to `notifications.dingtalk` on first load.
+
+**Setup steps:**
+1. Open DingTalk group → Group Settings → Smart Group Assistant → Add Robot → Custom
+2. For security settings, select "Custom Keywords" and add `Claude` (the message title includes this keyword)
+3. Copy the Webhook URL to your config file or paste it in the Web UI settings
+
+**WeChat (Server酱³)** — configure Server酱³ to receive notifications on WeChat:
+
+```json
+{
+  "notifications": {
+    "wechat_work": {
+      "sendKey": "SCTxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+  }
+}
+```
+
+**Setup steps:**
+1. Visit [Server酱 Sendkey](https://sct.ftqq.com/sendkey) and sign in with WeChat
+2. Copy your SendKey (starts with `SCT`)
+3. Paste it in your config file or in the Web UI settings
 
 ---
 
-## 常见问题
-
-### 安装失败排查
-
-#### 网络超时/连接失败
-
-配置淘宝镜像：
+## Usage
 
 ```bash
-cp .npmrc.example .npmrc
-pnpm install
-```
-
-#### node-pty 编译失败
-
-安装编译工具：
-
-| 系统 | 命令 |
-|------|------|
-| macOS | `xcode-select --install` |
-| Ubuntu/Debian | `sudo apt-get install build-essential python3` |
-| Fedora/RHEL | `sudo dnf groupinstall 'Development Tools'` |
-| Arch Linux | `sudo pacman -S base-devel python` |
-
-#### pnpm 未找到
-
-```bash
-npm install -g pnpm@latest
-# 或使用 corepack
-corepack enable && corepack prepare pnpm@latest --activate
-```
-
-#### 清理缓存后重试
-
-```bash
-pnpm store prune
-rm -rf node_modules pnpm-lock.yaml
-pnpm install
-```
-
-### 找不到 `claude-remote` 命令？
-
-确保已执行 `pnpm link -g`，或使用 `node backend/dist/cli.js` 直接运行。
-
-### 二维码扫不出来？
-
-1. 确保手机和 PC 在同一局域网
-2. 手动访问终端显示的 URL，输入 Token
-
-### 手机无法连接？
-
-1. 检查 PC 防火墙是否放行端口（默认 3000）
-2. 检查终端显示的 URL 是否为正确的局域网 IP
-3. 如果使用 VPN，可能需要配置 `host` 选项（见下方配置说明）
-
-### 如何配置 Hook（审批通知）？
-
-首次启动后执行：
-
-```bash
-./scripts/setup-hooks.sh
-```
-
-Hook 配置详情请参见 [ARCHITECTURE.md#routes](./ARCHITECTURE.md#5-routes)。
-
----
-
-## 基本用法
-
-```bash
-# 直接运行（等同于 claude）
+# Start Claude Code
 claude-remote
 
-# 透传参数
+# Pass arguments to Claude
 claude-remote chat
 claude-remote -- --dangerously-skip-permissions
 
-# 自定义选项
+# Custom options
 claude-remote --port 8080
 claude-remote --name my-project
+claude-remote --token my-secret-token
 
-# 接管 web 创建的实例
-claude-remote attach 3001        # 按端口
-claude-remote attach my-project  # 按名称
+# Attach to a web-spawned instance
+claude-remote attach 3001        # by port
+claude-remote attach my-project  # by name
 
-# Web 创建实例（无终端模式）
-claude-remote --no-terminal      # 不启动本地终端，仅提供 Web 界面
+# Headless mode (no local terminal, web UI only)
+claude-remote --no-terminal
+
+# Check version
+claude-remote --version
+
+# Update to latest version
+claude-remote update
 ```
 
-### 停止服务
+### Stopping
 
-- 单次 Ctrl+C：发送给 Claude Code（取消当前任务）
-- **两次 Ctrl+C（间隔 < 500ms）**：停止代理层
-
-停止所有实例：
-
-```bash
-pnpm stop
-```
+- **Single Ctrl+C** — sent to Claude Code (cancels current task)
+- **Double Ctrl+C** (within 500ms) — stops the proxy server
 
 ---
 
-## 安全
+## Configuration
 
-- **Token 认证**：32 字节随机 Token，首次启动生成
-- **Session Cookie**：HttpOnly + SameSite=Lax，24 小时有效
-- **网络隔离**：仅绑定局域网 IP，无公网暴露
-- **速率限制**：认证接口 5 次/分钟/IP
-- **Hook 安全**：仅接受 localhost 请求
+Config file: `~/.claude-remote/config.json`
 
----
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `port` | number | 3000 | Server port (auto-increments if busy) |
+| `host` | string | "0.0.0.0" | Bind address |
+| `token` | string \| null | null | Auth token; `null` = auto-generated shared token |
+| `claudeCommand` | string | "claude" | Claude CLI path |
+| `claudeArgs` | string[] | [] | Extra Claude CLI arguments (merged with CLI args, deduplicated) |
+| `claudeCwd` | string \| null | null | Claude working directory; `null` = current dir |
+| `sessionTtlMs` | number | 86400000 | Session TTL in ms (default: 24h) |
+| `authRateLimit` | number | 20 | Auth rate limit (per minute per IP) |
+| `maxBufferLines` | number | 10000 | Output buffer max lines |
+| `instanceName` | string \| null | null | Instance name; `null` = working dir name |
+| `shortcuts` | array | see below | Quick-input buttons |
+| `commands` | array | see below | Custom command buttons |
+| `workspaces` | string[] | [] | Allowed working directories for web-spawned instances |
+| `settingsDirs` | string[] | ["~/.claude/", "~/.claude-remote/settings/"] | Directories to scan for settings files |
+| `notifications` | object | — | Notification channels config (see below) |
 
-## 配置文件
+**Notification channel config:**
 
-配置文件位于 `~/.claude-remote/config.json`。项目根目录提供 `config.example.json` 作为模板：
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `webhookUrl` | string | — | DingTalk webhook URL |
+| `sendKey` | string | — | Server酱³ SendKey (WeChat) |
+| `enabled` | boolean | true | Whether the channel is active |
 
-```bash
-cp config.example.json ~/.claude-remote/config.json
-```
+**Priority**: CLI args > config file > defaults (except `claudeArgs` which is merged)
 
-### 完整配置项
+### Shortcuts
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `port` | number | 3000 | 服务监听端口（被占用自动递增） |
-| `host` | string | "0.0.0.0" | 绑定地址 |
-| `token` | string \| null | null | 认证 Token，`null` 自动生成共享 Token |
-| `claudeCommand` | string | "claude" | Claude CLI 命令路径（可用绝对路径） |
-| `claudeArgs` | string[] | [] | Claude CLI 额外参数 |
-| `claudeCwd` | string \| null | null | Claude 工作目录，`null` 使用当前目录 |
-| `sessionTtlMs` | number | 86400000 | Session 有效期（毫秒，默认 24 小时） |
-| `authRateLimit` | number | 20 | 认证速率限制（每分钟每 IP 次数） |
-| `maxBufferLines` | number | 10000 | 输出缓冲区最大行数 |
-| `instanceName` | string \| null | null | 实例名称，`null` 使用工作目录名 |
-| `shortcuts` | array | 见下方 | 快捷输入列表（缺失时 API 返回默认值，不写入文件） |
-| `commands` | array | 见下方 | 自定义命令列表（缺失时 API 返回默认值，不写入文件） |
-| `workspaces` | string[] | [] | 预设工作目录列表（Web 创建实例的白名单） |
-| `dingtalk` | object | - | 钉钉通知配置（见下方） |
+Quick-input buttons displayed below the terminal.
 
-**优先级**：CLI 参数 > 配置文件 > 默认值
+**Default shortcuts:**
 
-### 快捷输入 (shortcuts)
-
-快捷输入显示在终端下方的快捷栏，用于快速发送常用按键或文本。
-
-**当配置文件中未定义 `shortcuts` 字段时，API 返回时自动填充以下默认值：**
-
-| 按键 | 数据 | 说明 |
-|------|------|------|
-| Esc | `\u001b` | ESC 键 |
-| Enter | `\r` | 回车键 |
-| Tab | `\t` | Tab 键 |
-| ↑ | `\u001b[A` | 上箭头 |
-| ↓ | `\u001b[B` | 下箭头 |
-| ← | `\u001b[D` | 左箭头 |
-| → | `\u001b[C` | 右箭头 |
+| Key | Data | Description |
+|-----|------|-------------|
+| Esc | `\u001b` | ESC key |
+| Enter | `\r` | Enter key |
+| Tab | `\t` | Tab key |
+| ↑ | `\u001b[A` | Up arrow |
+| ↓ | `\u001b[B` | Down arrow |
+| ← | `\u001b[D` | Left arrow |
+| → | `\u001b[C` | Right arrow |
 | S-Tab | `\u001b[Z` | Shift+Tab |
+| Ctrl+O | `\u000f` | Ctrl+O |
+| Ctrl+E | `\u0005` | Ctrl+E |
 
-**自定义示例：**
+**Custom example:**
 
 ```json
 {
   "shortcuts": [
-    { "label": "确认", "data": "y", "enabled": true, "desc": "确认操作" },
-    { "label": "取消", "data": "\u001b", "enabled": true, "desc": "取消操作 (ESC)" },
-    { "label": "继续", "data": "\r", "enabled": true, "desc": "继续执行 (Enter)" },
-    { "label": "Ctrl+C", "data": "\u0003", "enabled": true, "desc": "中断当前操作" },
-    { "label": "是的", "data": "yes", "enabled": false, "desc": "完整 yes 输入" }
+    { "label": "Yes", "data": "y", "enabled": true, "desc": "Confirm" },
+    { "label": "Esc", "data": "\u001b", "enabled": true, "desc": "Cancel (ESC)" },
+    { "label": "Ctrl+C", "data": "\u0003", "enabled": true, "desc": "Interrupt" }
   ]
 }
 ```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `label` | string | 按钮显示名称 |
-| `data` | string | 发送的数据（支持转义字符如 `\u001b` 表示 ESC） |
-| `enabled` | boolean | 是否启用 |
-| `desc` | string | 描述（可选） |
+| Field | Type | Description |
+|-------|------|-------------|
+| `label` | string | Button display text |
+| `data` | string | Data to send (supports escape sequences like `\u001b` for ESC) |
+| `enabled` | boolean | Whether the button is active |
+| `desc` | string | Description (optional) |
 
-**常用转义值**：
-- `\u001b` - ESC 键
-- `\r` - Enter 键
+**Common escape values:**
+- `\u001b` - ESC
+- `\r` - Enter
 - `\u0003` - Ctrl+C
 - `\u0004` - Ctrl+D
 
-### 自定义命令 (commands)
+### Commands
 
-自定义命令显示在快捷栏的命令区域。
+Custom command buttons in the shortcut bar.
 
-**当配置文件中未定义 `commands` 字段时，API 返回时自动填充以下默认值：**
+**Default commands:**
 
-| 命令 | 说明 |
-|------|------|
-| /clear | 清屏 |
-| /compact | 紧凑对话 |
-| /resume | 恢复会话 |
-| /stats | 统计信息 |
-| /exit | 退出 |
-| /commit-commands:commit | Git 提交 |
-| /feature-dev:feature-dev | 功能开发 |
-| /auto-doc | 自动文档 |
-| /code-review-expert | 代码审查 |
-| /systematic-debugging | 系统调试 |
+| Command | Description |
+|---------|-------------|
+| /clear | Clear screen |
+| /compact | Compact conversation |
+| /resume | Resume session |
+| /stats | Statistics |
+| /exit | Exit |
 
-**自定义示例：**
+**Custom example:**
 
 ```json
 {
   "commands": [
-    { "label": "/help", "command": "/help", "enabled": true, "desc": "帮助说明" },
-    { "label": "/clear", "command": "/clear", "enabled": true },
-    { "label": "Git Status", "command": "git status", "enabled": true, "autoSend": false, "desc": "填入输入框编辑后发送" },
-    { "label": "/feature-dev:feature-dev", "command": "/feature-dev:feature-dev", "enabled": false, "desc": "启动feature-dev SKILL" }
+    { "label": "/help", "command": "/help", "enabled": true },
+    { "label": "Git Status", "command": "git status", "enabled": true, "autoSend": false }
   ]
 }
 ```
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `label` | string | - | 按钮显示名称 |
-| `command` | string | - | 要执行的命令 |
-| `enabled` | boolean | - | 是否启用 |
-| `autoSend` | boolean | `true` | `true`=点击直接发送，`false`=填入输入框 |
-| `desc` | string | - | 描述（可选） |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `label` | string | — | Button display text |
+| `command` | string | — | Command to execute |
+| `enabled` | boolean | — | Whether the button is active |
+| `autoSend` | boolean | `true` | `true` = send immediately, `false` = fill input box |
 
-### 工作区白名单 (workspaces)
+> Commands starting with `/` are Claude Code slash commands. Other commands are executed in the terminal.
 
-配置后，通过 Web 创建实例时只能选择这些目录：
+### Workspaces
+
+Restrict which directories web-spawned instances can use:
 
 ```json
 {
   "workspaces": [
-    "/Users/tom/projects/api",
-    "/Users/tom/projects/web",
-    "/Users/tom/projects/cli"
+    "/home/user/projects/api",
+    "/home/user/projects/web"
   ]
 }
 ```
 
-若未配置，Web 创建实例时只能选择 home 目录下的项目。
+If not configured, web-spawned instances can only select projects from existed claude instances
 
-### 钉钉通知 (dingtalk)
+### Settings Files
 
-配置钉钉群机器人 Webhook，当 Claude 需要输入时发送通知到钉钉群：
+When creating instances from the web UI, you can select a custom settings file to pass via `--settings`. Settings files must:
+
+1. Be named with `settings` prefix (e.g., `settings-project-a.json`, `settings.idea.json`)
+2. Be valid JSON files ending in `.json`
+3. Be located in one of the configured scan directories
+
+**Default scan directories:**
+- `~/.claude/` — Claude Code config directory
+- `~/.claude-remote/settings/` — Claude Remote custom settings
+
+**Custom directories:**
 
 ```json
 {
-  "dingtalk": {
-    "webhookUrl": "https://oapi.dingtalk.com/robot/send?access_token=your-token"
+  "settingsDirs": [
+    "~/.claude/",
+    "~/.claude-remote/settings/",
+    "~/my-custom-settings/"
+  ]
+}
+```
+
+**Example settings file** (`~/.claude/settings-project-a.json`):
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+  },
+  "permissions": {
+    "allow": ["Bash(git:*)", "Bash(npm:*)"]
   }
 }
 ```
 
-获取 Webhook URL：
-1. 打开钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义
-2. 安全设置选择"自定义关键词"，添加关键词 `Claude`（消息标题已包含此词）
-3. 复制 Webhook URL 到配置文件
+> **Note**: Files like `3000.json` (port configs) are automatically excluded from the settings file list.
 
-也可以在 Web UI 设置界面中配置（推荐）。
-
-> **注意**：修改钉钉配置后需要重启服务才能生效。
-
-### 完整示例
+### Complete Example
 
 ```json
 {
@@ -405,9 +340,9 @@ cp config.example.json ~/.claude-remote/config.json
   "instanceName": null,
 
   "shortcuts": [
-    { "label": "确认", "data": "y", "enabled": true },
-    { "label": "取消", "data": "\u001b", "enabled": true },
-    { "label": "继续", "data": "\r", "enabled": true },
+    { "label": "Yes", "data": "y", "enabled": true },
+    { "label": "Esc", "data": "\u001b", "enabled": true },
+    { "label": "Enter", "data": "\r", "enabled": true },
     { "label": "Ctrl+C", "data": "\u0003", "enabled": true }
   ],
 
@@ -417,30 +352,95 @@ cp config.example.json ~/.claude-remote/config.json
   ],
 
   "workspaces": [
-    "/Users/tom/projects/api",
-    "/Users/tom/projects/web"
-  ]
+    "/home/user/projects/api",
+    "/home/user/projects/web"
+  ],
+
+  "notifications": {
+    "dingtalk": {
+      "webhookUrl": "https://oapi.dingtalk.com/robot/send?access_token=your-token"
+    }
+  }
 }
 ```
 
 ---
 
-## 前置条件
+## Security
 
-- Node.js >= 20
-- pnpm >= 9
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 已安装
+- **Token auth** — 32-byte random token, generated on first run
+- **Session cookie** — HttpOnly + SameSite=Lax, 24-hour TTL
+- **Network isolation** — binds to LAN IP only, no public exposure
+- **Rate limiting** — 20 auth attempts/min/IP
+- **Hook security** — accepts localhost requests only
 
 ---
 
-## 开发者文档
+## Troubleshooting
 
-参见 [ARCHITECTURE.md](./ARCHITECTURE.md)，包含：
-- 技术栈详情
-- 架构分层
-- 数据流图
-- API 路由
-- 部署说明
+### `node-pty` build failure
+
+Install build tools:
+
+| OS | Command |
+|----|---------|
+| macOS | `xcode-select --install` |
+| Ubuntu/Debian | `sudo apt-get install build-essential python3` |
+| Fedora/RHEL | `sudo dnf groupinstall 'Development Tools'` |
+| Arch Linux | `sudo pacman -S base-devel python` |
+
+### QR code won't scan?
+
+1. Make sure your phone and PC are on the same network
+2. Manually open the URL shown in the terminal and enter the token
+
+### Phone can't connect?
+
+1. Check your PC firewall allows the port (default: 3000)
+2. Verify the URL shows the correct LAN IP
+3. If using a VPN, try setting the `host` option explicitly
+
+---
+
+## Prerequisites
+
+- **Node.js** >= 20
+- **Claude Code CLI** — [installation guide](https://docs.anthropic.com/en/docs/claude-code)
+
+> `pnpm` and Claude CLI will be auto-installed on first run if missing.
+
+---
+
+## Development
+
+**Source development:**
+
+```bash
+# Clone and install
+git clone https://github.com/StephenTowne/open-claude-remote.git
+cd open-claude-remote
+pnpm install
+
+# Development mode (with hot reload)
+pnpm dev:cli
+
+# Production mode
+pnpm build && pnpm link -g && claude-remote
+```
+
+**Project structure:**
+
+- Backend: `backend/src/` (Express + node-pty + WebSocket)
+- Frontend: `frontend/src/` (React + xterm.js)
+- Shared types: `shared/` (imported via `#shared` alias)
+- Tests: `pnpm test` (Vitest)
+- Build: `pnpm build` (TypeScript + Vite)
+
+### Stop all instances
+
+```bash
+pnpm stop
+```
 
 ---
 

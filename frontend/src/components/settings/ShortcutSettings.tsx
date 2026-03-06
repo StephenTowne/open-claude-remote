@@ -188,7 +188,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
         marginBottom: 8,
       }}>
         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-          快捷键
+          Shortcuts
         </span>
         <button
           onClick={addShortcut}
@@ -202,7 +202,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
             cursor: 'pointer',
           }}
         >
-          + 添加
+          + Add
         </button>
       </div>
 
@@ -213,7 +213,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
           color: 'var(--text-secondary)',
           fontSize: 13,
         }}>
-          暂无快捷键，点击上方按钮添加
+          No shortcuts yet. Click the button above to add one.
         </div>
       )}
 
@@ -234,49 +234,59 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
               onToggle={() => toggleEnabled(index)}
               onDelete={() => deleteShortcut(index)}
             >
-              {/* 按键捕获输入框 */}
-              <input
-                type="text"
-                value={shortcut.label}
-                readOnly
-                placeholder="按键捕获"
-                onClick={() => setCapturingIndex(index)}
-                onKeyDown={(e) => handleKeyDown(e, index)}
-                onBlur={() => setCapturingIndex(null)}
-                aria-label={`快捷键 ${index + 1}`}
-                style={{
-                  flex: '1 1 0',
-                  minWidth: 0,
-                  height: 36,
-                  padding: '0 12px',
-                  borderRadius: 6,
-                  border: capturingIndex === index
-                    ? '2px solid var(--status-running)'
-                    : '1px solid var(--border-color)',
-                  background: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                  fontSize: 14,
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                }}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                {/* 按键捕获输入框 */}
+                <input
+                  type="text"
+                  value={shortcut.label}
+                  readOnly
+                  autoComplete="off"
+                  placeholder="Press key to capture"
+                  onClick={() => setCapturingIndex(index)}
+                  onKeyDown={(e) => handleKeyDown(e, index)}
+                  onBlur={() => setCapturingIndex(null)}
+                  aria-label={`Shortcut ${index + 1}`}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: 36,
+                    padding: '0 12px',
+                    borderRadius: 6,
+                    border: capturingIndex === index
+                      ? '2px solid var(--status-running)'
+                      : '1px solid var(--border-color)',
+                    background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    fontSize: 14,
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                  }}
+                />
 
-              {/* ANSI 序列预览 */}
-              <span style={{
-                fontSize: 11,
-                color: 'var(--text-muted)',
-                fontFamily: 'monospace',
-                flexShrink: 0,
-                marginLeft: 8,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                maxWidth: 80,
-              }}>
-                {shortcut.data
-                  ? shortcut.data.replace(/\x1b/g, 'ESC').replace(/\r/g, 'CR').replace(/\t/g, 'TAB')
-                  : '(未设置)'}
-              </span>
+                {/* ANSI 序列预览 */}
+                <span
+                  title={shortcut.data
+                    ? shortcut.data.replace(/\x1b/g, 'ESC').replace(/\r/g, 'CR').replace(/\t/g, 'TAB')
+                    : '(not set)'}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    fontSize: 11,
+                    color: 'var(--text-muted)',
+                    fontFamily: 'monospace',
+                    flexShrink: 0,
+                    width: 35,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {shortcut.data
+                    ? shortcut.data.replace(/\x1b/g, 'ESC').replace(/\r/g, 'CR').replace(/\t/g, 'TAB')
+                    : '(not set)'}
+                </span>
+              </div>
             </SortableItemShell>
           ))}
         </SortableContext>
@@ -289,7 +299,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
           textAlign: 'center',
           marginTop: 4,
         }}>
-          请按下要捕获的按键…
+          Press a key to capture…
         </div>
       )}
     </div>

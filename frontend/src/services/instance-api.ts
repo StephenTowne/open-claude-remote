@@ -1,4 +1,4 @@
-import type { InstanceListItem } from '@claude-remote/shared';
+import type { InstanceListItem } from '#shared';
 import { authenticate } from './api-client.js';
 import { loadToken } from './token-storage.js';
 

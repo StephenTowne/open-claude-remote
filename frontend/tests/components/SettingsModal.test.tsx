@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { SettingsModal } from '../../src/components/settings/SettingsModal.js';
 import * as apiClient from '../../src/services/api-client.js';
 
@@ -25,6 +25,7 @@ describe('SettingsModal', () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.clearAllMocks();
   });
 
@@ -39,7 +40,7 @@ describe('SettingsModal', () => {
     render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '设置' })).toBeDefined();
+      expect(screen.getByRole('heading', { name: 'Settings' })).toBeDefined();
     });
   });
 
@@ -48,11 +49,11 @@ describe('SettingsModal', () => {
     render(<SettingsModal isOpen={true} onClose={onClose} />);
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '设置' })).toBeDefined();
+      expect(screen.getByRole('heading', { name: 'Settings' })).toBeDefined();
     });
 
     // 点击遮罩层（overlay）
-    const overlay = screen.getByRole('heading', { name: '设置' })
+    const overlay = screen.getByRole('heading', { name: 'Settings' })
       .closest('div[style*="position: fixed"]');
     if (overlay) {
       fireEvent.click(overlay);
@@ -67,10 +68,10 @@ describe('SettingsModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('保存')).toBeDefined();
+      expect(screen.getByText('Save')).toBeDefined();
     });
 
-    fireEvent.click(screen.getByText('保存'));
+    fireEvent.click(screen.getByText('Save'));
 
     await waitFor(() => {
       expect(onConfigSaved).toHaveBeenCalled();
@@ -81,12 +82,12 @@ describe('SettingsModal', () => {
     render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '设置' })).toBeDefined();
+      expect(screen.getByRole('heading', { name: 'Settings' })).toBeDefined();
     });
 
-    // 找到 Tab 栏中的"命令"按钮（通过查找 border-bottom 样式的 tab 容器）
+    // 找到 Tab 栏中的"Commands"按钮
     const tabButtons = screen.getAllByRole('button');
-    const commandTab = tabButtons.find(btn => btn.textContent === '命令');
+    const commandTab = tabButtons.find(btn => btn.textContent === 'Commands');
     expect(commandTab).toBeDefined();
 
     fireEvent.click(commandTab!);
@@ -103,13 +104,13 @@ describe('SettingsModal', () => {
     render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByText('保存')).toBeDefined();
+      expect(screen.getByText('Save')).toBeDefined();
     });
 
-    fireEvent.click(screen.getByText('保存'));
+    fireEvent.click(screen.getByText('Save'));
 
     await waitFor(() => {
-      expect(screen.getByText('保存失败')).toBeDefined();
+      expect(screen.getByText('Failed to save')).toBeDefined();
     });
   });
 });

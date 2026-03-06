@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws';
-import type { ClientMessage } from '@claude-remote/shared';
+import type { ClientMessage } from '#shared';
 import { logger } from '../logger/logger.js';
 
 export interface WsHandlerCallbacks {

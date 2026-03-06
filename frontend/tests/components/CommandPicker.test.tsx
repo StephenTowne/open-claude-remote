@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor, cleanup } from '@testing-library/react';
 import { CommandPicker } from '../../src/components/input/CommandPicker.js';
 import * as apiClient from '../../src/services/api-client.js';
 
@@ -25,6 +25,7 @@ describe('CommandPicker', () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.clearAllMocks();
   });
 

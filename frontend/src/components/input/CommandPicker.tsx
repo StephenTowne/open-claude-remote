@@ -102,7 +102,7 @@ export function CommandPicker({ onShortcut, onCommandSelect, onCommandSend, visi
       flexShrink: 0,
     }}>
       {/* 快捷键行 - 支持横向滚动 */}
-      <div data-scrollable style={{
+      <div data-testid="shortcut-bar" data-scrollable style={{
         height: 'var(--keybar-height)',
         display: 'flex',
         alignItems: 'center',
@@ -132,7 +132,7 @@ export function CommandPicker({ onShortcut, onCommandSelect, onCommandSend, visi
       </div>
 
       {/* 命令行 - 支持横向滚动 */}
-      <div data-scrollable style={{
+      <div data-testid="command-buttons" data-scrollable style={{
         height: 'var(--keybar-height)',
         display: 'flex',
         alignItems: 'center',

@@ -1,17 +1,56 @@
 /**
- * Integration test helper: spins up a real HTTP server + WS + PTY + AuthModule + SessionController.
- * PTY runs `cat` instead of `claude` so stdin echoes to stdout.
+ * Integration test helper: spins up a real HTTP server + WS + EchoPty + AuthModule + SessionController.
+ * EchoPtyManager simulates `cat` echo without depending on node-pty (which may fail in CI/sandbox).
  */
 import { createServer, Server as HttpServer } from 'node:http';
+import { EventEmitter } from 'node:events';
 import express, { Express } from 'express';
 import { WebSocket } from 'ws';
 import { AuthModule } from '../../../src/auth/auth-middleware.js';
-import { PtyManager } from '../../../src/pty/pty-manager.js';
+import type { PtyManager } from '../../../src/pty/pty-manager.js';
 import { WsServer } from '../../../src/ws/ws-server.js';
 import { HookReceiver } from '../../../src/hooks/hook-receiver.js';
 import { SessionController } from '../../../src/session/session-controller.js';
 import { createApiRouter } from '../../../src/api/router.js';
 import { PushService } from '../../../src/push/push-service.js';
+
+/**
+ * Simulates a PTY running `cat`: write() echoes data back via 'data' event.
+ * Replaces real node-pty to avoid posix_spawnp failures in sandboxed/CI environments.
+ */
+class EchoPtyManager extends EventEmitter {
+  private _cols = 80;
+  private _rows = 24;
+  private _exited = false;
+
+  get cols(): number { return this._cols; }
+  get rows(): number { return this._rows; }
+  get exited(): boolean { return this._exited; }
+
+  spawn(): void {
+    // No-op — echo is handled in write()
+  }
+
+  write(data: string): void {
+    if (this._exited) return;
+    // Simulate PTY echo asynchronously (like real PTY kernel echo)
+    setImmediate(() => this.emit('data', data));
+  }
+
+  resize(cols: number, rows: number): void {
+    if (this._exited) return;
+    if (cols === this._cols && rows === this._rows) return;
+    this._cols = cols;
+    this._rows = rows;
+    this.emit('resize', cols, rows);
+  }
+
+  destroy(): void {
+    if (this._exited) return;
+    this._exited = true;
+    this.emit('exit', 0);
+  }
+}
 
 export const TEST_TOKEN = 'integration-test-token-abcdef1234567890';
 
@@ -25,7 +64,7 @@ export interface TestContext {
   app: Express;
   httpServer: HttpServer;
   authModule: AuthModule;
-  ptyManager: PtyManager;
+  ptyManager: EchoPtyManager;
   wsServer: WsServer;
   hookReceiver: HookReceiver;
   sessionController: SessionController;
@@ -70,16 +109,10 @@ export async function startTestServer(options?: TestServerOptions): Promise<Test
 
   const wsServer = new WsServer(httpServer, authModule);
 
-  const ptyManager = new PtyManager();
+  const ptyManager = new EchoPtyManager();
 
-  sessionController = new SessionController(ptyManager, wsServer, hookReceiver, 1000);
-
-  // Spawn `cat` as the PTY process — it echoes stdin to stdout
-  ptyManager.spawn({
-    command: 'cat',
-    args: [],
-    cwd: '/tmp',
-  });
+  // EchoPtyManager duck-types PtyManager (EventEmitter + write/resize/cols/rows)
+  sessionController = new SessionController(ptyManager as unknown as PtyManager, wsServer, hookReceiver, 1000);
 
   sessionController.setStatus('running');
 

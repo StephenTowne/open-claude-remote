@@ -1,14 +1,21 @@
 import { WebSocket } from 'ws';
-import type { SessionStatus } from '@claude-remote/shared';
+import type { SessionStatus } from '#shared';
+import type { NotificationChannel } from '../hooks/hook-types.js';
 import { PtyManager } from '../pty/pty-manager.js';
 import { OutputBuffer } from '../pty/output-buffer.js';
 import { WsServer, type ClientType } from '../ws/ws-server.js';
-import { HookReceiver, type HookNotification } from '../hooks/hook-receiver.js';
+import { HookReceiver } from '../hooks/hook-receiver.js';
+import {
+  type HookNotification,
+  type TaskCompletedData,
+  HookEventType,
+} from '../hooks/hook-types.js';
 import { handleWsMessage } from '../ws/ws-handler.js';
 import { logger } from '../logger/logger.js';
 import type { PushService } from '../push/push-service.js';
 import type { TerminalRelay } from '../terminal/terminal-relay.js';
-import type { DingtalkService } from '../notification/dingtalk-service.js';
+import type { NotificationManager } from '../notification/notification-manager.js';
+import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
 
 const WS_FLUSH_INTERVAL_MS = 16;
 const WS_MAX_CHUNK_BYTES = 32 * 1024;
@@ -21,7 +28,9 @@ export class SessionController {
   private _status: SessionStatus = 'idle';
   private buffer: OutputBuffer;
   private pushService: PushService | null = null;
-  private dingtalkService: DingtalkService | null = null;
+  private notificationServiceFactory: NotificationServiceFactory | null = null;
+  private notificationManager: NotificationManager | null = null;
+  private instanceUrl: string | null = null;
 
   private wsPendingChunks: string[] = [];
   private wsPendingBytes = 0;
@@ -62,10 +71,25 @@ export class SessionController {
   }
 
   /**
-   * Inject DingtalkService for hook-triggered notifications.
+   * Inject NotificationServiceFactory for lazily creating notification services.
    */
-  setDingtalkService(dingtalkService: DingtalkService): void {
-    this.dingtalkService = dingtalkService;
+  setNotificationServiceFactory(factory: NotificationServiceFactory): void {
+    this.notificationServiceFactory = factory;
+  }
+
+  /**
+   * Inject NotificationManager for dynamic enabled status checking.
+   */
+  setNotificationManager(manager: NotificationManager): void {
+    this.notificationManager = manager;
+  }
+
+  /**
+   * Set instance URL for inclusion in notifications.
+   */
+  setInstanceUrl(url: string): void {
+    this.instanceUrl = url;
+    logger.info({ instanceUrl: url }, 'Instance URL updated');
   }
 
   /**
@@ -267,43 +291,118 @@ export class SessionController {
   }
 
   /**
-   * Wire Hook notifications → status update + Push notification
+   * Wire Hook notifications → status update + external notifications
    */
   private setupHookHandlers(): void {
+    // 处理需要用户注意的通知事件
     this.hookReceiver.on('notification', (notification: HookNotification) => {
       this._status = 'waiting_input';
 
-      this.wsServer.broadcast({
-        type: 'status_update',
-        status: 'waiting_input',
-        detail: `Waiting for input: ${notification.tool}`,
-      });
-
-      // Send push notification if service is available
-      if (this.pushService) {
-        this.pushService.notifyAll({
-          title: 'Claude Code 需要输入',
-          body: notification.message,
-          tag: 'claude-input',
-          renotify: true,
-        }).catch((err) => {
-          logger.error({ err }, 'Failed to send push notification');
-        });
+      // 根据渠道列表发送通知
+      for (const channel of notification.channels) {
+        this.sendNotificationByChannel(channel, notification);
       }
 
-      // Send dingtalk notification if service is available
-      if (this.dingtalkService) {
-        this.dingtalkService.sendNotification(
-          'Claude Code 需要输入',
-          notification.tool,
-          notification.message
-        ).catch((err) => {
-          logger.error({ err }, 'Failed to send dingtalk notification');
-        });
-      }
-
-      logger.info({ tool: notification.tool }, 'Hook notification processed, status set to waiting_input');
+      logger.info(
+        {
+          eventType: notification.eventType,
+          tool: notification.tool,
+          channels: notification.channels,
+        },
+        'Hook notification processed, status set to waiting_input'
+      );
     });
+
+    // 处理任务完成事件（用户响应后任务继续执行）
+    this.hookReceiver.on('task_completed', (data: TaskCompletedData) => {
+      // 如果之前在等待输入，任务完成说明用户已响应
+      if (this._status === 'waiting_input') {
+        this._status = 'running';
+        this.wsServer.broadcast({
+          type: 'status_update',
+          status: 'running',
+          detail: 'Task resumed',
+        });
+        logger.info('Task resumed after user response');
+      }
+    });
+  }
+
+  /**
+   * 根据渠道类型发送通知
+   */
+  private sendNotificationByChannel(
+    channel: NotificationChannel,
+    notification: HookNotification
+  ): void {
+    // websocket 和 push 渠道不做 enabled 检查（始终发送）
+    if (channel !== 'websocket' && channel !== 'push') {
+      // 检查渠道是否启用
+      if (this.notificationManager && !this.notificationManager.isEnabled(channel)) {
+        logger.debug({ channel }, 'Notification channel disabled, skipping');
+        return;
+      }
+    }
+
+    // 构造 URL 提示信息
+    const urlHint = this.instanceUrl ? `\n\nInstance: ${this.instanceUrl}` : '';
+
+    switch (channel) {
+      case 'websocket':
+        this.wsServer.broadcast({
+          type: 'status_update',
+          status: 'waiting_input',
+          detail: notification.message + urlHint,
+        });
+        break;
+
+      case 'push':
+        if (this.pushService) {
+          this.pushService
+            .notifyAll({
+              title: notification.title,
+              body: notification.message + urlHint,
+              tag: `claude-${notification.eventType}`,
+              renotify: true,
+            })
+            .catch((err) => {
+              logger.error({ err, channel: 'push' }, 'Failed to send push notification');
+            });
+        }
+        break;
+
+      case 'dingtalk':
+        if (this.notificationServiceFactory) {
+          const service = this.notificationServiceFactory.getDingtalkService();
+          if (service) {
+            const body = notification.detail
+              ? `${notification.message}\n${notification.detail}${urlHint}`
+              : notification.message + urlHint;
+            service
+              .sendNotification(notification.title, notification.tool, body)
+              .catch((err) => {
+                logger.error({ err, channel: 'dingtalk' }, 'Failed to send dingtalk notification');
+              });
+          }
+        }
+        break;
+
+      case 'wechat_work':
+        if (this.notificationServiceFactory) {
+          const service = this.notificationServiceFactory.getWechatWorkService();
+          if (service) {
+            const body = notification.detail
+              ? `${notification.message}\n${notification.detail}${urlHint}`
+              : notification.message + urlHint;
+            service
+              .sendNotification(notification.title, notification.tool, body)
+              .catch((err) => {
+                logger.error({ err, channel: 'wechat_work' }, 'Failed to send WeChat notification');
+              });
+          }
+        }
+        break;
+    }
   }
 
   /**

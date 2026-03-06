@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import * as pty from 'node-pty';
 import { logger } from '../logger/logger.js';
+import { ensureSpawnHelperPermissions } from './fix-pty-permissions.js';
 
 export interface PtyManagerOptions {
   command: string;
@@ -56,6 +57,13 @@ export class PtyManager extends EventEmitter {
     this._rows = rows;
 
     logger.info({ command: options.command, args: options.args, cwd: options.cwd, cols, rows }, 'Spawning PTY process');
+
+    // Ensure spawn-helper has execute permission (runs once, no-op after first call)
+    try {
+      ensureSpawnHelperPermissions();
+    } catch (err) {
+      logger.warn({ err }, 'Failed to check spawn-helper permissions, continuing anyway');
+    }
 
     try {
       this.process = pty.spawn(options.command, options.args ?? [], {

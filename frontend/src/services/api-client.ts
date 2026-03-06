@@ -68,3 +68,31 @@ export async function updateUserConfig(config: UserConfig): Promise<boolean> {
 
   return res.ok;
 }
+
+/**
+ * 更新通知渠道启用状态
+ * @param channel 渠道类型 (dingtalk | wechat_work)
+ * @param enabled 是否启用
+ */
+export async function updateNotificationChannelEnabled(
+  channel: 'dingtalk' | 'wechat_work',
+  enabled: boolean
+): Promise<{ success: boolean; channel: string; enabled: boolean }> {
+  const res = await fetch(`${API_BASE}/config/notifications/${channel}/enabled`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ enabled }),
+  });
+
+  if (res.status === 401) {
+    throw new Error('Unauthorized');
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to update channel status: ${res.status}`);
+  }
+
+  return res.json();
+}

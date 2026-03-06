@@ -36,12 +36,23 @@ export class InstanceSpawner {
   constructor() {
     // 获取当前模块所在目录
     const currentDir = dirname(fileURLToPath(import.meta.url));
-    // 入口脚本路径（CLI 入口）
-    this.entryScript = resolve(currentDir, '../cli.js');
 
-    // 验证入口脚本存在
-    if (!existsSync(this.entryScript)) {
-      throw new Error(`Entry script not found: ${this.entryScript}`);
+    // TypeScript 编译输出结构：
+    // 源码：backend/src/registry/instance-spawner.ts
+    // 编译：dist/backend/src/registry/instance-spawner.js
+    //
+    // 入口脚本路径计算：
+    // 生产模式：import.meta.url 指向 dist/backend/src/registry/，向上找 cli.js
+    // 开发模式：import.meta.url 指向 backend/src/registry/，需要找编译后的 dist/backend/src/cli.js
+    const prodEntryScript = resolve(currentDir, '../cli.js');
+    const devEntryScript = resolve(currentDir, '../../../dist/backend/src/cli.js');
+
+    if (existsSync(prodEntryScript)) {
+      this.entryScript = prodEntryScript;
+    } else if (existsSync(devEntryScript)) {
+      this.entryScript = devEntryScript;
+    } else {
+      throw new Error(`Entry script not found. Tried: ${prodEntryScript}, ${devEntryScript}`);
     }
   }
 

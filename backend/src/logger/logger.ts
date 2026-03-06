@@ -1,11 +1,9 @@
 import pino from 'pino';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(__dirname, '../../..');  // logger/ → src/ → backend/ → root/
-const logDir = process.env.LOG_DIR ?? resolve(projectRoot, 'logs');
+const logDir = process.env.LOG_DIR ?? resolve(homedir(), '.claude-remote', 'logs');
 
 // Ensure log directory exists
 try {

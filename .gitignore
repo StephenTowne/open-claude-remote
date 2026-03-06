@@ -6,4 +6,21 @@ logs/
 .DS_Store
 .idea/
 *.tsbuildinfo
-frontend/dist/
+frontend-dist/
+
+# npm pack artifacts
+*.tgz
+
+# Shared module build artifacts
+backend/shared-dist/
+
+# Internal project files (not published to GitHub)
+test-results/
+settings.local.json
+
+# Open source exclusions
+.claude/
+.aci/
+CLAUDE.md
+ARCHITECTURE.md
+LEGAL.md

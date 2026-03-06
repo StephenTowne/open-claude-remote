@@ -1,15 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { InputBar } from '../../src/components/input/InputBar.js';
 import type { InputBarRef } from '../../src/components/input/InputBar.js';
 import { createRef } from 'react';
 
 describe('InputBar', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it('should call onSend with text on Enter key', () => {
     const onSend = vi.fn();
     render(<InputBar onSend={onSend} />);
 
-    const input = screen.getByPlaceholderText('输入命令或数字选择…');
+    const input = screen.getByPlaceholderText('Enter command or number to select…');
     fireEvent.change(input, { target: { value: 'hello' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -20,7 +24,7 @@ describe('InputBar', () => {
     const onSend = vi.fn();
     render(<InputBar onSend={onSend} />);
 
-    const input = screen.getByPlaceholderText('输入命令或数字选择…');
+    const input = screen.getByPlaceholderText('Enter command or number to select…');
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onSend).toHaveBeenCalledWith('');
   });
@@ -29,7 +33,7 @@ describe('InputBar', () => {
     const onSend = vi.fn();
     render(<InputBar onSend={onSend} />);
 
-    const input = screen.getByPlaceholderText('输入命令或数字选择…') as HTMLInputElement;
+    const input = screen.getByPlaceholderText('Enter command or number to select…') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'hello' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -40,7 +44,7 @@ describe('InputBar', () => {
     const onSend = vi.fn();
     render(<InputBar onSend={onSend} />);
 
-    const input = screen.getByPlaceholderText('输入命令或数字选择…');
+    const input = screen.getByPlaceholderText('Enter command or number to select…');
     fireEvent.change(input, { target: { value: 'hello' } });
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
 
@@ -54,7 +58,7 @@ describe('InputBar', () => {
       render(<InputBar ref={ref} onSend={onSend} />);
 
       // 初始输入框为空
-      const input = screen.getByPlaceholderText('输入命令或数字选择…') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Enter command or number to select…') as HTMLInputElement;
       expect(input.value).toBe('');
 
       // 通过 ref 设置文本（需要使用 act 包裹状态更新）
@@ -69,7 +73,7 @@ describe('InputBar', () => {
       const ref = createRef<InputBarRef>();
       render(<InputBar ref={ref} onSend={onSend} />);
 
-      const input = screen.getByPlaceholderText('输入命令或数字选择…') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Enter command or number to select…') as HTMLInputElement;
 
       // 先让输入框失去焦点
       input.blur();
@@ -85,7 +89,7 @@ describe('InputBar', () => {
       const ref = createRef<InputBarRef>();
       render(<InputBar ref={ref} onSend={onSend} />);
 
-      const input = screen.getByPlaceholderText('输入命令或数字选择…') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Enter command or number to select…') as HTMLInputElement;
 
       // 先让输入框失去焦点
       input.blur();

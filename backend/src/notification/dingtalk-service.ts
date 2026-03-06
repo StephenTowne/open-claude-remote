@@ -56,7 +56,7 @@ export class DingtalkService {
       msgtype: 'markdown',
       markdown: {
         title,
-        text: `### ${title}\n\n**工具**: ${tool}\n\n**消息**: ${message}\n\n---\n请及时处理`,
+        text: `### ${title}\n\n**Tool**: ${tool}\n\n**Message**: ${message}\n\n---\nPlease respond promptly`,
       },
     };
 

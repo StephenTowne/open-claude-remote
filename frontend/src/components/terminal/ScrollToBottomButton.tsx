@@ -28,7 +28,7 @@ export function ScrollToBottomButton({ visible, onClick }: ScrollToBottomButtonP
       className={`scroll-to-bottom-btn ${visible ? 'visible' : 'hidden'}`}
       onClick={onClick}
       onAnimationEnd={handleAnimationEnd}
-      aria-label="跳转到最新输出"
+      aria-label="Jump to latest output"
     >
       ↓
     </button>

@@ -1,9 +1,9 @@
 import {
   DEFAULT_SHORTCUTS as SHARED_DEFAULT_SHORTCUTS,
   DEFAULT_COMMANDS as SHARED_DEFAULT_COMMANDS,
-  type ConfigurableShortcut as SharedConfigurableShortcut,
-  type ConfigurableCommand as SharedConfigurableCommand,
-} from '@claude-remote/shared';
+  type SafeNotificationConfigs,
+  type NotificationConfigs,
+} from '#shared';
 
 /**
  * 快捷键 - 点击直接发送 ANSI 控制字符
@@ -44,6 +44,9 @@ export interface ConfigurableCommand extends CommandItem {
 export interface UserConfig {
   shortcuts: ConfigurableShortcut[];
   commands: ConfigurableCommand[];
+  /** 多渠道通知配置（新版） */
+  notifications?: NotificationConfigs;
+  /** 钉钉配置（旧版，向后兼容） */
   dingtalk?: {
     webhookUrl: string;
   };
@@ -55,6 +58,9 @@ export interface UserConfig {
 export interface SafeUserConfig {
   shortcuts: ConfigurableShortcut[];
   commands: ConfigurableCommand[];
+  /** 多渠道通知配置状态（新版） */
+  notifications?: SafeNotificationConfigs;
+  /** 钉钉配置状态（旧版，向后兼容） */
   dingtalk?: {
     configured: boolean;
   };

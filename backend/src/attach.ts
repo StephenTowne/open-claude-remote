@@ -8,8 +8,8 @@
  */
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { CLAUDE_REMOTE_DIR, REGISTRY_FILENAME } from '@claude-remote/shared';
-import type { InstanceInfo } from '@claude-remote/shared';
+import { CLAUDE_REMOTE_DIR, REGISTRY_FILENAME } from '#shared';
+import type { InstanceInfo } from '#shared';
 import { existsSync, readFileSync } from 'node:fs';
 import { VirtualPtyManager } from './pty/virtual-pty.js';
 import { TerminalRelay } from './terminal/terminal-relay.js';
@@ -82,7 +82,7 @@ export async function attachInstance(options: AttachOptions): Promise<void> {
   const aliveInstances = instances.filter(inst => isProcessAlive(inst.pid));
 
   if (aliveInstances.length === 0) {
-    console.error('没有发现存活实例');
+    console.error('No running instances found');
     process.exit(1);
   }
 
@@ -90,15 +90,15 @@ export async function attachInstance(options: AttachOptions): Promise<void> {
   const instance = findInstance(target, aliveInstances);
 
   if (!instance) {
-    console.error(`未找到实例: ${target}`);
-    console.error('可用实例:');
+    console.error(`Instance not found: ${target}`);
+    console.error('Available instances:');
     for (const inst of aliveInstances) {
-      console.error(`  - ${inst.name} (端口 ${inst.port})`);
+      console.error(`  - ${inst.name} (port ${inst.port})`);
     }
     process.exit(1);
   }
 
-  console.log(`正在连接实例: ${instance.name} (端口 ${instance.port})...`);
+  console.log(`Connecting to instance: ${instance.name} (port ${instance.port})...`);
 
   // 获取共享 Token
   const { token } = getOrCreateSharedToken(sharedConfigDir);
@@ -134,13 +134,13 @@ export async function attachInstance(options: AttachOptions): Promise<void> {
 
   // 处理连接关闭
   virtualPty.on('exit', (_exitCode: number) => {
-    console.log('\n连接已关闭');
+    console.log('\nConnection closed');
     cleanup();
     process.exit(0);
   });
 
   virtualPty.on('error', (err: Error) => {
-    console.error('连接错误:', err.message);
+    console.error('Connection error:', err.message);
     cleanup();
     process.exit(1);
   });
@@ -153,7 +153,7 @@ export async function attachInstance(options: AttachOptions): Promise<void> {
   try {
     await virtualPty.connect(wsUrl, token);
   } catch (err) {
-    console.error('连接失败:', err instanceof Error ? err.message : err);
+    console.error('Connection failed:', err instanceof Error ? err.message : err);
     cleanup();
     process.exit(1);
   }
@@ -166,12 +166,12 @@ export async function attachInstance(options: AttachOptions): Promise<void> {
   // 启动 TerminalRelay
   relay.start();
 
-  console.log('已连接。按 Ctrl+C 两次退出。');
+  console.log('Connected. Press Ctrl+C twice to exit.');
 
   // 等待进程退出
   await new Promise<void>((resolve) => {
     process.on('SIGINT', () => {
-      console.log('\n正在断开连接...');
+      console.log('\nDisconnecting...');
       cleanup();
       resolve();
     });

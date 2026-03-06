@@ -20,6 +20,8 @@ const mockConfig = {
 };
 vi.mock('../../../src/config.js', () => ({
   loadUserConfig: () => mockConfig,
+  getSettingsDirs: () => [],
+  scanSettingsFiles: () => [],
 }));
 
 // Mock fs - 所有目录都存在
@@ -29,7 +31,7 @@ vi.mock('node:fs', () => ({
 
 import { createInstanceRoutes } from '../../../src/api/instance-routes.js';
 import { AuthModule } from '../../../src/auth/auth-middleware.js';
-import type { InstanceInfo } from '@claude-remote/shared';
+import type { InstanceInfo } from '#shared';
 
 const TEST_TOKEN = 'test-token-for-instances';
 
