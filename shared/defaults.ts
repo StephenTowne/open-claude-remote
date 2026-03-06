@@ -32,6 +32,8 @@ export const DEFAULT_SHORTCUTS: ConfigurableShortcut[] = [
   { label: '←', data: '\x1b[D', enabled: true },
   { label: '→', data: '\x1b[C', enabled: true },
   { label: 'S-Tab', data: '\x1b[Z', enabled: true, desc: 'Shift+Tab, 向前切换' },
+  { label: 'Ctrl+O', data: '\x0f', enabled: true },
+  { label: 'Ctrl+E', data: '\x05', enabled: true },
 ];
 
 /**

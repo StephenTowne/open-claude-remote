@@ -206,6 +206,8 @@ Quick-input buttons displayed below the terminal.
 | ← | `\u001b[D` | Left arrow |
 | → | `\u001b[C` | Right arrow |
 | S-Tab | `\u001b[Z` | Shift+Tab |
+| Ctrl+O | `\u000f` | Ctrl+O |
+| Ctrl+E | `\u0005` | Ctrl+E |
 
 **Custom example:**
 
