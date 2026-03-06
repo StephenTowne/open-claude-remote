@@ -16,6 +16,7 @@ backend/shared-dist/
 
 # Internal project files (not published to GitHub)
 test-results/
+settings.local.json
 
 # Open source exclusions
 .claude/

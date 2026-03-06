@@ -25,47 +25,90 @@ process.env.CLI_MODE = 'true';
 
 // All modules must use dynamic import
 void (async () => {
-  const { parseCliArgs, showHelp } = await import('./cli-utils.js');
+  try {
+    const { parseCliArgs, showHelp } = await import('./cli-utils.js');
 
-  const options = parseCliArgs(process.argv);
+    const options = parseCliArgs(process.argv);
 
-  if (options.help) {
-    showHelp();
-    process.exit(0);
-  }
+    if (options.version) {
+      const { getCurrentVersion } = await import('./update.js');
+      try {
+        const version = getCurrentVersion();
+        process.stdout.write(`claude-remote v${version}\n`);
+      } catch {
+        process.stdout.write('claude-remote (unknown version)\n');
+      }
+      process.exit(0);
+    }
 
-  // Handle attach subcommand
-  if (options.attach) {
-    const { attachInstance } = await import('./attach.js');
-    await attachInstance({ target: options.attach });
-    return;
-  }
+    if (options.help) {
+      showHelp();
+      process.exit(0);
+    }
 
-  // Set NO_TERMINAL flag for headless mode
-  if (options.noTerminal) {
-    process.env.NO_TERMINAL = 'true';
-  }
+    // Handle attach subcommand
+    if (options.attach) {
+      const { attachInstance } = await import('./attach.js');
+      await attachInstance({ target: options.attach });
+      return;
+    }
 
-  // Detect and install missing dependencies (pnpm, claude CLI, etc.)
-  const { ensureDependencies } = await import('./deps/index.js');
-  const depsResult = await ensureDependencies();
-  if (!depsResult.allInstalled) {
+    // Handle update subcommand
+    if (options.update) {
+      const { updatePackage } = await import('./update.js');
+      await updatePackage();
+      return;
+    }
+
+    // Set NO_TERMINAL flag for headless mode
+    if (options.noTerminal) {
+      process.env.NO_TERMINAL = 'true';
+    }
+
+    // Only check Claude CLI — the sole runtime dependency for npm users
+    const { checkDependency } = await import('./deps/detector.js');
+    const claudeCheck = await checkDependency('claude');
+    if (!claudeCheck.installed) {
+      process.stderr.write(
+        '\n[ERROR] Claude CLI is not installed.\n\n' +
+        'Install it with:\n' +
+        '  npm install -g @anthropic-ai/claude-code\n\n' +
+        'For more info: https://docs.anthropic.com/en/docs/claude-code\n'
+      );
+      process.exit(1);
+    }
+
+    // Fix node-pty spawn-helper permissions proactively at startup
+    try {
+      const { ensureSpawnHelperPermissions } = await import('./pty/fix-pty-permissions.js');
+      ensureSpawnHelperPermissions();
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      process.stderr.write(
+        '\n[ERROR] Failed to fix node-pty permissions.\n' +
+        `  Reason: ${detail}\n\n` +
+        '  Try fixing manually:\n' +
+        '    chmod +x node_modules/node-pty/prebuilds/*/spawn-helper\n\n'
+      );
+      process.exit(1);
+    }
+
+    // Build CLI overrides for config
+    const cliOverrides = {
+      port: options.port,
+      host: options.host,
+      token: options.token,
+      instanceName: options.name,
+      claudeArgs: options.claudeArgs.length > 0 ? options.claudeArgs : undefined,
+      noTerminal: options.noTerminal,
+    };
+
+    // Dynamically load startServer
+    const { startServer } = await import('./index.js');
+    await startServer(cliOverrides);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`\n[ERROR] Failed to start: ${message}\n`);
     process.exit(1);
   }
-
-  const { loadConfig, createSessionCookieName } = await import('./config.js');
-
-  // Build CLI overrides for config
-  const cliOverrides = {
-    port: options.port,
-    host: options.host,
-    token: options.token,
-    instanceName: options.name,
-    claudeArgs: options.claudeArgs.length > 0 ? options.claudeArgs : undefined,
-    noTerminal: options.noTerminal,
-  };
-
-  // Dynamically load startServer
-  const { startServer } = await import('./index.js');
-  await startServer(cliOverrides);
 })();

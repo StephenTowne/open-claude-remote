@@ -142,8 +142,13 @@ export function createInstanceRoutes(
         return;
       }
 
-      // 合并默认参数
-      const finalClaudeArgs = claudeArgs ?? userConfig.claudeArgs ?? [];
+      // 合并参数：配置文件 + 前端传入，去重以防止重复
+      // 特殊情况：前端传空数组表示显式清空参数
+      const userClaudeArgs = userConfig.claudeArgs ?? [];
+      const finalClaudeArgs =
+        claudeArgs !== undefined && claudeArgs.length === 0
+          ? [] // 前端显式传空数组 = 清空
+          : Array.from(new Set([...userClaudeArgs, ...(claudeArgs ?? [])]));
 
       const spawnOptions: SpawnOptions = {
         cwd: absoluteCwd,

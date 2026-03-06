@@ -10,10 +10,13 @@ export interface CliOptions {
   token?: string;
   name?: string;
   help: boolean;
+  version: boolean;
   noTerminal: boolean;
   claudeArgs: string[];
   /** attach subcommand */
   attach?: string;
+  /** update subcommand */
+  update?: boolean;
 }
 
 function parsePort(raw: string | undefined): number {
@@ -30,6 +33,7 @@ function parsePort(raw: string | undefined): number {
 export function parseCliArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     help: false,
+    version: false,
     noTerminal: false,
     claudeArgs: [],
   };
@@ -46,6 +50,10 @@ export function parseCliArgs(argv: string[]): CliOptions {
       options.attach = argv[3];
       return options;
     }
+    if (firstArg === 'update') {
+      options.update = true;
+      return options;
+    }
   }
 
   while (i < argv.length) {
@@ -53,6 +61,9 @@ export function parseCliArgs(argv: string[]): CliOptions {
 
     if (arg === '--help' || arg === '-h') {
       options.help = true;
+      i++;
+    } else if (arg === '--version') {
+      options.version = true;
       i++;
     } else if (arg === '--no-terminal') {
       options.noTerminal = true;
@@ -102,6 +113,11 @@ Claude Code Remote - Control Claude Code from your mobile browser over LAN
 Usage:
   claude-remote [options] [--] [claude args...]
   claude-remote attach <port|name>
+  claude-remote update
+
+Subcommands:
+  attach <port|name>   Attach to a running instance (by port or name)
+  update               Update to the latest version (auto-detects npm/pnpm)
 
 Options:
   --port <number>      Server port (default: 3000, auto-increments if busy)
@@ -109,6 +125,7 @@ Options:
   --token <string>     Auth token (default: shared token)
   --name <string>      Instance name (default: working directory name)
   --no-terminal        Headless mode (internal: for web-spawned instances)
+  --version            Show version number
   --help, -h           Show this help message
 
 Config file:
@@ -147,6 +164,7 @@ Examples:
   claude-remote -- --dangerously-skip-permissions  # Pass args to claude
   claude-remote attach 3001        # Attach to instance on port 3001
   claude-remote attach myproject   # Attach to instance named myproject
+  claude-remote update             # Update to latest version
 
 For more Claude Code options, run: claude --help
 `);

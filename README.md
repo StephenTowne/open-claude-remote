@@ -18,6 +18,8 @@ npm install -g @caoruhua/open-claude-remote
 pnpm add -g @caoruhua/open-claude-remote
 ```
 
+> **Note for pnpm users**: pnpm v10 may show a warning about "Ignored build scripts: node-pty". This is expected and **does not affect functionality** — the package includes prebuilt binaries that work out of the box. To suppress the warning, run `pnpm approve-builds -g` (optional).
+
 ### 2. Run
 
 ```bash
@@ -141,6 +143,12 @@ claude-remote attach my-project  # by name
 
 # Headless mode (no local terminal, web UI only)
 claude-remote --no-terminal
+
+# Check version
+claude-remote --version
+
+# Update to latest version
+claude-remote update
 ```
 
 ### Stopping
@@ -160,7 +168,7 @@ Config file: `~/.claude-remote/config.json`
 | `host` | string | "0.0.0.0" | Bind address |
 | `token` | string \| null | null | Auth token; `null` = auto-generated shared token |
 | `claudeCommand` | string | "claude" | Claude CLI path |
-| `claudeArgs` | string[] | [] | Extra Claude CLI arguments |
+| `claudeArgs` | string[] | [] | Extra Claude CLI arguments (merged with CLI args, deduplicated) |
 | `claudeCwd` | string \| null | null | Claude working directory; `null` = current dir |
 | `sessionTtlMs` | number | 86400000 | Session TTL in ms (default: 24h) |
 | `authRateLimit` | number | 20 | Auth rate limit (per minute per IP) |
@@ -180,7 +188,7 @@ Config file: `~/.claude-remote/config.json`
 | `sendKey` | string | — | Server酱³ SendKey (WeChat) |
 | `enabled` | boolean | true | Whether the channel is active |
 
-**Priority**: CLI args > config file > defaults
+**Priority**: CLI args > config file > defaults (except `claudeArgs` which is merged)
 
 ### Shortcuts
 
@@ -198,6 +206,8 @@ Quick-input buttons displayed below the terminal.
 | ← | `\u001b[D` | Left arrow |
 | → | `\u001b[C` | Right arrow |
 | S-Tab | `\u001b[Z` | Shift+Tab |
+| Ctrl+O | `\u000f` | Ctrl+O |
+| Ctrl+E | `\u0005` | Ctrl+E |
 
 **Custom example:**
 

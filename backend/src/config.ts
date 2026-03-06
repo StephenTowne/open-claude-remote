@@ -194,23 +194,25 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
   const port = cliOverrides.port ?? userConfig.port ?? DEFAULT_PORT;
   const claudeCwd = userConfig.claudeCwd ?? process.cwd();
 
-  // claudeArgs 优先级: CLI > 用户配置 > 默认值
-  // 当 CLI 显式传参时，完全使用 CLI 参数（不合并配置文件参数）
-  // 这样可以避免 web-spawned 实例的参数重复累积问题
+  // claudeArgs 合并策略：配置文件参数 + CLI 参数，去重以防止重复
   const userArgs = userConfig.claudeArgs ?? [];
   const cliArgs = cliOverrides.claudeArgs ?? [];
 
-  // 如果 CLI 传了参数（非 undefined），完全使用 CLI 参数
-  // 否则使用配置文件参数
-  const mergedArgs = cliOverrides.claudeArgs !== undefined ? cliArgs : userArgs;
+  // 计算最终参数
+  // 特殊情况：CLI 传空数组表示显式清空参数
+  const finalClaudeArgs: string[] =
+    cliOverrides.claudeArgs !== undefined && cliArgs.length === 0
+      ? [] // CLI 显式传空数组 = 清空
+      : Array.from(new Set([...userArgs, ...cliArgs])); // 合并并去重
 
+  // 日志记录
   if (userArgs.length > 0 && cliArgs.length > 0) {
     logger.info(
-      { userArgs, cliArgs, mergedArgs },
-      'Using CLI claudeArgs (ignoring config file args to avoid duplication)',
+      { userArgs, cliArgs, mergedArgs: finalClaudeArgs },
+      'Merged claudeArgs from config file and CLI',
     );
-  } else if (mergedArgs.length > 0) {
-    logger.debug({ mergedArgs }, 'Using claudeArgs');
+  } else if (finalClaudeArgs.length > 0) {
+    logger.debug({ mergedArgs: finalClaudeArgs }, 'Using claudeArgs');
   }
 
   const config: AppConfig = {
@@ -218,14 +220,14 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
     host: cliOverrides.host ?? userConfig.host ?? '0.0.0.0',
     displayIp,
     claudeCommand: userConfig.claudeCommand ?? 'claude',
-    claudeArgs: mergedArgs,
+    claudeArgs: finalClaudeArgs,
     claudeCwd,
     token: cliOverrides.token ?? userConfig.token ?? null,
     sessionTtlMs: userConfig.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS,
     authRateLimit: userConfig.authRateLimit ?? DEFAULT_AUTH_RATE_LIMIT,
     maxBufferLines: userConfig.maxBufferLines ?? DEFAULT_MAX_BUFFER_LINES,
     instanceName: cliOverrides.instanceName ?? userConfig.instanceName ?? basename(claudeCwd),
-    logDir: resolve(dirname(fileURLToPath(import.meta.url)), '../..', 'logs'),
+    logDir: process.env.LOG_DIR ?? resolve(homedir(), CLAUDE_REMOTE_DIR, 'logs'),
     sessionCookieName: createSessionCookieName(port),
   };
 
