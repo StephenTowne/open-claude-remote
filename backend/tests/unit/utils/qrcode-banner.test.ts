@@ -4,77 +4,80 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('qrcode-terminal', () => ({
   default: {
     generate: vi.fn((url: string, options: { small: boolean }, callback: (qr: string) => void) => {
-      // 模拟生成简化的二维码输出
-      callback('████████\n████████\n████████');
+      // Simulate QR code output (16 lines, 31 chars wide with block characters)
+      const mockQR = [
+        '▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
+        '█ ▄▄▄▄▄ █  █ ▄▄ █',
+        '█ █   █ █▄▀█▄▄▀ █',
+        '█ █▄▄▄█ █▄ ▀ ▄▄ █',
+        '█ ▄▄▄▄▄ █▄█▄▄█▄▄█',
+        '█▄▄▄▄▄▄▄█▄▄▄▄▄▄▄█',
+      ].join('\n');
+      callback(mockQR);
     }),
   },
 }));
 
 describe('qrcode-banner', () => {
-  let stderrWrite: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
-    stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('should print QR code with URL', async () => {
-    const { printQRCode } = await import('../../../src/utils/qrcode-banner.js');
+  describe('generateQRCodeLines', () => {
+    it('should return array of QR code lines', async () => {
+      const { generateQRCodeLines } = await import('../../../src/utils/qrcode-banner.js');
 
-    const testUrl = 'http://192.168.1.100:3000?token=abc123';
-    printQRCode(testUrl);
+      const testUrl = 'http://192.168.1.100:3000?token=abc123';
+      const lines = generateQRCodeLines(testUrl);
 
-    // 验证 qrcode-terminal 被正确调用
-    const qrcode = await import('qrcode-terminal');
-    expect(qrcode.default.generate).toHaveBeenCalledWith(
-      testUrl,
-      { small: true },
-      expect.any(Function)
-    );
+      expect(Array.isArray(lines)).toBe(true);
+      expect(lines.length).toBeGreaterThan(0);
+    });
 
-    // 验证 stderr 输出包含扫码提示
-    expect(stderrWrite).toHaveBeenCalledWith(
-      expect.stringContaining('扫码连接')
-    );
-  });
+    it('should call qrcode-terminal with correct parameters', async () => {
+      const { generateQRCodeLines } = await import('../../../src/utils/qrcode-banner.js');
+      const qrcode = await import('qrcode-terminal');
 
-  it('should format QR code lines with prefix', async () => {
-    const { printQRCode } = await import('../../../src/utils/qrcode-banner.js');
+      const testUrl = 'http://192.168.1.100:3000?token=abc123';
+      generateQRCodeLines(testUrl);
 
-    printQRCode('http://test.url');
+      expect(qrcode.default.generate).toHaveBeenCalledWith(
+        testUrl,
+        { small: true },
+        expect.any(Function)
+      );
+    });
 
-    // 验证每一行都有 ║ 前缀
-    const calls = stderrWrite.mock.calls;
-    const qrCalls = calls.filter(call =>
-      typeof call[0] === 'string' && call[0].includes('║')
-    );
-    expect(qrCalls.length).toBeGreaterThan(0);
-  });
+    it('should filter out empty lines', async () => {
+      // Reset modules and re-mock with empty lines
+      vi.resetModules();
+      vi.doMock('qrcode-terminal', () => ({
+        default: {
+          generate: vi.fn((url: string, options: { small: boolean }, callback: (qr: string) => void) => {
+            // Include empty lines in output
+            callback('▄▄▄▄▄\n\n███\n   \n');
+          }),
+        },
+      }));
 
-  it('should skip empty lines in QR output', async () => {
-    // 重新 mock 以返回空行
-    vi.resetModules();
-    vi.doMock('qrcode-terminal', () => ({
-      default: {
-        generate: vi.fn((url: string, options: { small: boolean }, callback: (qr: string) => void) => {
-          // 包含空行的输出
-          callback('████████\n\n████████\n');
-        }),
-      },
-    }));
+      const { generateQRCodeLines } = await import('../../../src/utils/qrcode-banner.js');
+      const lines = generateQRCodeLines('http://test.url');
 
-    const { printQRCode } = await import('../../../src/utils/qrcode-banner.js');
-    const localStderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      // Empty or whitespace-only lines should be filtered
+      expect(lines.every(line => line.trim().length > 0)).toBe(true);
+    });
 
-    printQRCode('http://test.url');
+    it('should return lines without border characters', async () => {
+      const { generateQRCodeLines } = await import('../../../src/utils/qrcode-banner.js');
 
-    // 每一个 ║ 前缀的调用都应该包含非空内容
-    const prefixCalls = localStderr.mock.calls.filter(call =>
-      typeof call[0] === 'string' && call[0].match(/^║\s+.+/)
-    );
-    expect(prefixCalls.length).toBeGreaterThan(0);
+      const lines = generateQRCodeLines('http://test.url');
+
+      // Lines should be raw QR content, not prefixed with box characters
+      expect(lines.every(line => !line.includes('║'))).toBe(true);
+    });
   });
 });

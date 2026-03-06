@@ -302,14 +302,14 @@ describe('loadConfig', () => {
     return loadConfig(cliOverrides, testDir);
   }
 
-  it('should use CLI claudeArgs when provided (not merge with config file)', () => {
+  it('should merge CLI claudeArgs with config file args (deduped)', () => {
     const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
     const cliOverrides: CliOverrides = { claudeArgs: ['--settings', '/path/to/settings.json'] };
 
     const config = loadConfigWithMocks(userConfig, cliOverrides);
 
-    // CLI 参数完全覆盖配置文件参数，避免 web-spawned 实例的参数重复累积
-    expect(config.claudeArgs).toEqual(['--settings', '/path/to/settings.json']);
+    // CLI 参数与配置文件参数合并，去重
+    expect(config.claudeArgs.sort()).toEqual(['--dangerously-skip-permissions', '--settings', '/path/to/settings.json'].sort());
   });
 
   it('should use empty CLI claudeArgs when CLI provides empty array', () => {
@@ -349,14 +349,24 @@ describe('loadConfig', () => {
     expect(config.claudeArgs).toEqual([]);
   });
 
-  it('should use CLI args exclusively when both sources have args', () => {
+  it('should merge args from both sources and dedupe', () => {
     const userConfig = { claudeArgs: ['--arg1', '--arg2'] };
     const cliOverrides: CliOverrides = { claudeArgs: ['--arg3', '--arg4'] };
 
     const config = loadConfigWithMocks(userConfig, cliOverrides);
 
-    // CLI 参数完全覆盖配置文件参数
-    expect(config.claudeArgs).toEqual(['--arg3', '--arg4']);
+    // CLI 参数与配置文件参数合并
+    expect(config.claudeArgs.sort()).toEqual(['--arg1', '--arg2', '--arg3', '--arg4'].sort());
+  });
+
+  it('should deduplicate repeated args when merging', () => {
+    const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
+    const cliOverrides: CliOverrides = { claudeArgs: ['--dangerously-skip-permissions', '--settings', '/path/to/settings.json'] };
+
+    const config = loadConfigWithMocks(userConfig, cliOverrides);
+
+    // 重复的参数应该去重
+    expect(config.claudeArgs.sort()).toEqual(['--dangerously-skip-permissions', '--settings', '/path/to/settings.json'].sort());
   });
 });
 

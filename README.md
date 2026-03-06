@@ -168,7 +168,7 @@ Config file: `~/.claude-remote/config.json`
 | `host` | string | "0.0.0.0" | Bind address |
 | `token` | string \| null | null | Auth token; `null` = auto-generated shared token |
 | `claudeCommand` | string | "claude" | Claude CLI path |
-| `claudeArgs` | string[] | [] | Extra Claude CLI arguments |
+| `claudeArgs` | string[] | [] | Extra Claude CLI arguments (merged with CLI args, deduplicated) |
 | `claudeCwd` | string \| null | null | Claude working directory; `null` = current dir |
 | `sessionTtlMs` | number | 86400000 | Session TTL in ms (default: 24h) |
 | `authRateLimit` | number | 20 | Auth rate limit (per minute per IP) |
@@ -188,7 +188,7 @@ Config file: `~/.claude-remote/config.json`
 | `sendKey` | string | — | Server酱³ SendKey (WeChat) |
 | `enabled` | boolean | true | Whether the channel is active |
 
-**Priority**: CLI args > config file > defaults
+**Priority**: CLI args > config file > defaults (except `claudeArgs` which is merged)
 
 ### Shortcuts
 

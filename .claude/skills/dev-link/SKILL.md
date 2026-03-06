@@ -37,7 +37,7 @@ pnpm add -g @caoruhua/open-claude-remote
 ## 执行
 
 ```bash
-bash scripts/dev-link.sh
+bash .claude/skills/dev-link/scripts/dev-link.sh
 ```
 
 ## 后续使用

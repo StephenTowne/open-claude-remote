@@ -24,7 +24,8 @@ import { findAvailablePort } from './registry/port-finder.js';
 import { InstanceRegistryManager } from './registry/instance-registry.js';
 import { InstanceSpawner } from './registry/instance-spawner.js';
 import { IpMonitor } from './utils/ip-monitor.js';
-import { printQRCode } from './utils/qrcode-banner.js';
+import { generateQRCodeLines } from './utils/qrcode-banner.js';
+import { getCurrentVersion } from './update.js';
 
 export async function startServer(cliOverrides: CliOverrides = {}): Promise<void> {
   // 1. Load configuration
@@ -356,35 +357,71 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 21. Start listening
   httpServer.listen(actualPort, config.host, () => {
     const url = `http://${config.displayIp}:${actualPort}`;
-    const isFirstInstance = tokenSource === 'generated';
+    const qrUrl = `${url}?token=${token}`;
+    const qrLines = generateQRCodeLines(qrUrl);
 
+    // Version (with fallback)
+    let version = '';
+    try { version = getCurrentVersion(); } catch { /* ignore */ }
+
+    // Left column: instance info + commands
+    const leftLines: string[] = [];
+    leftLines.push(`Instance:  ${config.instanceName}`);
+    leftLines.push(`URL:       ${url}`);
+    leftLines.push(`PID:       ${process.pid}`);
+    leftLines.push(`Logs:      ${config.logDir}`);
+    leftLines.push('');
+    leftLines.push('Commands:');
+    leftLines.push(`  attach:  claude-remote attach ${actualPort}`);
+    leftLines.push('  update:  claude-remote update');
+
+    // Right column: QR lines + blank + centered label
+    const qrLabel = 'Scan QR to connect';
+    const rightLines: string[] = [...qrLines, ''];
+    const targetHeight = Math.max(leftLines.length, rightLines.length + 1);
+    while (rightLines.length < targetHeight - 1) {
+      rightLines.push('');
+    }
+    rightLines.push(qrLabel);
+
+    // Width calculations
+    const qrWidth = Math.max(qrLines[0]?.length || 0, qrLabel.length);
+    const leftWidth = Math.max(...leftLines.map(l => l.length), 35);
+    const totalWidth = leftWidth + qrWidth + 6;
+
+    // Border components
+    const topBorder    = '╔' + '═'.repeat(totalWidth - 2) + '╗';
+    const title        = version ? `Claude Code Remote v${version}` : 'Claude Code Remote';
+    const titleLine    = '║' + title.padStart(Math.floor((totalWidth - 2 + title.length) / 2)).padEnd(totalWidth - 2) + '║';
+    const sepLine      = '╠' + '═'.repeat(leftWidth + 1) + '╤' + '═'.repeat(qrWidth + 2) + '╣';
+    const midSep       = '╠' + '═'.repeat(leftWidth + 1) + '╧' + '═'.repeat(qrWidth + 2) + '╣';
+    const tokenLine    = '║ ' + `Token: ${token}`.padEnd(totalWidth - 4) + ' ║';
+    const bottomBorder = '╚' + '═'.repeat(totalWidth - 2) + '╝';
+
+    // Render three-section banner
     process.stderr.write('\n');
-    process.stderr.write('╔══════════════════════════════════════════════════╗\n');
-    process.stderr.write('║         Claude Code Remote Proxy Started         ║\n');
-    process.stderr.write('╠══════════════════════════════════════════════════╣\n');
-    process.stderr.write(`║  Instance: ${config.instanceName.padEnd(37)}║\n`);
-    process.stderr.write(`║  URL:      ${url.padEnd(37)}║\n`);
+    process.stderr.write(topBorder + '\n');
+    process.stderr.write(titleLine + '\n');
+    process.stderr.write(sepLine + '\n');
 
-    if (isFirstInstance) {
-      // 首次启动（生成了新 Token）：完整显示 Token
-      const tokenPreview = token.length >= 16
-        ? `${token.substring(0, 8)}...${token.substring(token.length - 8)}`
-        : token;
-      process.stderr.write(`║  Token:    ${tokenPreview.padEnd(37)}║\n`);
-      process.stderr.write('╠══════════════════════════════════════════════════╣\n');
-      process.stderr.write(`║  Full Token (copy to phone):                     ║\n`);
-      process.stderr.write(`║  ${token.padEnd(48)}║\n`);
-    } else {
-      // 后续启动（读取共享 Token）：简短提示
-      process.stderr.write(`║  Token:    ${'(shared, see first instance)'.padEnd(37)}║\n`);
+    const maxLines = Math.max(leftLines.length, rightLines.length);
+    for (let i = 0; i < maxLines; i++) {
+      const left = (leftLines[i] || '').padEnd(leftWidth);
+      let right: string;
+      if (i < qrLines.length && rightLines[i]) {
+        right = ` ${rightLines[i]} `.padEnd(qrWidth + 2);
+      } else if (rightLines[i]) {
+        const centered = rightLines[i].padStart(Math.floor((qrWidth + rightLines[i].length) / 2)).padEnd(qrWidth);
+        right = ` ${centered} `;
+      } else {
+        right = ' '.repeat(qrWidth + 2);
+      }
+      process.stderr.write(`║ ${left}│${right}║\n`);
     }
 
-    process.stderr.write('╚══════════════════════════════════════════════════╝\n');
-
-    // 每次启动都显示二维码，方便手机扫码连接
-    const qrUrl = `${url}?token=${token}`;
-    printQRCode(qrUrl);
-
+    process.stderr.write(midSep + '\n');
+    process.stderr.write(tokenLine + '\n');
+    process.stderr.write(bottomBorder + '\n');
     process.stderr.write('\n');
 
     logger.info({ url, host: config.host, port: actualPort, instanceName: config.instanceName, tokenSource }, 'Server started');
