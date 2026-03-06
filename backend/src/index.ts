@@ -188,6 +188,13 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     logger.info({ port: actualPort, savedSettingsPath: settingsPath }, 'Generated Claude settings with instance-specific hook URL');
   }
 
+  ptyManager.on('error', (err: Error) => {
+    logger.error({ err }, 'PTY process error');
+    process.stderr.write(`\n[ERROR] Failed to start Claude CLI: ${err.message}\n`);
+    registry.unregister(instanceId);
+    process.exit(1);
+  });
+
   ptyManager.spawn({
     command: config.claudeCommand,
     args: finalArgs,
