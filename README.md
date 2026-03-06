@@ -18,6 +18,8 @@ npm install -g @caoruhua/open-claude-remote
 pnpm add -g @caoruhua/open-claude-remote
 ```
 
+> **Note for pnpm users**: pnpm v10 may show a warning about "Ignored build scripts: node-pty". This is expected and **does not affect functionality** — the package includes prebuilt binaries that work out of the box. To suppress the warning, run `pnpm approve-builds -g` (optional).
+
 ### 2. Run
 
 ```bash
