@@ -47,5 +47,4 @@ export const DEFAULT_COMMANDS: ConfigurableCommand[] = [
   { label: '/resume', command: '/resume', enabled: true },
   { label: '/stats', command: '/stats', enabled: true },
   { label: '/exit', command: '/exit', enabled: true },
-  { label: '/rename', command: '/rename', enabled: true, autoSend: false },
 ];

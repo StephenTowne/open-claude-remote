@@ -267,7 +267,12 @@ export function ConsolePage() {
       }
     }
     setActiveInstanceId(targetId);
-  }, [cachedToken, setActiveInstanceId]);
+    // 显示切换提示（仅手动切换时，与自动切换的提示保持一致）
+    const targetInstance = instances.find(i => i.instanceId === targetId);
+    if (targetInstance) {
+      showToast(`Switched to ${targetInstance.name}`);
+    }
+  }, [cachedToken, setActiveInstanceId, instances, showToast]);
 
   // 复制成功后自动切换到新实例
   // InstanceTabs.handleCreateSuccess 已轮询并更新了 store，这里直接读取切换

@@ -134,6 +134,9 @@ export function ActionSheetSelect<T>({
     // 如果拖拽距离超过阈值或速度较快，则关闭面板
     if (dragDistance > DRAG_CLOSE_THRESHOLD || (dragDistance > 50 && velocity > DRAG_CLOSE_VELOCITY)) {
       handleClose();
+    } else if (dragDistance < 5) {
+      // 拖拽距离很小（< 5px），视为轻触，关闭面板
+      handleClose();
     } else {
       // 回弹
       setDragY(0);

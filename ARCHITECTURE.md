@@ -19,6 +19,7 @@
 | Instance | 一个 PTY 实例，由 Daemon 进程内的 InstanceSession 管理 |
 | InstanceManager | 管理所有 InstanceSession，进程内创建/销毁实例 |
 | Daemon | 单进程多实例服务，固定端口 8866，管理所有 PTY 实例 |
+| ActiveSource | 活跃端来源，决定终端窗口大小控制权：local（PC终端）/ webapp / attach |
 | Shared Token | ~/.claude-remote/token 共享认证令牌，所有实例共用 |
 
 ## 2. Stack
@@ -52,12 +53,12 @@
 
 - **API Routes**: REST 端点，参数验证，HTTP 响应
 - **InstanceManager**: 管理所有 InstanceSession，进程内创建/销毁实例
-- **InstanceSession**: 每个实例的协调器，管理 PTY ↔ WS clients ↔ Hook ↔ OutputBuffer
+- **InstanceSession**: 每个实例的协调器，管理 PTY ↔ WS clients ↔ Hook ↔ OutputBuffer + ActiveSource 状态
 - **PTY Manager**: node-pty 进程生命周期，EventEmitter 模式
 - **WS Server**: WebSocket 连接管理，按 `/ws/:instanceId` 路由到对应实例
 - **Hook Receiver**: 接收 Claude Code Notification hook POST，按 instanceId 路由
 - **Output Buffer**: 10K 行环形缓冲区，支持重连全量恢复
-- **Terminal Relay**: PC 终端 raw mode stdin/stdout 直通 PTY
+- **Terminal Relay**: PC 终端 raw mode stdin/stdout 直通 PTY，支持 pause/resume resize
 - **Shared Token**: ~/.claude-remote/token 共享认证令牌
 
 ## 4. Data Flow
@@ -98,8 +99,8 @@ sequenceDiagram
 | Method | Path | Auth | Handler |
 |--------|------|------|---------|
 | POST | `/api/auth` | No | auth-routes.ts → AuthModule.handleAuth |
-| GET | `/api/config` | Session | config-routes.ts → 用户配置（快捷键/命令/通知渠道） |
-| PUT | `/api/config` | Session | config-routes.ts → 更新用户配置（含多渠道通知配置） |
+| GET | `/api/config` | Session | config-routes.ts → 全局 + 项目级合并配置（支持 ?instanceId 参数） |
+| PUT | `/api/config` | Session | config-routes.ts → 更新配置（项目级字段保存到项目目录） |
 | GET | `/api/status/:instanceId` | Session | status-routes.ts → InstanceSession 状态 |
 | GET | `/api/health` | No | health-routes.ts → 健康检查 |
 | POST | `/api/hook/:instanceId` | Localhost only | hook-routes.ts → InstanceSession.hookReceiver |
@@ -162,6 +163,16 @@ sequenceDiagram
 - services/api-client.ts: API 客户端
 - services/token-storage.ts: Token 持久化
 
+### 项目级配置
+**Backend** (`backend/src/config.ts`):
+- WorkdirConfig: 项目级配置类型定义（shortcuts/commands 等）
+- loadWorkdirConfig(): 加载 <cwd>/.claude-remote/settings.json
+- saveWorkdirConfig(): 保存项目级配置
+- mergeConfigs(): 合并全局配置 + 项目级配置
+
+**Backend**:
+- api/config-routes.ts: GET/PUT `/api/config` 支持 instanceId 参数，隔离实例级配置
+
 ### 实时终端
 **Backend** (`backend/src/ws/`):
 - ws-server.ts: WebSocket 服务端
@@ -178,7 +189,7 @@ sequenceDiagram
 ### 多实例管理
 **Backend** (`backend/src/instance/INDEX.md`):
 - instance-manager.ts: InstanceManager，Map<instanceId, InstanceSession> 管理所有实例
-- instance-session.ts: InstanceSession，单实例协调器（PTY + WS + Hook + Buffer）
+- instance-session.ts: InstanceSession，单实例协调器（PTY + WS + Hook + Buffer）+ ActiveSource 管理
 
 **Backend** (`backend/src/registry/INDEX.md`):
 - shared-token.ts: 共享 Token

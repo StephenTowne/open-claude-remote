@@ -222,6 +222,16 @@ Config file: `~/.claude-remote/settings.json` (legacy `config.json` is auto-migr
 
 **Priority**: CLI args > config file > defaults (except `claudeArgs` which is merged)
 
+### Project-level Configuration
+
+Shortcuts and commands are automatically saved per-project when configured through the Web UI with an active instance:
+
+- Configuration is stored in `<project-dir>/.claude-remote/settings.json`
+- When opening settings from an instance view, `shortcuts` and `commands` changes are saved to the project directory
+- When opening settings without an active instance, changes are saved to the global config (`~/.claude-remote/settings.json`)
+
+This allows each project to have its own set of commands while sharing global settings like notifications.
+
 ### Shortcuts
 
 Quick-input buttons displayed below the terminal.
@@ -705,6 +715,16 @@ claude-remote update
 | `enabled` | boolean | true | 渠道是否启用 |
 
 **优先级**：CLI 参数 > 配置文件 > 默认值（`claudeArgs` 除外，它是合并的）
+
+### 项目级配置
+
+通过 Web UI 配置时，快捷键和命令会自动按项目保存：
+
+- 配置存储在 `<项目目录>/.claude-remote/settings.json`
+- 从实例视图打开设置时，`shortcuts` 和 `commands` 的变更会保存到项目目录
+- 没有活跃实例时打开设置，变更会保存到全局配置（`~/.claude-remote/settings.json`）
+
+这样每个项目可以有自己的一组命令，同时共享通知等全局设置。
 
 ### 快捷键
 

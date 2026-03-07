@@ -166,6 +166,38 @@ describe('mergeSkillCommands', () => {
     expect(anotherSkill?.autoSend).toBe(false);
   });
 
+  it('should deduplicate orphan skill commands (missing fromSkill marker)', () => {
+    // 历史保存的命令丢失了 fromSkill 标记（orphan）
+    const existingCommands = [
+      createCommand('/clear'),  // 真正的系统命令
+      createCommand('/skill-one'),  // orphan: 无 fromSkill，但与新 skill 同名
+      createCommand('/skill-two', { enabled: false, autoSend: false }),  // orphan: 用户修改过
+    ];
+    const newSkillCommands = [
+      createSkillCommand('/skill-one', { desc: 'Skill one desc' }),
+      createSkillCommand('/skill-two', { desc: 'Skill two desc' }),
+    ];
+
+    const result = mergeSkillCommands(existingCommands, newSkillCommands);
+
+    // /clear (系统) + /skill-one + /skill-two = 3，不应该是 5
+    expect(result.commands).toHaveLength(3);
+    // 不应有重复
+    const skillOneCount = result.commands.filter(c => c.label === '/skill-one').length;
+    expect(skillOneCount).toBe(1);
+    // orphan 的用户设置应被保留
+    const skillTwo = result.commands.find(c => c.label === '/skill-two');
+    expect(skillTwo?.enabled).toBe(false);
+    expect(skillTwo?.autoSend).toBe(false);
+    // desc 从新 skill 源更新
+    expect(skillTwo?.desc).toBe('Skill two desc');
+    // fromSkill 标记应被恢复
+    expect(skillTwo?.fromSkill).toBe(true);
+    // preserved 应为 2（orphan 被当作现有 skill 保留）
+    expect(result.preserved).toBe(2);
+    expect(result.added).toBe(0);
+  });
+
   it('should not treat system commands as skill commands', () => {
     const existingCommands = [
       createCommand('/clear', { enabled: false }), // no fromSkill

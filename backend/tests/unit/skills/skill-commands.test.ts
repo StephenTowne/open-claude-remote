@@ -87,7 +87,7 @@ describe('isSkillCommand', () => {
   });
 
   it('should return false for system command (no fromSkill marker)', () => {
-    const systemCommands = ['/clear', '/compact', '/resume', '/stats', '/exit', '/rename'];
+    const systemCommands = ['/clear', '/compact', '/resume', '/stats', '/exit'];
 
     for (const label of systemCommands) {
       const cmd: ConfigurableCommand = {

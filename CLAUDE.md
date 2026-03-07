@@ -57,6 +57,7 @@
 * 审批流程：Hook 通知 → 生成 ApprovalRequest（UUID）→ WS 广播 → 手机响应 → PTY 写入按键（`y` 或 `\x1b`）
 * 日志目录：`~/.claude-remote/logs/`（`app.log`、`error.log`、`app.pid`），可通过 `LOG_DIR` 环境变量覆盖；E2E 测试写入 `logs/e2e/`
 * 国际化：README、产品页面、CLI help、服务报错信息等 **产品用户可见的内容一律使用英文**
+* README 双语：更新 README.md 时必须同步更新英文和中文两个部分
 
 # 精准检索策略（Precision Search）
 * 检索路径：先读 `ARCHITECTURE.md` 了解整体结构 → 定位模块目录 → 精准读取
