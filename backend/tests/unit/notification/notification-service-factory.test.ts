@@ -13,7 +13,7 @@ describe('NotificationServiceFactory', () => {
     // 创建临时目录
     tempDir = resolve(tmpdir(), `notification-service-factory-test-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
-    configPath = resolve(tempDir, 'config.json');
+    configPath = resolve(tempDir, 'settings.json');
     factory = new NotificationServiceFactory(configPath);
   });
 

@@ -160,6 +160,6 @@ export class NotificationServiceFactory {
  * 使用默认配置文件路径
  */
 export function createNotificationServiceFactory(): NotificationServiceFactory {
-  const configPath = resolve(homedir(), CLAUDE_REMOTE_DIR, 'config.json');
+  const configPath = resolve(homedir(), CLAUDE_REMOTE_DIR, 'settings.json');
   return new NotificationServiceFactory(configPath);
 }

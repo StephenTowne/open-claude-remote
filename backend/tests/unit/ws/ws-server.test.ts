@@ -15,7 +15,7 @@ function createMockAuthModule() {
 function createMockHttpServer() {
   const emitter = new EventEmitter();
   return Object.assign(emitter, {
-    address: vi.fn(() => ({ port: 3000 })),
+    address: vi.fn(() => ({ port: 6666 })),
   });
 }
 
@@ -35,7 +35,7 @@ vi.mock('@claude-remote/shared', () => ({
   MAX_WS_MESSAGE_SIZE: 1024 * 1024,
 }));
 
-describe('WsServer client type detection', () => {
+describe('WsServer', () => {
   let WsServer: typeof import('../../../src/ws/ws-server.js').WsServer;
 
   beforeEach(async () => {
@@ -47,59 +47,98 @@ describe('WsServer client type detection', () => {
     vi.restoreAllMocks();
   });
 
-  describe('getClientCounts', () => {
-    it('should return correct counts for attach and webapp clients', async () => {
+  it('should create without error', () => {
+    const mockHttpServer = createMockHttpServer();
+    const mockAuthModule = createMockAuthModule();
+
+    const wsServer = new WsServer(mockHttpServer as any, mockAuthModule as any);
+    expect(wsServer).toBeDefined();
+    wsServer.destroy();
+  });
+
+  it('should accept setInstanceManager', () => {
+    const mockHttpServer = createMockHttpServer();
+    const mockAuthModule = createMockAuthModule();
+
+    const wsServer = new WsServer(mockHttpServer as any, mockAuthModule as any);
+
+    const mockManager = {
+      getInstance: vi.fn(),
+      pingAllClients: vi.fn(),
+    };
+
+    expect(() => wsServer.setInstanceManager(mockManager as any)).not.toThrow();
+    wsServer.destroy();
+  });
+
+  it('should destroy cleanly', () => {
+    const mockHttpServer = createMockHttpServer();
+    const mockAuthModule = createMockAuthModule();
+
+    const wsServer = new WsServer(mockHttpServer as any, mockAuthModule as any);
+    expect(() => wsServer.destroy()).not.toThrow();
+  });
+
+  describe('upgrade handling', () => {
+    it('should register upgrade handler on httpServer', () => {
       const mockHttpServer = createMockHttpServer();
       const mockAuthModule = createMockAuthModule();
 
+      // Before creating WsServer, no 'upgrade' listener
+      expect(mockHttpServer.listenerCount('upgrade')).toBe(0);
+
       const wsServer = new WsServer(mockHttpServer as any, mockAuthModule as any);
 
-      // 初始状态应该返回零计数
-      const initialCounts = wsServer.getClientCounts();
-      expect(initialCounts).toEqual({ attach: 0, webapp: 0 });
+      // After creating WsServer, 'upgrade' listener should be registered
+      expect(mockHttpServer.listenerCount('upgrade')).toBe(1);
 
       wsServer.destroy();
     });
-  });
 
-  describe('onConnect callback signature', () => {
-    it('should accept handler with clientType parameter', async () => {
+    it('should reject non-ws paths', () => {
       const mockHttpServer = createMockHttpServer();
       const mockAuthModule = createMockAuthModule();
 
       const wsServer = new WsServer(mockHttpServer as any, mockAuthModule as any);
 
-      // 验证 onConnect 接受带有 clientType 参数的 handler
-      const handler = vi.fn();
-      expect(() => wsServer.onConnect(handler)).not.toThrow();
+      const mockSocket = {
+        destroy: vi.fn(),
+        write: vi.fn(),
+      };
+
+      // Simulate upgrade with invalid path
+      mockHttpServer.emit('upgrade', {
+        url: '/invalid/path',
+        headers: { host: 'localhost' },
+        socket: { remoteAddress: '127.0.0.1' },
+      }, mockSocket, Buffer.alloc(0));
+
+      expect(mockSocket.destroy).toHaveBeenCalled();
 
       wsServer.destroy();
     });
-  });
 
-  describe('onDisconnect callback signature', () => {
-    it('should accept handler with clientCounts parameter', async () => {
+    it('should reject when no instanceManager set', () => {
       const mockHttpServer = createMockHttpServer();
       const mockAuthModule = createMockAuthModule();
 
       const wsServer = new WsServer(mockHttpServer as any, mockAuthModule as any);
 
-      // 验证 onDisconnect 接受带有 clientCounts 参数的 handler
-      const handler = vi.fn();
-      expect(() => wsServer.onDisconnect(handler)).not.toThrow();
+      const mockSocket = {
+        destroy: vi.fn(),
+        write: vi.fn(),
+      };
 
-      wsServer.destroy();
-    });
-  });
+      // Simulate upgrade with valid path but no instanceManager
+      mockHttpServer.emit('upgrade', {
+        url: '/ws/test-instance-id',
+        headers: { host: 'localhost', cookie: 'session_id=test-session-id' },
+        socket: { remoteAddress: '127.0.0.1' },
+      }, mockSocket, Buffer.alloc(0));
 
-  describe('clientCount', () => {
-    it('should return 0 when no clients connected', async () => {
-      const mockHttpServer = createMockHttpServer();
-      const mockAuthModule = createMockAuthModule();
-
-      const wsServer = new WsServer(mockHttpServer as any, mockAuthModule as any);
-
-      expect(wsServer.clientCount).toBe(0);
+      // 503 Service Unavailable when InstanceManager not set
+      expect(mockSocket.write).toHaveBeenCalledWith(expect.stringContaining('503'));
+      expect(mockSocket.destroy).toHaveBeenCalled();
 
       wsServer.destroy();
     });

@@ -29,7 +29,6 @@ describe('REST API Endpoints', () => {
     });
 
     it('should not require authentication', async () => {
-      // No cookie sent
       const res = await fetch(`${ctx.baseUrl}/api/health`);
       expect(res.status).toBe(200);
     });
@@ -37,7 +36,6 @@ describe('REST API Endpoints', () => {
     it('should not leak sensitive information', async () => {
       const res = await fetch(`${ctx.baseUrl}/api/health`);
       const body = await res.json();
-      // Only { status: 'ok' } — no token, no session info, no internal details
       expect(Object.keys(body)).toEqual(['status']);
     });
   });
@@ -98,15 +96,12 @@ describe('REST API Endpoints', () => {
         body: JSON.stringify({ token: TEST_TOKEN }),
       });
       const setCookie = res.headers.get('set-cookie');
-      // Over plain HTTP the Secure flag should NOT be set
       expect(setCookie).not.toContain('Secure');
     });
 
     it('should return 429 after exceeding rate limit', async () => {
-      // Create a fresh server with low rate limit for isolation
       const rlCtx = await startTestServer({ rateLimitPerMinute: 5 });
       try {
-        // Exhaust 5 attempts with wrong tokens
         for (let i = 0; i < 5; i++) {
           await fetch(`${rlCtx.baseUrl}/api/auth`, {
             method: 'POST',
@@ -115,7 +110,6 @@ describe('REST API Endpoints', () => {
           });
         }
 
-        // 6th attempt — even with correct token — should be rate limited
         const res = await fetch(`${rlCtx.baseUrl}/api/auth`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -130,16 +124,16 @@ describe('REST API Endpoints', () => {
     });
   });
 
-  // ─── GET /api/status ────────────────────────────────────────
+  // ─── GET /api/status/:instanceId ────────────────────────────────────────
 
-  describe('GET /api/status', () => {
+  describe('GET /api/status/:instanceId', () => {
     it('should return 401 without authentication', async () => {
-      const res = await fetch(`${ctx.baseUrl}/api/status`);
+      const res = await fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`);
       expect(res.status).toBe(401);
     });
 
     it('should return 401 with invalid session cookie', async () => {
-      const res = await fetch(`${ctx.baseUrl}/api/status`, {
+      const res = await fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`, {
         headers: { cookie: 'session_id_test=invalid-session-id' },
       });
       expect(res.status).toBe(401);
@@ -147,17 +141,27 @@ describe('REST API Endpoints', () => {
 
     it('should return session status when authenticated', async () => {
       const cookie = await authenticate(ctx.baseUrl);
-      const res = await fetch(`${ctx.baseUrl}/api/status`, {
+      const res = await fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`, {
         headers: { cookie },
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.status).toBe('running'); // PTY (cat) was spawned and setStatus('running') called
+      expect(body.status).toBe('running');
       expect(typeof body.connectedClients).toBe('number');
+    });
+
+    it('should return not_found for non-existent instance', async () => {
+      const cookie = await authenticate(ctx.baseUrl);
+      const res = await fetch(`${ctx.baseUrl}/api/status/non-existent`, {
+        headers: { cookie },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.status).toBe('not_found');
     });
   });
 
-  // ─── POST /api/hook ─────────────────────────────────────────
+  // ─── POST /api/hook/:instanceId ─────────────────────────────────────────
 
   describe('Push API', () => {
     it('should return 503 for /api/push/vapid-key when VAPID key is not ready in time', async () => {
@@ -228,9 +232,9 @@ describe('REST API Endpoints', () => {
     });
   });
 
-  describe('POST /api/hook', () => {
+  describe('POST /api/hook/:instanceId', () => {
     it('should accept valid hook payload from localhost', async () => {
-      const res = await fetch(`${ctx.baseUrl}/api/hook`, {
+      const res = await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -246,7 +250,7 @@ describe('REST API Endpoints', () => {
     });
 
     it('should return 400 for invalid payload', async () => {
-      const res = await fetch(`${ctx.baseUrl}/api/hook`, {
+      const res = await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '"not an object"',
@@ -254,8 +258,21 @@ describe('REST API Endpoints', () => {
       expect(res.status).toBe(400);
     });
 
+    it('should return 404 for non-existent instance', async () => {
+      const res = await fetch(`${ctx.baseUrl}/api/hook/non-existent-id`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hook_event_name: 'Notification',
+          message: 'test',
+          notification_type: 'permission_prompt',
+        }),
+      });
+      expect(res.status).toBe(404);
+    });
+
     it('should return tool name in response for Notification event', async () => {
-      const res = await fetch(`${ctx.baseUrl}/api/hook`, {
+      const res = await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -269,9 +286,8 @@ describe('REST API Endpoints', () => {
       expect(body.tool).toBe('Read');
     });
 
-    it('should not require auth (it is internal-only by localhost check)', async () => {
-      // No cookie sent — should still work since we connect from localhost
-      const res = await fetch(`${ctx.baseUrl}/api/hook`, {
+    it('should not require auth (internal-only by localhost check)', async () => {
+      const res = await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -283,7 +299,7 @@ describe('REST API Endpoints', () => {
     });
 
     it('should return ignored:true for unhandled events', async () => {
-      const res = await fetch(`${ctx.baseUrl}/api/hook`, {
+      const res = await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

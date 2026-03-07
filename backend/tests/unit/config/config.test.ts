@@ -2,74 +2,59 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { rmSync, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createSessionCookieName, createClaudeSettings, saveClaudeSettings, loadUserConfig, loadConfig, type CliOverrides, type UserConfig, getDefaultSettingsDirs, getSettingsDirs, scanSettingsFiles, getSettingsFilePath } from '../../../src/config.js';
-
-describe('createSessionCookieName', () => {
-  it('should generate cookie name based on port number', () => {
-    expect(createSessionCookieName(3000)).toBe('session_id_p3000');
-    expect(createSessionCookieName(3001)).toBe('session_id_p3001');
-    expect(createSessionCookieName(8080)).toBe('session_id_p8080');
-  });
-
-  it('should produce different names for different ports', () => {
-    const name3000 = createSessionCookieName(3000);
-    const name3001 = createSessionCookieName(3001);
-    expect(name3000).not.toBe(name3001);
-  });
-});
+import { createClaudeSettings, saveClaudeSettings, loadUserConfig, loadConfig, loadWorkdirConfig, mergeConfigs, type CliOverrides, type UserConfig, type WorkdirConfig, getDefaultSettingsDirs, getSettingsDirs, scanSettingsFiles, getSettingsFilePath } from '../../../src/config.js';
+import { SESSION_COOKIE_NAME, DEFAULT_PORT } from '#shared';
 
 describe('createClaudeSettings', () => {
+  const testInstanceId = '550e8400-e29b-41d4-a716-446655440000';
+
   it('should generate valid settings object', () => {
-    const settings = createClaudeSettings(3000);
+    const settings = createClaudeSettings(testInstanceId);
     expect(settings).toHaveProperty('hooks');
     expect(typeof settings).toBe('object');
   });
 
-  it('should include hook URL with correct port for port 3000', () => {
-    const settings = createClaudeSettings(3000);
+  it('should include hook URL with instanceId', () => {
+    const settings = createClaudeSettings(testInstanceId);
     const hookCommand = settings.hooks?.Notification[0].hooks[0].command;
-    expect(hookCommand).toContain('localhost:3000');
-    expect(hookCommand).toContain('/api/hook');
+    expect(hookCommand).toContain(`localhost:${DEFAULT_PORT}`);
+    expect(hookCommand).toContain(`/api/hook/${testInstanceId}`);
   });
 
-  it('should include hook URL with correct port for port 3001', () => {
-    const settings = createClaudeSettings(3001);
-    const hookCommand = settings.hooks?.Notification[0].hooks[0].command;
-    expect(hookCommand).toContain('localhost:3001');
-    expect(hookCommand).toContain('/api/hook');
+  it('should use different hook URLs for different instanceIds', () => {
+    const id1 = '550e8400-e29b-41d4-a716-446655440001';
+    const id2 = '550e8400-e29b-41d4-a716-446655440002';
+    const settings1 = createClaudeSettings(id1);
+    const settings2 = createClaudeSettings(id2);
+
+    const cmd1 = settings1.hooks?.Notification[0].hooks[0].command;
+    const cmd2 = settings2.hooks?.Notification[0].hooks[0].command;
+
+    expect(cmd1).toContain(id1);
+    expect(cmd2).toContain(id2);
+    expect(cmd1).not.toBe(cmd2);
   });
 
   it('should contain required hook types', () => {
-    const settings = createClaudeSettings(3000);
+    const settings = createClaudeSettings(testInstanceId);
     expect(settings.hooks).toHaveProperty('Notification');
     expect(settings.hooks).toHaveProperty('Stop');
   });
 
   it('should use command hooks with curl', () => {
-    const settings = createClaudeSettings(3000);
+    const settings = createClaudeSettings(testInstanceId);
 
     // Notification hook
     const notificationHook = settings.hooks?.Notification[0].hooks[0];
     expect(notificationHook.type).toBe('command');
     expect(notificationHook.command).toContain('curl');
-    expect(notificationHook.command).toContain('localhost:3000/api/hook');
+    expect(notificationHook.command).toContain(`/api/hook/${testInstanceId}`);
 
     // Stop hook
     const stopHook = settings.hooks?.Stop[0].hooks[0];
     expect(stopHook.type).toBe('command');
     expect(stopHook.command).toContain('curl');
-    expect(stopHook.command).toContain('localhost:3000/api/hook');
-  });
-
-  it('should produce different settings for different ports', () => {
-    const settings3000 = createClaudeSettings(3000);
-    const settings3001 = createClaudeSettings(3001);
-
-    const cmd3000 = settings3000.hooks?.Notification[0].hooks[0].command;
-    const cmd3001 = settings3001.hooks?.Notification[0].hooks[0].command;
-
-    expect(cmd3000).toContain('localhost:3000');
-    expect(cmd3001).toContain('localhost:3001');
+    expect(stopHook.command).toContain(`/api/hook/${testInstanceId}`);
   });
 
   it('should merge with existing settings', () => {
@@ -80,7 +65,7 @@ describe('createClaudeSettings', () => {
       someOtherOption: true,
     };
 
-    const settings = createClaudeSettings(3000, existingSettings);
+    const settings = createClaudeSettings(testInstanceId, existingSettings);
 
     // Should have original settings
     expect(settings.env).toEqual({ ANTHROPIC_BASE_URL: 'https://example.com' });
@@ -100,7 +85,7 @@ describe('createClaudeSettings', () => {
       },
     };
 
-    const settings = createClaudeSettings(3000, existingSettings);
+    const settings = createClaudeSettings(testInstanceId, existingSettings);
     const hooks = settings.hooks as Record<string, unknown[]>;
 
     // 应保留用户自定义的 PostToolUse
@@ -124,7 +109,7 @@ describe('createClaudeSettings', () => {
       },
     };
 
-    const settings = createClaudeSettings(3000, existingSettings);
+    const settings = createClaudeSettings(testInstanceId, existingSettings);
     const hooks = settings.hooks as Record<string, unknown[]>;
 
     // Notification 应使用我们注入的配置（覆盖用户的）
@@ -137,28 +122,27 @@ describe('createClaudeSettings', () => {
 
 describe('saveClaudeSettings', () => {
   const testDir = resolve(tmpdir(), `claude-remote-test-${Date.now()}`);
+  const testInstanceId = '550e8400-e29b-41d4-a716-446655440000';
 
   beforeEach(() => {
-    // Create test directory
     rmSync(testDir, { recursive: true, force: true });
   });
 
   afterEach(() => {
-    // Cleanup test directory
     rmSync(testDir, { recursive: true, force: true });
   });
 
   it('should save settings to file and return path', () => {
-    const settings = createClaudeSettings(3000);
-    const path = saveClaudeSettings(settings, 3000, testDir);
+    const settings = createClaudeSettings(testInstanceId);
+    const path = saveClaudeSettings(settings, testInstanceId, testDir);
 
-    expect(path).toBe(resolve(testDir, 'settings', '3000.json'));
+    expect(path).toBe(resolve(testDir, 'settings', `${testInstanceId}.json`));
     expect(existsSync(path)).toBe(true);
   });
 
   it('should save valid JSON that can be parsed', () => {
-    const settings = createClaudeSettings(3000);
-    const path = saveClaudeSettings(settings, 3000, testDir);
+    const settings = createClaudeSettings(testInstanceId);
+    const path = saveClaudeSettings(settings, testInstanceId, testDir);
 
     const content = readFileSync(path, 'utf-8');
     const parsed = JSON.parse(content);
@@ -168,8 +152,8 @@ describe('saveClaudeSettings', () => {
   });
 
   it('should save with pretty formatting (2-space indent)', () => {
-    const settings = createClaudeSettings(3000);
-    const path = saveClaudeSettings(settings, 3000, testDir);
+    const settings = createClaudeSettings(testInstanceId);
+    const path = saveClaudeSettings(settings, testInstanceId, testDir);
 
     const content = readFileSync(path, 'utf-8');
 
@@ -179,8 +163,8 @@ describe('saveClaudeSettings', () => {
   });
 
   it('should create settings directory if not exists', () => {
-    const settings = createClaudeSettings(3001);
-    const path = saveClaudeSettings(settings, 3001, testDir);
+    const settings = createClaudeSettings(testInstanceId);
+    const path = saveClaudeSettings(settings, testInstanceId, testDir);
 
     expect(existsSync(resolve(testDir, 'settings'))).toBe(true);
     expect(existsSync(path)).toBe(true);
@@ -204,17 +188,47 @@ describe('loadUserConfig', () => {
     expect(config).toEqual({});
   });
 
-  it('should load valid config file', () => {
-    const configPath = resolve(testDir, 'config.json');
-    writeFileSync(configPath, JSON.stringify({ port: 4000, claudeArgs: ['--test'] }), 'utf-8');
+  it('should load valid settings.json file', () => {
+    const configPath = resolve(testDir, 'settings.json');
+    writeFileSync(configPath, JSON.stringify({ claudeArgs: ['--test'] }), 'utf-8');
 
     const config = loadUserConfig(testDir);
-    expect(config.port).toBe(4000);
     expect(config.claudeArgs).toEqual(['--test']);
   });
 
+  it('should migrate config.json to settings.json', () => {
+    // 写入旧版 config.json
+    const oldPath = resolve(testDir, 'config.json');
+    writeFileSync(oldPath, JSON.stringify({ token: 'abc123', claudeArgs: ['--test'] }), 'utf-8');
+
+    const config = loadUserConfig(testDir);
+
+    // 应该读到旧版内容
+    expect(config.token).toBe('abc123');
+    expect(config.claudeArgs).toEqual(['--test']);
+
+    // config.json 应该被重命名为 settings.json
+    expect(existsSync(oldPath)).toBe(false);
+    expect(existsSync(resolve(testDir, 'settings.json'))).toBe(true);
+  });
+
+  it('should not migrate if settings.json already exists', () => {
+    const oldPath = resolve(testDir, 'config.json');
+    const newPath = resolve(testDir, 'settings.json');
+    writeFileSync(oldPath, JSON.stringify({ token: 'old' }), 'utf-8');
+    writeFileSync(newPath, JSON.stringify({ token: 'new' }), 'utf-8');
+
+    const config = loadUserConfig(testDir);
+
+    // 应该读取新版 settings.json
+    expect(config.token).toBe('new');
+
+    // 旧版 config.json 应该保留（不覆盖）
+    expect(existsSync(oldPath)).toBe(true);
+  });
+
   it('should migrate defaultClaudeArgs to claudeArgs when claudeArgs is not set', () => {
-    const configPath = resolve(testDir, 'config.json');
+    const configPath = resolve(testDir, 'settings.json');
     writeFileSync(configPath, JSON.stringify({ defaultClaudeArgs: ['--migrated'] }), 'utf-8');
 
     const config = loadUserConfig(testDir);
@@ -222,7 +236,7 @@ describe('loadUserConfig', () => {
   });
 
   it('should NOT overwrite existing claudeArgs with defaultClaudeArgs', () => {
-    const configPath = resolve(testDir, 'config.json');
+    const configPath = resolve(testDir, 'settings.json');
     writeFileSync(configPath, JSON.stringify({
       claudeArgs: ['--keep'],
       defaultClaudeArgs: ['--migrated'],
@@ -233,15 +247,31 @@ describe('loadUserConfig', () => {
   });
 
   it('should return empty object on invalid JSON', () => {
-    const configPath = resolve(testDir, 'config.json');
+    const configPath = resolve(testDir, 'settings.json');
     writeFileSync(configPath, 'not valid json', 'utf-8');
 
     const config = loadUserConfig(testDir);
     expect(config).toEqual({});
   });
 
+  it('should remove deprecated port field from config', () => {
+    const configPath = resolve(testDir, 'settings.json');
+    writeFileSync(configPath, JSON.stringify({ port: 3000, token: 'abc' }), 'utf-8');
+
+    const config = loadUserConfig(testDir);
+
+    // port 应该被移除
+    expect((config as Record<string, unknown>).port).toBeUndefined();
+    // 其他字段保留
+    expect(config.token).toBe('abc');
+
+    // 文件应已更新
+    const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(saved.port).toBeUndefined();
+  });
+
   it('should migrate legacy dingtalk config to notifications.dingtalk', () => {
-    const configPath = resolve(testDir, 'config.json');
+    const configPath = resolve(testDir, 'settings.json');
     writeFileSync(configPath, JSON.stringify({
       dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc123', enabled: true },
     }), 'utf-8');
@@ -255,15 +285,10 @@ describe('loadUserConfig', () => {
     });
     // 旧版字段应被删除
     expect((config as Record<string, unknown>).dingtalk).toBeUndefined();
-
-    // 配置文件应已更新（迁移后保存）
-    const savedConfig = JSON.parse(readFileSync(configPath, 'utf-8'));
-    expect(savedConfig.notifications?.dingtalk).toBeDefined();
-    expect(savedConfig.dingtalk).toBeUndefined();
   });
 
   it('should not overwrite existing notifications.dingtalk when migrating', () => {
-    const configPath = resolve(testDir, 'config.json');
+    const configPath = resolve(testDir, 'settings.json');
     writeFileSync(configPath, JSON.stringify({
       dingtalk: { webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=legacy' },
       notifications: {
@@ -278,6 +303,137 @@ describe('loadUserConfig', () => {
     expect(config.notifications?.dingtalk?.enabled).toBe(false);
     // 旧版字段仍应被删除
     expect((config as Record<string, unknown>).dingtalk).toBeUndefined();
+  });
+});
+
+describe('loadWorkdirConfig', () => {
+  const testDir = resolve(tmpdir(), `claude-remote-workdir-test-${Date.now()}`);
+
+  beforeEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('should return empty object when config does not exist', () => {
+    const config = loadWorkdirConfig(testDir);
+    expect(config).toEqual({});
+  });
+
+  it('should load workdir config from <cwd>/.claude-remote/settings.json', () => {
+    const configDir = resolve(testDir, '.claude-remote');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(resolve(configDir, 'settings.json'), JSON.stringify({
+      claudeCommand: '/usr/local/bin/claude',
+      instanceName: 'my-project',
+      maxBufferLines: 5000,
+    }), 'utf-8');
+
+    const config = loadWorkdirConfig(testDir);
+
+    expect(config.claudeCommand).toBe('/usr/local/bin/claude');
+    expect(config.instanceName).toBe('my-project');
+    expect(config.maxBufferLines).toBe(5000);
+  });
+
+  it('should only extract allowed fields', () => {
+    const configDir = resolve(testDir, '.claude-remote');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(resolve(configDir, 'settings.json'), JSON.stringify({
+      claudeCommand: 'claude',
+      instanceName: 'test',
+      token: 'should-be-ignored',
+      notifications: { dingtalk: { webhookUrl: 'ignored' } },
+    }), 'utf-8');
+
+    const config = loadWorkdirConfig(testDir);
+
+    expect(config.claudeCommand).toBe('claude');
+    expect(config.instanceName).toBe('test');
+    // token and notifications should not be in WorkdirConfig
+    expect((config as Record<string, unknown>).token).toBeUndefined();
+    expect((config as Record<string, unknown>).notifications).toBeUndefined();
+  });
+
+  it('should return empty object on invalid JSON', () => {
+    const configDir = resolve(testDir, '.claude-remote');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(resolve(configDir, 'settings.json'), 'invalid json', 'utf-8');
+
+    const config = loadWorkdirConfig(testDir);
+    expect(config).toEqual({});
+  });
+});
+
+describe('mergeConfigs', () => {
+  it('should return global config when workdir is empty', () => {
+    const global: UserConfig = { claudeCommand: 'claude', token: 'abc' };
+    const workdir: WorkdirConfig = {};
+
+    const result = mergeConfigs(global, workdir);
+
+    expect(result.claudeCommand).toBe('claude');
+    expect(result.token).toBe('abc');
+  });
+
+  it('should let workdir override scalar fields', () => {
+    const global: UserConfig = { claudeCommand: 'claude', instanceName: 'global-name' };
+    const workdir: WorkdirConfig = { claudeCommand: '/usr/local/bin/claude', instanceName: 'project-name' };
+
+    const result = mergeConfigs(global, workdir);
+
+    expect(result.claudeCommand).toBe('/usr/local/bin/claude');
+    expect(result.instanceName).toBe('project-name');
+  });
+
+  it('should merge and deduplicate claudeArgs arrays', () => {
+    const global: UserConfig = { claudeArgs: ['--arg1', '--arg2'] };
+    const workdir: WorkdirConfig = { claudeArgs: ['--arg2', '--arg3'] };
+
+    const result = mergeConfigs(global, workdir);
+
+    expect(result.claudeArgs).toEqual(['--arg1', '--arg2', '--arg3']);
+  });
+
+  it('should not modify global token or notifications', () => {
+    const global: UserConfig = { token: 'secret', notifications: { dingtalk: { webhookUrl: 'url' } } };
+    const workdir: WorkdirConfig = { instanceName: 'test' };
+
+    const result = mergeConfigs(global, workdir);
+
+    expect(result.token).toBe('secret');
+    expect(result.notifications?.dingtalk?.webhookUrl).toBe('url');
+  });
+
+  it('should merge shortcuts with workdir priority', () => {
+    const global: UserConfig = {
+      shortcuts: [
+        { label: 'Esc', data: '\x1b', enabled: true },
+        { label: 'Enter', data: '\r', enabled: true },
+      ],
+    };
+    const workdir: WorkdirConfig = {
+      shortcuts: [
+        { label: 'Esc', data: '\x1b[A', enabled: false }, // Override
+        { label: 'Custom', data: 'custom', enabled: true }, // New
+      ],
+    };
+
+    const result = mergeConfigs(global, workdir);
+
+    // workdir's Esc should override global's
+    const esc = result.shortcuts!.find(s => s.label === 'Esc');
+    expect(esc?.data).toBe('\x1b[A');
+    expect(esc?.enabled).toBe(false);
+
+    // Enter from global should be preserved
+    expect(result.shortcuts!.find(s => s.label === 'Enter')).toBeDefined();
+
+    // Custom from workdir should be included
+    expect(result.shortcuts!.find(s => s.label === 'Custom')).toBeDefined();
   });
 });
 
@@ -297,10 +453,20 @@ describe('loadConfig', () => {
    * Helper: 创建带有 mock 用户配置的 loadConfig 测试环境
    */
   function loadConfigWithMocks(userConfig: UserConfig, cliOverrides: CliOverrides = {}) {
-    const configPath = resolve(testDir, 'config.json');
+    const configPath = resolve(testDir, 'settings.json');
     writeFileSync(configPath, JSON.stringify(userConfig), 'utf-8');
     return loadConfig(cliOverrides, testDir);
   }
+
+  it('should always use fixed port (DEFAULT_PORT)', () => {
+    const config = loadConfigWithMocks({});
+    expect(config.port).toBe(DEFAULT_PORT);
+  });
+
+  it('should always use fixed sessionCookieName', () => {
+    const config = loadConfigWithMocks({});
+    expect(config.sessionCookieName).toBe(SESSION_COOKIE_NAME);
+  });
 
   it('should merge CLI claudeArgs with config file args (deduped)', () => {
     const userConfig = { claudeArgs: ['--dangerously-skip-permissions'] };
@@ -458,10 +624,17 @@ describe('scanSettingsFiles', () => {
     expect(files[0].filename).toBe('settings-project.json');
   });
 
+  it('should ignore UUID-based config files (instance settings)', () => {
+    writeFileSync(join(testDir, 'settings-project.json'), '{}');
+    writeFileSync(join(testDir, '550e8400-e29b-41d4-a716-446655440000.json'), '{}');
+
+    const files = scanSettingsFiles([testDir]);
+
+    expect(files).toHaveLength(1);
+    expect(files[0].filename).toBe('settings-project.json');
+  });
+
   it('should reject files with path traversal', () => {
-    // 扫描函数只会读取目录中的文件，无法创建恶意文件名
-    // 但我们测试安全检查函数不在这里
-    // 这个测试验证包含 .. 的文件名不会在有效扫描结果中
     const files = scanSettingsFiles([testDir]);
     expect(files.every(f => !f.filename.includes('..'))).toBe(true);
   });

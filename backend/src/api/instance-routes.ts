@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { existsSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
-import type { InstanceInfo, InstanceListItem, SettingsFile } from '#shared';
+import type { InstanceListItem, SettingsFile } from '#shared';
 import { AuthModule } from '../auth/auth-middleware.js';
-import { createAuthRoutes } from './auth-routes.js';
-import { InstanceSpawner, type SpawnOptions } from '../registry/instance-spawner.js';
+import type { InstanceManager } from '../instance/instance-manager.js';
 import { loadUserConfig, getSettingsDirs, scanSettingsFiles } from '../config.js';
 import { logger } from '../logger/logger.js';
 
@@ -28,12 +27,10 @@ function isCwdAllowed(absoluteCwd: string, allowedCwds: string[]): boolean {
  * 获取合并后的允许 cwd 白名单
  * 来源：配置文件 workspaces + 已启动实例的 cwd（去重）
  */
-async function getAllowedCwds(
-  listInstances: () => Promise<InstanceInfo[]>,
-): Promise<string[]> {
+function getAllowedCwds(instanceManager: InstanceManager): string[] {
   const config = loadUserConfig();
   const configWorkspaces = config.workspaces ?? [];
-  const instances = await listInstances();
+  const instances = instanceManager.listInstances();
   const instanceCwds = instances.map(inst => inst.cwd);
   return [...new Set([...configWorkspaces, ...instanceCwds])];
 }
@@ -45,6 +42,8 @@ export interface CreateInstanceRequest {
   name?: string;
   /** Claude 额外参数（可选） */
   claudeArgs?: string[];
+  /** 是否为 headless 模式（默认 true，Web 端创建的实例无 PC 终端） */
+  headless?: boolean;
 }
 
 export interface InstanceConfigResponse {
@@ -60,20 +59,15 @@ export interface InstanceConfigResponse {
 
 export function createInstanceRoutes(
   authModule: AuthModule,
-  listInstances: () => Promise<InstanceInfo[]>,
-  currentInstanceId: string,
-  spawner?: InstanceSpawner,
+  instanceManager: InstanceManager,
 ): Router {
   const router = Router();
 
-  // 复用 auth 路由以支持 supertest 认证
-  router.use(createAuthRoutes(authModule));
-
-  router.get('/instances', authModule.requireAuth, async (_req, res) => {
-    const instances = await listInstances();
+  router.get('/instances', authModule.requireAuth, (_req, res) => {
+    const instances = instanceManager.listInstances();
     const result: InstanceListItem[] = instances.map(inst => ({
       ...inst,
-      isCurrent: inst.instanceId === currentInstanceId,
+      isCurrent: false, // daemon 模式下无 "当前" 概念，前端按 activeInstanceId 判断
     }));
     res.json(result);
   });
@@ -83,10 +77,10 @@ export function createInstanceRoutes(
    * 返回合并后的工作目录白名单和默认参数
    * 白名单 = 配置文件 workspaces + 已启动实例的 cwd（去重）
    */
-  router.get('/instances/config', authModule.requireAuth, async (_req, res) => {
+  router.get('/instances/config', authModule.requireAuth, (_req, res) => {
     try {
       const config = loadUserConfig();
-      const allowedCwds = await getAllowedCwds(listInstances);
+      const allowedCwds = getAllowedCwds(instanceManager);
       const settingsDirs = getSettingsDirs(config);
       const settingsFiles = scanSettingsFiles(settingsDirs);
 
@@ -104,11 +98,11 @@ export function createInstanceRoutes(
   });
 
   /**
-   * POST /api/instances/create - 创建新实例
+   * POST /api/instances/create - 创建新实例（进程内创建）
    */
-  router.post('/instances/create', authModule.requireAuth, async (req, res) => {
+  router.post('/instances/create', authModule.requireAuth, (req, res) => {
     try {
-      const { cwd, name, claudeArgs } = req.body as CreateInstanceRequest;
+      const { cwd, name, claudeArgs, headless } = req.body as CreateInstanceRequest;
 
       // 参数验证
       if (!cwd || typeof cwd !== 'string') {
@@ -123,11 +117,8 @@ export function createInstanceRoutes(
         return;
       }
 
-      // 加载用户配置（用于 workspaces 白名单和默认参数）
-      const userConfig = loadUserConfig();
-      const allowedCwds = await getAllowedCwds(listInstances);
-
-      // 路径安全检查：cwd 必须在白名单中
+      // 路径安全检查
+      const allowedCwds = getAllowedCwds(instanceManager);
       if (!isCwdAllowed(absoluteCwd, allowedCwds)) {
         logger.warn({ absoluteCwd, allowedCwds }, 'Cwd path not allowed');
         res.status(403).json({
@@ -136,47 +127,49 @@ export function createInstanceRoutes(
         return;
       }
 
-      // 检查 spawner 是否可用
-      if (!spawner) {
-        res.status(500).json({ error: 'Instance spawner not configured' });
-        return;
-      }
-
-      // 合并参数：配置文件 + 前端传入，去重以防止重复
-      // 特殊情况：前端传空数组表示显式清空参数
-      const userClaudeArgs = userConfig.claudeArgs ?? [];
-      const finalClaudeArgs =
-        claudeArgs !== undefined && claudeArgs.length === 0
-          ? [] // 前端显式传空数组 = 清空
-          : Array.from(new Set([...userClaudeArgs, ...(claudeArgs ?? [])]));
-
-      const spawnOptions: SpawnOptions = {
+      // 进程内创建实例
+      // headless 默认 true：Web 端创建的实例无 PC 终端；CLI 创建时显式传 false
+      const session = instanceManager.createInstance({
         cwd: absoluteCwd,
         name: name || undefined,
-        claudeArgs: finalClaudeArgs,
-        headless: true,
-      };
-
-      const result = await spawner.spawn(spawnOptions);
+        claudeArgs,
+        headless: headless ?? true,
+      });
 
       logger.info({
-        pid: result.pid,
+        instanceId: session.instanceId,
         cwd: absoluteCwd,
-        name: result.name,
+        name: session.name,
       }, 'Instance created via API');
 
       res.json({
         success: true,
         instance: {
-          pid: result.pid,
-          cwd: result.cwd,
-          name: result.name,
+          instanceId: session.instanceId,
+          cwd: session.cwd,
+          name: session.name,
         },
       });
     } catch (error) {
       logger.error({ error }, 'Failed to create instance');
       res.status(500).json({ error: 'Failed to create instance' });
     }
+  });
+
+  /**
+   * DELETE /api/instances/:instanceId - 销毁实例
+   */
+  router.delete('/instances/:instanceId', authModule.requireAuth, (req, res) => {
+    const instanceId = req.params.instanceId as string;
+    const destroyed = instanceManager.destroyInstance(instanceId);
+
+    if (!destroyed) {
+      res.status(404).json({ error: 'Instance not found' });
+      return;
+    }
+
+    logger.info({ instanceId }, 'Instance destroyed via API');
+    res.json({ success: true });
   });
 
   return router;

@@ -2,68 +2,19 @@
  * claude-remote attach 命令实现
  *
  * 用法：
- *   claude-remote attach <port|name>
+ *   claude-remote attach <name|id>
  *
- * 连接到指定的实例，接管其终端输入输出。
+ * 通过 daemon API 查找实例，然后 WS attach 到对应实例。
  */
-import { homedir } from 'node:os';
-import { resolve } from 'node:path';
-import { CLAUDE_REMOTE_DIR, REGISTRY_FILENAME } from '#shared';
-import type { InstanceInfo } from '#shared';
-import { existsSync, readFileSync } from 'node:fs';
+import { DEFAULT_PORT } from '#shared';
 import { VirtualPtyManager } from './pty/virtual-pty.js';
 import { TerminalRelay } from './terminal/terminal-relay.js';
-import { getOrCreateSharedToken } from './registry/shared-token.js';
+import { listInstances, getSharedToken } from './daemon/daemon-client.js';
 import { logger } from './logger/logger.js';
 
 export interface AttachOptions {
-  /** 目标实例端口或名称 */
+  /** 目标实例名称或 ID */
   target: string;
-}
-
-/**
- * 从注册表获取实例列表。
- */
-function loadInstances(baseDir: string): InstanceInfo[] {
-  const registryPath = resolve(baseDir, REGISTRY_FILENAME);
-  if (!existsSync(registryPath)) {
-    return [];
-  }
-  try {
-    const content = readFileSync(registryPath, 'utf-8');
-    const data = JSON.parse(content);
-    return data.instances ?? [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * 查找目标实例。
- */
-function findInstance(target: string, instances: InstanceInfo[]): InstanceInfo | null {
-  // 先按端口查找
-  const port = parseInt(target, 10);
-  if (!isNaN(port)) {
-    const byPort = instances.find(inst => inst.port === port);
-    if (byPort) return byPort;
-  }
-
-  // 再按名称查找
-  const byName = instances.find(inst => inst.name === target);
-  return byName ?? null;
-}
-
-/**
- * 检查进程是否存活
- */
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -72,36 +23,39 @@ function isProcessAlive(pid: number): boolean {
 export async function attachInstance(options: AttachOptions): Promise<void> {
   const { target } = options;
 
-  // 获取配置目录
-  const sharedConfigDir = resolve(homedir(), CLAUDE_REMOTE_DIR);
+  // 获取运行中的实例列表
+  let instances: Array<{ instanceId: string; name: string; cwd: string }>;
+  try {
+    instances = await listInstances();
+  } catch (err) {
+    console.error('Failed to connect to daemon. Is it running?');
+    console.error('  Start it with: claude-remote');
+    process.exit(1);
+  }
 
-  // 加载实例列表
-  const instances = loadInstances(sharedConfigDir);
-
-  // 过滤存活实例
-  const aliveInstances = instances.filter(inst => isProcessAlive(inst.pid));
-
-  if (aliveInstances.length === 0) {
+  if (instances.length === 0) {
     console.error('No running instances found');
     process.exit(1);
   }
 
-  // 查找目标实例
-  const instance = findInstance(target, aliveInstances);
+  // 查找目标实例：按名称或 ID 匹配
+  const instance = instances.find(
+    inst => inst.name === target || inst.instanceId === target || inst.instanceId.startsWith(target),
+  );
 
   if (!instance) {
     console.error(`Instance not found: ${target}`);
     console.error('Available instances:');
-    for (const inst of aliveInstances) {
-      console.error(`  - ${inst.name} (port ${inst.port})`);
+    for (const inst of instances) {
+      console.error(`  - ${inst.name} (${inst.instanceId.substring(0, 8)})`);
     }
     process.exit(1);
   }
 
-  console.log(`Connecting to instance: ${instance.name} (port ${instance.port})...`);
+  console.log(`Connecting to instance: ${instance.name}...`);
 
-  // 获取共享 Token
-  const { token } = getOrCreateSharedToken(sharedConfigDir);
+  // 获取共享 Token 用于 WS 认证
+  const token = getSharedToken();
 
   // 创建 VirtualPtyManager
   const virtualPty = new VirtualPtyManager();
@@ -124,8 +78,7 @@ export async function attachInstance(options: AttachOptions): Promise<void> {
     process.stdout.write(data);
   });
 
-  // 处理服务端 resize 通知 → 发送本地终端尺寸
-  // 当 WebApp 断开时，服务端广播 terminal_resize，让 attach 用真实尺寸响应
+  // 处理服务端 resize 通知
   virtualPty.on('server_resize', () => {
     const cols = process.stdout.columns ?? 80;
     const rows = process.stdout.rows ?? 24;
@@ -145,10 +98,8 @@ export async function attachInstance(options: AttachOptions): Promise<void> {
     process.exit(1);
   });
 
-  // 连接到实例 - 使用 instance.host（回退为 localhost）
-  // 注意：instance.host 为 '0.0.0.0' 时表示监听所有接口，客户端应使用 localhost 连接
-  const host = instance.host && instance.host !== '0.0.0.0' ? instance.host : 'localhost';
-  const wsUrl = `ws://${host}:${instance.port}/ws`;
+  // 连接到 daemon 的 WS，指定 instanceId
+  const wsUrl = `ws://localhost:${DEFAULT_PORT}/ws/${instance.instanceId}`;
 
   try {
     await virtualPty.connect(wsUrl, token);

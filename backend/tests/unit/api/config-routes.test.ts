@@ -45,7 +45,7 @@ describe('config-routes', () => {
 
   beforeAll(async () => {
     mkdirSync(testConfigDir, { recursive: true });
-    configPath = join(testConfigDir, '.claude-remote', 'config.json');
+    configPath = join(testConfigDir, '.claude-remote', 'settings.json');
 
     const app = express();
     app.use(express.json());
@@ -110,7 +110,7 @@ describe('config-routes', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.config).toBeNull();
-    expect(body.configPath).toContain('config.json');
+    expect(body.configPath).toContain('settings.json');
   });
 
   it('should return config without token field', async () => {

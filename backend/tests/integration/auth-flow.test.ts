@@ -39,7 +39,7 @@ describe('Authentication Flow', () => {
       expect(cookie).toContain('session_id_test=');
 
       // Step 3: Use cookie to access protected endpoint
-      const statusRes = await fetch(`${ctx.baseUrl}/api/status`, {
+      const statusRes = await fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`, {
         headers: { cookie },
       });
       expect(statusRes.status).toBe(200);
@@ -56,12 +56,12 @@ describe('Authentication Flow', () => {
       });
 
       // Try to access without cookie
-      const res = await fetch(`${ctx.baseUrl}/api/status`);
+      const res = await fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`);
       expect(res.status).toBe(401);
     });
 
     it('should reject access with a tampered cookie', async () => {
-      const res = await fetch(`${ctx.baseUrl}/api/status`, {
+      const res = await fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`, {
         headers: { cookie: 'session_id_test=tampered-value-that-does-not-exist' },
       });
       expect(res.status).toBe(401);
@@ -87,8 +87,8 @@ describe('Authentication Flow', () => {
 
       // Both sessions should work
       const [res1, res2] = await Promise.all([
-        fetch(`${ctx.baseUrl}/api/status`, { headers: { cookie: cookie1 } }),
-        fetch(`${ctx.baseUrl}/api/status`, { headers: { cookie: cookie2 } }),
+        fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`, { headers: { cookie: cookie1 } }),
+        fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`, { headers: { cookie: cookie2 } }),
       ]);
       expect(res1.status).toBe(200);
       expect(res2.status).toBe(200);
@@ -112,7 +112,7 @@ describe('Authentication Flow', () => {
         const cookie = authRes.headers.get('set-cookie')!.split(';')[0];
 
         // Immediately should work
-        const res1 = await fetch(`${ctx.baseUrl}/api/status`, {
+        const res1 = await fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`, {
           headers: { cookie },
         });
         expect(res1.status).toBe(200);
@@ -121,7 +121,7 @@ describe('Authentication Flow', () => {
         await delay(700);
 
         // Should now be rejected
-        const res2 = await fetch(`${ctx.baseUrl}/api/status`, {
+        const res2 = await fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`, {
           headers: { cookie },
         });
         expect(res2.status).toBe(401);

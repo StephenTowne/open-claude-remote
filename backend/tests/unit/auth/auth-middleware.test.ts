@@ -159,35 +159,23 @@ describe('AuthModule', () => {
       expect(res.headers['Set-Cookie']).toContain('HttpOnly');
     });
 
-    it('should isolate cookie names across instances', () => {
-      const authModuleA = new AuthModule({
+    it('should use fixed cookie name (session_id) for all instances', () => {
+      // In the new single-process architecture, all instances share the same cookie
+      const authModuleShared = new AuthModule({
         token: TEST_TOKEN,
         sessionTtlMs: 60_000,
         rateLimitPerMinute: 5,
-        cookieName: 'session_id_p3000',
-      });
-      const authModuleB = new AuthModule({
-        token: TEST_TOKEN,
-        sessionTtlMs: 60_000,
-        rateLimitPerMinute: 5,
-        cookieName: 'session_id_p3001',
+        cookieName: 'session_id',
       });
 
-      const reqA = createMockReq({ body: { token: TEST_TOKEN } });
-      const resA = createMockRes();
-      const reqB = createMockReq({ body: { token: TEST_TOKEN } });
-      const resB = createMockRes();
+      const req = createMockReq({ body: { token: TEST_TOKEN } });
+      const res = createMockRes();
 
-      authModuleA.handleAuth(reqA, resA);
-      authModuleB.handleAuth(reqB, resB);
+      authModuleShared.handleAuth(req, res);
 
-      expect(resA.headers['Set-Cookie']).toContain('session_id_p3000=');
-      expect(resB.headers['Set-Cookie']).toContain('session_id_p3001=');
-      expect(resA.headers['Set-Cookie']).not.toContain('session_id_p3001=');
-      expect(resB.headers['Set-Cookie']).not.toContain('session_id_p3000=');
+      expect(res.headers['Set-Cookie']).toContain('session_id=');
 
-      authModuleA.destroy();
-      authModuleB.destroy();
+      authModuleShared.destroy();
     });
 
     it('should return 401 for wrong token', () => {

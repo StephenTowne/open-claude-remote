@@ -44,31 +44,9 @@ export async function fetchInstances(): Promise<InstanceListItem[]> {
 }
 
 /**
- * 构建目标实例的 base URL。
+ * 构建实例的 WebSocket URL（同源，按 instanceId 路由）。
  */
-export function buildInstanceBaseUrl(host: string, port: number): string {
-  const protocol = window.location.protocol;
-  return `${protocol}//${host}:${port}`;
-}
-
-/**
- * 构建目标实例的 WebSocket URL。
- */
-export function buildInstanceWsUrl(host: string, port: number): string {
+export function buildInstanceWsUrl(instanceId: string): string {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${wsProtocol}//${host}:${port}/ws`;
-}
-
-/**
- * 对目标实例执行认证。
- */
-export async function authenticateToInstance(host: string, port: number, token: string): Promise<boolean> {
-  const baseUrl = buildInstanceBaseUrl(host, port);
-  const res = await fetch(`${baseUrl}/api/auth`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ token }),
-  });
-  return res.ok;
+  return `${wsProtocol}//${window.location.host}/ws/${instanceId}`;
 }

@@ -54,12 +54,14 @@ Scan the QR code shown in your terminal with your phone. The auth token is auto-
 - Auto-skips on subsequent visits
 
 ### Multi-Instance
-- Run multiple `claude-remote` instances simultaneously
+- Run multiple `claude-remote` instances simultaneously in a single daemon process
+- Fixed port 6666 — all instances share same origin, no cross-port auth needed
 - Browser tab bar for switching — no re-authentication needed
 - Auto-switch when an instance goes offline
 - Spawn new instances from the web UI ("+" button)
 - Copy instance via long-press/right-click tab — pre-fills working directory, settings, and arguments
-- `claude-remote attach <port|name>` to take over a web-spawned instance
+- `claude-remote attach <name|id>` to take over a web-spawned instance
+- `claude-remote stop` to stop the daemon and all instances
 
 ### Window Resize Priority
 
@@ -125,7 +127,7 @@ Get notified when Claude is waiting for input. All notifications include the ins
 ## Usage
 
 ```bash
-# Start Claude Code
+# Start Claude Code (starts daemon + first instance)
 claude-remote
 
 # Pass arguments to Claude
@@ -133,13 +135,15 @@ claude-remote chat
 claude-remote -- --dangerously-skip-permissions
 
 # Custom options
-claude-remote --port 8080
 claude-remote --name my-project
 claude-remote --token my-secret-token
 
-# Attach to a web-spawned instance
-claude-remote attach 3001        # by port
+# Attach to an existing instance
 claude-remote attach my-project  # by name
+claude-remote attach 550e8400     # by instance ID prefix
+
+# Stop the daemon and all instances
+claude-remote stop
 
 # Headless mode (no local terminal, web UI only)
 claude-remote --no-terminal
@@ -160,11 +164,10 @@ claude-remote update
 
 ## Configuration
 
-Config file: `~/.claude-remote/config.json`
+Config file: `~/.claude-remote/settings.json` (legacy `config.json` is auto-migrated)
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `port` | number | 3000 | Server port (auto-increments if busy) |
 | `host` | string | "0.0.0.0" | Bind address |
 | `token` | string \| null | null | Auth token; `null` = auto-generated shared token |
 | `claudeCommand` | string | "claude" | Claude CLI path |
@@ -179,6 +182,8 @@ Config file: `~/.claude-remote/config.json`
 | `workspaces` | string[] | [] | Allowed working directories for web-spawned instances |
 | `settingsDirs` | string[] | ["~/.claude/", "~/.claude-remote/settings/"] | Directories to scan for settings files |
 | `notifications` | object | — | Notification channels config (see below) |
+
+> **Note**: Port is fixed at 6666. All instances run in a single daemon process.
 
 **Notification channel config:**
 
@@ -320,13 +325,12 @@ When creating instances from the web UI, you can select a custom settings file t
 }
 ```
 
-> **Note**: Files like `3000.json` (port configs) are automatically excluded from the settings file list.
+> **Note**: Port-numbered JSON files are automatically excluded from the settings file list.
 
 ### Complete Example
 
 ```json
 {
-  "port": 3000,
   "host": "0.0.0.0",
   "token": null,
 
@@ -396,7 +400,7 @@ Install build tools:
 
 ### Phone can't connect?
 
-1. Check your PC firewall allows the port (default: 3000)
+1. Check your PC firewall allows port 6666
 2. Verify the URL shows the correct LAN IP
 3. If using a VPN, try setting the `host` option explicitly
 

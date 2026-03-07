@@ -3,7 +3,6 @@ import { render, screen, waitFor, act, cleanup } from '@testing-library/react';
 import { ConsolePage } from '../../src/pages/ConsolePage.js';
 import { useAppStore } from '../../src/stores/app-store.js';
 import { useInstanceStore } from '../../src/stores/instance-store.js';
-import { authenticateToInstance } from '../../src/services/instance-api.js';
 import { authenticate } from '../../src/services/api-client.js';
 
 const viewportState = {
@@ -104,15 +103,13 @@ vi.mock('../../src/components/terminal/ScrollButtons.js', () => ({
 }));
 
 vi.mock('../../src/services/instance-api.js', () => ({
-  authenticateToInstance: vi.fn(),
-  buildInstanceWsUrl: vi.fn(() => 'ws://mock-instance/ws'),
+  buildInstanceWsUrl: vi.fn((instanceId: string) => `ws://mock-host/ws/${instanceId}`),
 }));
 
 vi.mock('../../src/services/api-client.js', () => ({
   authenticate: vi.fn(),
 }));
 
-const mockedAuthenticateToInstance = vi.mocked(authenticateToInstance);
 const mockedAuthenticate = vi.mocked(authenticate);
 
 describe('ConsolePage', () => {
@@ -147,16 +144,12 @@ describe('ConsolePage', () => {
         {
           instanceId: 'inst-1',
           name: 'Current',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
           cwd: '/tmp/current',
           startedAt: '2026-01-01T00:00:00.000Z',
           isCurrent: true,
         },
       ],
       activeInstanceId: 'inst-1',
-      currentHostOverride: null,
     });
   });
 
@@ -194,17 +187,14 @@ describe('ConsolePage', () => {
     expect(screen.queryAllByText('Esc')).toHaveLength(0);
   });
 
-  it('should auto switch to next available instance by port order and show toast when active instance disconnects', async () => {
-    mockedAuthenticateToInstance.mockResolvedValue(true);
+  it('should auto switch to next available instance when active instance disconnects', async () => {
+    mockedAuthenticate.mockResolvedValue(true);
     useAppStore.setState({ instanceConnectionStatus: { 'inst-1': 'disconnected' } });
     useInstanceStore.setState({
       instances: [
         {
           instanceId: 'inst-1',
           name: 'Current',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
           cwd: '/tmp/current',
           startedAt: '2026-01-01T00:00:00.000Z',
           isCurrent: true,
@@ -212,22 +202,16 @@ describe('ConsolePage', () => {
         {
           instanceId: 'inst-2',
           name: 'B',
-          host: '127.0.0.1',
-          port: 3001,
-          pid: 22345,
           cwd: '/tmp/b',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
+          startedAt: '2026-01-01T00:01:00.000Z',
+          isCurrent: true,
         },
         {
           instanceId: 'inst-3',
           name: 'C',
-          host: '127.0.0.1',
-          port: 3002,
-          pid: 32345,
           cwd: '/tmp/c',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
+          startedAt: '2026-01-01T00:02:00.000Z',
+          isCurrent: true,
         },
       ],
     });
@@ -238,60 +222,9 @@ describe('ConsolePage', () => {
       expect(useInstanceStore.getState().activeInstanceId).toBe('inst-2');
     });
 
-    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('127.0.0.1', 3001, 'cached-token');
-    expect(screen.getByText('已切换到 3001')).toBeDefined();
-  });
-
-  it('should continue trying next candidate when first candidate switch fails', async () => {
-    mockedAuthenticateToInstance
-      .mockRejectedValueOnce(new Error('auth failed'))
-      .mockResolvedValueOnce(true);
-
-    useAppStore.setState({ instanceConnectionStatus: { 'inst-1': 'disconnected' } });
-    useInstanceStore.setState({
-      instances: [
-        {
-          instanceId: 'inst-1',
-          name: 'Current',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
-          cwd: '/tmp/current',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: true,
-        },
-        {
-          instanceId: 'inst-2',
-          name: 'B',
-          host: '127.0.0.1',
-          port: 3001,
-          pid: 22345,
-          cwd: '/tmp/b',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
-        },
-        {
-          instanceId: 'inst-3',
-          name: 'C',
-          host: '127.0.0.1',
-          port: 3002,
-          pid: 32345,
-          cwd: '/tmp/c',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
-        },
-      ],
-    });
-
-    render(<ConsolePage />);
-
-    await waitFor(() => {
-      expect(useInstanceStore.getState().activeInstanceId).toBe('inst-3');
-    });
-
-    expect(mockedAuthenticateToInstance).toHaveBeenNthCalledWith(1, '127.0.0.1', 3001, 'cached-token');
-    expect(mockedAuthenticateToInstance).toHaveBeenNthCalledWith(2, '127.0.0.1', 3002, 'cached-token');
-    expect(screen.getByText('已切换到 3002')).toBeDefined();
+    // 同源认证
+    expect(mockedAuthenticate).toHaveBeenCalledWith('cached-token');
+    expect(screen.getByText('Switched to B')).toBeDefined();
   });
 
   it('should not switch when no candidate instances are available', async () => {
@@ -303,12 +236,11 @@ describe('ConsolePage', () => {
       expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
     });
 
-    expect(mockedAuthenticateToInstance).not.toHaveBeenCalled();
-    expect(screen.queryByText(/已切换到/)).toBeNull();
+    expect(screen.queryByText(/Switched to/)).toBeNull();
   });
 
-  it('should wrap around to lowest-port candidate when active instance has the highest port', async () => {
-    mockedAuthenticateToInstance.mockResolvedValue(true);
+  it('should switch to oldest candidate when active instance disconnects', async () => {
+    mockedAuthenticate.mockResolvedValue(true);
 
     useAppStore.setState({ instanceConnectionStatus: { 'inst-3': 'disconnected' } });
     useInstanceStore.setState({
@@ -316,31 +248,22 @@ describe('ConsolePage', () => {
         {
           instanceId: 'inst-1',
           name: 'A',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
           cwd: '/tmp/a',
           startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
+          isCurrent: true,
         },
         {
           instanceId: 'inst-2',
           name: 'B',
-          host: '127.0.0.1',
-          port: 3001,
-          pid: 22345,
           cwd: '/tmp/b',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
+          startedAt: '2026-01-01T00:01:00.000Z',
+          isCurrent: true,
         },
         {
           instanceId: 'inst-3',
           name: 'C',
-          host: '127.0.0.1',
-          port: 3002,
-          pid: 32345,
           cwd: '/tmp/c',
-          startedAt: '2026-01-01T00:00:00.000Z',
+          startedAt: '2026-01-01T00:02:00.000Z',
           isCurrent: true,
         },
       ],
@@ -353,11 +276,11 @@ describe('ConsolePage', () => {
       expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
     });
 
-    expect(mockedAuthenticateToInstance).toHaveBeenNthCalledWith(1, '127.0.0.1', 3000, 'cached-token');
-    expect(screen.getByText('已切换到 3000')).toBeDefined();
+    expect(mockedAuthenticate).toHaveBeenCalledWith('cached-token');
+    expect(screen.getByText('Switched to A')).toBeDefined();
   });
 
-  it('should call authenticate() for isCurrent candidate during auto switch', async () => {
+  it('should use same-origin authenticate() during auto switch', async () => {
     mockedAuthenticate.mockResolvedValue(true);
 
     useAppStore.setState({ instanceConnectionStatus: { 'inst-2': 'disconnected' } });
@@ -366,9 +289,6 @@ describe('ConsolePage', () => {
         {
           instanceId: 'inst-1',
           name: 'Current',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
           cwd: '/tmp/current',
           startedAt: '2026-01-01T00:00:00.000Z',
           isCurrent: true,
@@ -376,12 +296,9 @@ describe('ConsolePage', () => {
         {
           instanceId: 'inst-2',
           name: 'B',
-          host: '127.0.0.1',
-          port: 3001,
-          pid: 22345,
           cwd: '/tmp/b',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
+          startedAt: '2026-01-01T00:01:00.000Z',
+          isCurrent: true,
         },
       ],
       activeInstanceId: 'inst-2',
@@ -393,13 +310,12 @@ describe('ConsolePage', () => {
       expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
     });
 
-    // isCurrent 候选应使用同源 authenticate() 而非 authenticateToInstance()
+    // 所有实例同源，使用 authenticate()
     expect(mockedAuthenticate).toHaveBeenCalledWith('cached-token');
-    expect(mockedAuthenticateToInstance).not.toHaveBeenCalled();
-    expect(screen.getByText('已切换到 3000')).toBeDefined();
+    expect(screen.getByText('Switched to Current')).toBeDefined();
   });
 
-  it('should call authenticate() for isCurrent instance during manual switch', async () => {
+  it('should use same-origin authenticate() during manual switch', async () => {
     mockedAuthenticate.mockResolvedValue(true);
 
     useInstanceStore.setState({
@@ -407,9 +323,6 @@ describe('ConsolePage', () => {
         {
           instanceId: 'inst-1',
           name: 'Current',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
           cwd: '/tmp/current',
           startedAt: '2026-01-01T00:00:00.000Z',
           isCurrent: true,
@@ -417,12 +330,9 @@ describe('ConsolePage', () => {
         {
           instanceId: 'inst-2',
           name: 'B',
-          host: '127.0.0.1',
-          port: 3001,
-          pid: 22345,
           cwd: '/tmp/b',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
+          startedAt: '2026-01-01T00:01:00.000Z',
+          isCurrent: true,
         },
       ],
       activeInstanceId: 'inst-2',
@@ -430,55 +340,13 @@ describe('ConsolePage', () => {
 
     render(<ConsolePage />);
 
-    // 通过 capturedOnSwitch 模拟手动切换到 isCurrent 实例
+    // 通过 capturedOnSwitch 模拟手动切换
     await act(async () => {
       capturedOnSwitch?.('inst-1');
     });
 
     expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
-    // isCurrent 实例应使用同源 authenticate()
     expect(mockedAuthenticate).toHaveBeenCalledWith('cached-token');
-    expect(mockedAuthenticateToInstance).not.toHaveBeenCalled();
-  });
-
-  it('should call authenticateToInstance() for non-isCurrent instance during manual switch', async () => {
-    mockedAuthenticateToInstance.mockResolvedValue(true);
-
-    useInstanceStore.setState({
-      instances: [
-        {
-          instanceId: 'inst-1',
-          name: 'Current',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
-          cwd: '/tmp/current',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: true,
-        },
-        {
-          instanceId: 'inst-2',
-          name: 'B',
-          host: '127.0.0.1',
-          port: 3001,
-          pid: 22345,
-          cwd: '/tmp/b',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
-        },
-      ],
-      activeInstanceId: 'inst-1',
-    });
-
-    render(<ConsolePage />);
-
-    await act(async () => {
-      capturedOnSwitch?.('inst-2');
-    });
-
-    expect(useInstanceStore.getState().activeInstanceId).toBe('inst-2');
-    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('127.0.0.1', 3001, 'cached-token');
-    expect(mockedAuthenticate).not.toHaveBeenCalled();
   });
 
   it('should auto dismiss toast after 3 seconds', () => {
@@ -543,16 +411,13 @@ describe('ConsolePage', () => {
   });
 
   it('should trigger auto switch immediately when session_ended is received', async () => {
-    mockedAuthenticateToInstance.mockResolvedValue(true);
+    mockedAuthenticate.mockResolvedValue(true);
 
     useInstanceStore.setState({
       instances: [
         {
           instanceId: 'inst-1',
           name: 'Current',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
           cwd: '/tmp/current',
           startedAt: '2026-01-01T00:00:00.000Z',
           isCurrent: true,
@@ -560,12 +425,9 @@ describe('ConsolePage', () => {
         {
           instanceId: 'inst-2',
           name: 'Other',
-          host: '127.0.0.1',
-          port: 3001,
-          pid: 12346,
           cwd: '/tmp/other',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
+          startedAt: '2026-01-01T00:01:00.000Z',
+          isCurrent: true,
         },
       ],
     });
@@ -584,7 +446,7 @@ describe('ConsolePage', () => {
       expect(useInstanceStore.getState().activeInstanceId).toBe('inst-2');
     });
 
-    expect(screen.getByText('已切换到 3001')).toBeDefined();
+    expect(screen.getByText('Switched to Other')).toBeDefined();
   });
 
   it('should write error message to terminal when error message is received', async () => {
@@ -686,7 +548,7 @@ describe('ConsolePage', () => {
     expect(mockScrollToBottom).not.toHaveBeenCalled();
   });
 
-  it('should update currentHostOverride when ip_changed is received for current instance', async () => {
+  it('should update ipChangeInfo when ip_changed is received', async () => {
     render(<ConsolePage />);
 
     await act(async () => {
@@ -694,27 +556,26 @@ describe('ConsolePage', () => {
         type: 'ip_changed',
         oldIp: '192.168.1.10',
         newIp: '192.168.1.20',
-        newUrl: 'http://192.168.1.20:3000',
+        newUrl: 'http://192.168.1.20:6666',
       });
     });
 
-    expect(useInstanceStore.getState().currentHostOverride).toBe('192.168.1.20');
+    expect(useAppStore.getState().ipChangeInfo).toEqual({
+      oldIp: '192.168.1.10',
+      newIp: '192.168.1.20',
+      newUrl: 'http://192.168.1.20:6666',
+    });
   });
 
   // ---- Copy instance success auto-switch tests ----
 
   it('should auto switch to new instance when onCopySuccess is called', async () => {
-    mockedAuthenticateToInstance.mockResolvedValue(true);
-
     // 预设 store 中的实例列表（模拟 InstanceTabs 轮询后已更新 store）
     useInstanceStore.setState({
       instances: [
         {
           instanceId: 'inst-1',
           name: 'Current',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
           cwd: '/tmp/current',
           startedAt: '2026-01-01T00:00:00.000Z',
           isCurrent: true,
@@ -722,12 +583,9 @@ describe('ConsolePage', () => {
         {
           instanceId: 'inst-copy',
           name: 'Current-copy',
-          host: '127.0.0.1',
-          port: 3001,
-          pid: 54321,
           cwd: '/tmp/current',
           startedAt: '2026-01-02T00:00:00.000Z',
-          isCurrent: false,
+          isCurrent: true,
         },
       ],
     });
@@ -739,61 +597,16 @@ describe('ConsolePage', () => {
       capturedOnCopySuccess?.('Current-copy');
     });
 
-    // 复制的实例是 isCurrent: false，所以使用 authenticateToInstance
-    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('127.0.0.1', 3001, 'cached-token');
     expect(useInstanceStore.getState().activeInstanceId).toBe('inst-copy');
     expect(screen.getByText('Created and switched to Current-copy')).toBeDefined();
   });
 
-  it('should use authenticateToInstance for non-current copied instance', async () => {
-    mockedAuthenticateToInstance.mockResolvedValue(true);
-
-    useInstanceStore.setState({
-      instances: [
-        {
-          instanceId: 'inst-1',
-          name: 'Current',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
-          cwd: '/tmp/current',
-          startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: true,
-        },
-        {
-          instanceId: 'inst-copy',
-          name: 'Other-copy',
-          host: '192.168.1.50',
-          port: 3002,
-          pid: 54321,
-          cwd: '/tmp/other',
-          startedAt: '2026-01-02T00:00:00.000Z',
-          isCurrent: false,
-        },
-      ],
-    });
-
-    render(<ConsolePage />);
-
-    await act(async () => {
-      capturedOnCopySuccess?.('Other-copy');
-    });
-
-    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('192.168.1.50', 3002, 'cached-token');
-    expect(useInstanceStore.getState().activeInstanceId).toBe('inst-copy');
-  });
-
   it('should pick newest instance when duplicate names exist', async () => {
-    mockedAuthenticateToInstance.mockResolvedValue(true);
-
     useInstanceStore.setState({
       instances: [
         {
           instanceId: 'inst-1',
           name: 'Current',
-          host: '127.0.0.1',
-          port: 3000,
-          pid: 12345,
           cwd: '/tmp/current',
           startedAt: '2026-01-01T00:00:00.000Z',
           isCurrent: true,
@@ -801,22 +614,16 @@ describe('ConsolePage', () => {
         {
           instanceId: 'inst-old-copy',
           name: 'Current-copy',
-          host: '127.0.0.1',
-          port: 3001,
-          pid: 11111,
           cwd: '/tmp/current',
           startedAt: '2026-01-01T00:00:00.000Z',
-          isCurrent: false,
+          isCurrent: true,
         },
         {
           instanceId: 'inst-new-copy',
           name: 'Current-copy',
-          host: '127.0.0.1',
-          port: 3002,
-          pid: 22222,
           cwd: '/tmp/current',
           startedAt: '2026-01-03T00:00:00.000Z',
-          isCurrent: false,
+          isCurrent: true,
         },
       ],
     });

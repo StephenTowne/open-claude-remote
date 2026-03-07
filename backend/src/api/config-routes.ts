@@ -20,10 +20,10 @@ import {
 import type { NotificationChannel } from '../hooks/hook-types.js';
 import type { NotificationManager } from '../notification/notification-manager.js';
 import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
-import type { WsServer } from '../ws/ws-server.js';
+import type { InstanceManager } from '../instance/instance-manager.js';
 
 const CONFIG_DIR = join(homedir(), '.claude-remote');
-const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
+const CONFIG_FILE = join(CONFIG_DIR, 'settings.json');
 const CONFIG_LOCK = CONFIG_FILE + '.lock';
 
 /**
@@ -135,7 +135,7 @@ export function createConfigRoutes(
   authModule: AuthModule,
   notificationManager?: NotificationManager,
   notificationServiceFactory?: NotificationServiceFactory,
-  wsServer?: WsServer,
+  instanceManager?: InstanceManager,
 ): Router {
   const router = Router();
 
@@ -227,8 +227,8 @@ export function createConfigRoutes(
       }
 
       // 广播刷新消息通知其他实例
-      if (wsServer) {
-        wsServer.broadcast({
+      if (instanceManager) {
+        instanceManager.broadcastAll({
           type: 'service_refresh',
           source: 'config_update',
         });
@@ -307,8 +307,8 @@ export function createConfigRoutes(
       }
 
       // 广播刷新消息通知其他实例
-      if (wsServer) {
-        wsServer.broadcast({
+      if (instanceManager) {
+        instanceManager.broadcastAll({
           type: 'service_refresh',
           channel: channel as 'dingtalk' | 'wechat_work',
           source: 'config_update',

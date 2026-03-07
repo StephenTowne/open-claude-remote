@@ -16,9 +16,10 @@
 | Hook | Claude Code 内置的 Notification hook，审批时触发 HTTP POST |
 | Approval | 工具调用审批请求/响应，手机端决策后通过 PTY 写入按键 |
 | Terminal Relay | PC 终端 stdin/stdout 与 PTY 的 raw mode 透传 |
-| Instance | 一个 claude-remote 进程，管理一个 PTY + Express + WS |
-| Registry | ~/.claude-remote/instances.json 共享注册表，多实例发现 |
-| Shared Token | ~/.claude-remote/token 共享认证令牌，多实例共用 |
+| Instance | 一个 PTY 实例，由 Daemon 进程内的 InstanceSession 管理 |
+| InstanceManager | 管理所有 InstanceSession，进程内创建/销毁实例 |
+| Daemon | 单进程多实例服务，固定端口 6666，管理所有 PTY 实例 |
+| Shared Token | ~/.claude-remote/token 共享认证令牌，所有实例共用 |
 
 ## 2. Stack
 - **Backend**: Node.js >= 20, TypeScript 5.7, Express 4, ws 8, node-pty 1, pino 9, qrcode-terminal
@@ -36,26 +37,28 @@
 │  InstanceTabs → useInstances → instance-store        │
 └──────────────────────────────────────────────────────┘
                         ↕ WebSocket + REST
-┌─ Backend (Node.js) ─────────────────────────────────┐
-│  API Routes → Session Controller → PTY Manager       │
-│                    ↕           ↕                     │
-│              WS Server    Hook Receiver              │
-│                    ↕                                 │
-│            Output Buffer + Terminal Relay             │
-│  Registry (shared-token + port-finder + instances)   │
-└──────────────────────────────────────────────────────┘
+┌─ Backend (Node.js Daemon, port 6666) ──────────────────┐
+│  API Routes → InstanceManager → InstanceSession(s)     │
+│                    ↕                ↕                   │
+│  WS Server (/ws/:instanceId)   PTY Manager             │
+│                    ↕                ↕                   │
+│              Hook Receiver    Output Buffer             │
+│                                                        │
+│  Shared Token + Terminal Relay + IP Monitor             │
+└────────────────────────────────────────────────────────┘
                         ↕ PTY stdin/stdout
                   Claude Code CLI
 ```
 
 - **API Routes**: REST 端点，参数验证，HTTP 响应
-- **Session Controller**: 核心协调器，连接 PTY ↔ WS ↔ Terminal ↔ Hook
+- **InstanceManager**: 管理所有 InstanceSession，进程内创建/销毁实例
+- **InstanceSession**: 每个实例的协调器，管理 PTY ↔ WS clients ↔ Hook ↔ OutputBuffer
 - **PTY Manager**: node-pty 进程生命周期，EventEmitter 模式
-- **WS Server**: WebSocket 连接管理，Session Cookie 认证，心跳
-- **Hook Receiver**: 接收 Claude Code Notification hook POST，生成 ApprovalRequest
+- **WS Server**: WebSocket 连接管理，按 `/ws/:instanceId` 路由到对应实例
+- **Hook Receiver**: 接收 Claude Code Notification hook POST，按 instanceId 路由
 - **Output Buffer**: 10K 行环形缓冲区，支持重连全量恢复
 - **Terminal Relay**: PC 终端 raw mode stdin/stdout 直通 PTY
-- **Registry**: 多实例管理基础设施——共享 Token、端口自动分配、实例注册表 (JSON 文件)
+- **Shared Token**: ~/.claude-remote/token 共享认证令牌
 
 ## 4. Data Flow
 
@@ -83,11 +86,11 @@ sequenceDiagram
 
 ### 认证流程
 1. 启动时获取共享 Token（优先级：AUTH_TOKEN 环境变量 > ~/.claude-remote/token > 自动生成）
-2. 首次启动在 PC 终端完整显示 Token，后续实例提示 "(shared)"
+2. 启动时在 PC 终端显示 Token 和 QR Code
 3. 手机 POST `/api/auth` 提交 Token → `timingSafeEqual` 验证
-4. 成功后签发 HttpOnly SameSite=Lax Session Cookie
-5. WS 升级时验证 Cookie
-6. 跨实例切换时前端用缓存 Token 对目标实例 POST /api/auth 重新认证
+4. 成功后签发 HttpOnly SameSite=Lax Session Cookie（固定名 `session_id`）
+5. WS 升级时验证 Cookie 或 URL Token 参数
+6. 所有实例同源同端口，一次认证覆盖所有实例
 
 ## 5. Routes
 
@@ -97,12 +100,14 @@ sequenceDiagram
 | POST | `/api/auth` | No | auth-routes.ts → AuthModule.handleAuth |
 | GET | `/api/config` | Session | config-routes.ts → 用户配置（快捷键/命令/通知渠道） |
 | PUT | `/api/config` | Session | config-routes.ts → 更新用户配置（含多渠道通知配置） |
-| GET | `/api/status` | Session | status-routes.ts → SessionController 状态 |
+| GET | `/api/status/:instanceId` | Session | status-routes.ts → InstanceSession 状态 |
 | GET | `/api/health` | No | health-routes.ts → 健康检查 |
-| POST | `/api/hook` | Localhost only | hook-routes.ts → HookReceiver.processHook |
-| GET | `/api/instances` | Session | instance-routes.ts → 注册表实例列表 + isCurrent 标记 |
+| POST | `/api/hook/:instanceId` | Localhost only | hook-routes.ts → InstanceSession.hookReceiver |
+| POST | `/api/shutdown` | Localhost only | router.ts → 优雅关闭 daemon |
+| GET | `/api/instances` | Session | instance-routes.ts → InstanceManager 实例列表 |
 | GET | `/api/instances/config` | Session | instance-routes.ts → 工作目录列表 + 默认 Claude 参数 |
-| POST | `/api/instances/create` | Session | instance-routes.ts → 通过 InstanceSpawner 创建 headless 实例 |
+| POST | `/api/instances/create` | Session | instance-routes.ts → InstanceManager 进程内创建实例 |
+| DELETE | `/api/instances/:instanceId` | Session | instance-routes.ts → 销毁实例 |
 | GET | `/api/push/vapid-key` | Session | push-routes.ts → Web Push VAPID 公钥（可选功能） |
 | POST | `/api/push/subscribe` | Session | push-routes.ts → 注册 Web Push 订阅（可选功能） |
 | DELETE | `/api/push/subscribe` | Session | push-routes.ts → 注销 Web Push 订阅（可选功能） |
@@ -110,7 +115,7 @@ sequenceDiagram
 ### Backend WebSocket
 | Direction | Path | Auth |
 |-----------|------|------|
-| Upgrade | `/ws` | Session Cookie 或 URL Token 参数 |
+| Upgrade | `/ws/:instanceId` | Session Cookie 或 URL Token 参数 |
 
 ### Frontend Pages
 | Path | Component | 说明 |
@@ -128,15 +133,17 @@ sequenceDiagram
 
 **Backend** (其他):
 - terminal/terminal-relay.ts: PC 终端 stdin/stdout 透传
-- session/session-controller.ts: 核心协调器
+- instance/instance-manager.ts: 多实例管理器（Map<instanceId, InstanceSession>）
+- instance/instance-session.ts: 单实例协调器（PTY + WS clients + Hook + OutputBuffer）
 - attach.ts: attach 命令入口
+- daemon/daemon-client.ts: CLI → daemon 通信（创建实例、停止等）
 - update.ts: update 命令——检测包管理器 + 查询 npm registry + 执行全局更新
 
 ### Hook 通知
 **Backend**:
 - hooks/hook-receiver.ts: Hook 接收器
-- api/hook-routes.ts: `/api/hook` 端点
-- session/session-controller.ts: notification → status broadcast
+- api/hook-routes.ts: `/api/hook/:instanceId` 端点
+- instance/instance-session.ts: notification → status broadcast to WS clients
 
 权限审批通过 xterm 终端直接交互，无专属前端 UI
 
@@ -169,15 +176,19 @@ sequenceDiagram
 - components/status/StatusBar.tsx: 状态栏
 
 ### 多实例管理
+**Backend** (`backend/src/instance/INDEX.md`):
+- instance-manager.ts: InstanceManager，Map<instanceId, InstanceSession> 管理所有实例
+- instance-session.ts: InstanceSession，单实例协调器（PTY + WS + Hook + Buffer）
+
 **Backend** (`backend/src/registry/INDEX.md`):
 - shared-token.ts: 共享 Token
-- port-finder.ts: 端口自动分配
-- instance-registry.ts: 实例注册表
-- instance-spawner.ts: 子进程启动器
-- stop-instances.ts: 实例停止工具
+- stop-instances.ts: daemon 停止入口（委托 daemon-client API）
+
+**Backend** (`backend/src/daemon/INDEX.md`):
+- daemon-client.ts: CLI 与 daemon 通信（健康检查、创建实例、停止等）
 
 **Backend** (`backend/src/utils/INDEX.md`):
-- utils/ip-monitor.ts: IP 变化检测 + 注册表更新
+- utils/ip-monitor.ts: IP 变化检测 + 广播通知
 
 **Backend**:
 - api/instance-routes.ts: 实例 API 端点
@@ -200,7 +211,7 @@ sequenceDiagram
 
 **Backend**:
 - api/config-routes.ts: 通知配置 API（配置读取/更新，多渠道合并）
-- session/session-controller.ts: 需要输入时触发各渠道通知
+- instance/instance-session.ts: 需要输入时触发各渠道通知
 - hooks/hook-receiver.ts: ALL_CHANNELS 定义通知渠道列表
 
 **Frontend**:
@@ -248,8 +259,8 @@ sequenceDiagram
 | 认证 | Token + Session Cookie | 简单安全，适合局域网 | 需 timingSafeEqual 防时序攻击 |
 | 网络绑定 | 仅局域网 IP | 安全隔离 | 无 LAN IP 时 fallback 127.0.0.1 |
 | TLS | MVP 不启用 | 局域网风险可控 | post-MVP 需补充 HTTPS |
-| 多实例 | 多进程 + 共享注册表 | 每个项目独立进程，简单可靠 | 需 JSON 文件注册表 + 僵尸清理 |
-| 跨实例认证 | 前端缓存 Token + 自动 POST | Cookie 不区分端口但 Session 独立 | 切换时有一次认证延迟 |
+| 多实例 | 单进程多实例 (Daemon) | 资源共享、无跨端口通信、一次认证 | 首实例退出不影响 daemon |
+| 实例路由 | WS/Hook 按 instanceId 路径路由 | 同端口同源，前端无跨域问题 | URL 包含 instanceId |
 
 详细 ADR: `docs/adrs/001-pty-plus-hooks.md`
 
@@ -264,7 +275,7 @@ node backend/dist/index.js  # 启动单一服务
 ### Development
 ```bash
 pnpm dev                    # concurrently 启动前后端 dev server
-pnpm stop                   # 按注册表停止本机所有实例（失败返回非 0）
+pnpm stop                   # 向 daemon 发送 shutdown 请求
 ```
 
 ### Testing
@@ -288,7 +299,7 @@ cd frontend && npx tsc --noEmit
 ### ENV vars
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| PORT | 3000 | 服务端口 |
+| PORT | 6666 | 服务端口（固定） |
 | HOST | 自动检测 LAN IP | 绑定地址 |
 | CLAUDE_COMMAND | claude | CLI 命令 |
 | CLAUDE_ARGS | [] | CLI 额外参数 (JSON array) |
@@ -312,11 +323,12 @@ claude-code-remote/
 │       ├── index.ts         # 服务入口
 │       ├── api/             # REST API 路由
 │       ├── auth/            # Token 验证、Session Cookie
+│       ├── daemon/          # CLI → daemon 通信客户端
 │       ├── hooks/           # Claude Code Hook 接收器
+│       ├── instance/        # InstanceManager + InstanceSession（核心多实例管理）
 │       ├── notification/    # 钉钉等外部通知服务
 │       ├── pty/             # PTY 进程管理
-│       ├── registry/        # 多实例注册表、共享 Token、端口分配
-│       ├── session/         # SessionController 协调器
+│       ├── registry/        # 共享 Token、daemon 停止工具
 │       ├── terminal/        # PC 终端 raw mode 透传
 │       ├── utils/           # 工具函数（二维码、IP 监控等）
 │       └── ws/              # WebSocket 服务端
