@@ -315,7 +315,7 @@ export function ConsolePage() {
           isKeyboardOpen={isKeyboardOpen}
         />
       </div>
-      {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}
+      {toastMessage && <div className="app-toast app-toast-top" role="status" aria-live="polite">{toastMessage}</div>}
     </div>
   );
 }

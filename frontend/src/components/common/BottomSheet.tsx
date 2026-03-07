@@ -141,21 +141,15 @@ export function BottomSheet({ isOpen, onClose, title, children, footer }: Bottom
           paddingBottom: 'var(--safe-bottom)',
         }}
       >
-        {/* 拖拽手柄 */}
+        {/* 拖拽手柄 - 透明热区扩大触控面积 */}
         <div
-          onClick={onClose}
           style={{
-            width: 36,
-            height: 20,  // 扩大点击区域
-            background: 'var(--text-secondary)',
-            opacity: 0.5,
-            borderRadius: 2,
-            margin: '8px auto 4px auto',
-            flexShrink: 0,
-            cursor: 'pointer',
+            height: 44,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0,
           }}
           onTouchStart={(e) => handleDragStart(e.touches[0].clientY)}
           onTouchMove={(e) => handleDragMove(e.touches[0].clientY)}
@@ -164,40 +158,29 @@ export function BottomSheet({ isOpen, onClose, title, children, footer }: Bottom
           onMouseMove={(e) => isDragging && handleDragMove(e.clientY)}
           onMouseUp={handleDragEnd}
           onMouseLeave={handleDragEnd}
-          role="button"
-          aria-label="Close panel"
-        />
+        >
+          {/* 视觉指示条 - 保持原有样式 */}
+          <div
+            style={{
+              width: 36,
+              height: 4,
+              background: 'var(--text-secondary)',
+              opacity: 0.5,
+              borderRadius: 2,
+            }}
+          />
+        </div>
 
         {/* 头部 */}
         <div style={{
           padding: '0 20px 16px 20px',
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
           flexShrink: 0,
         }}>
           <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
             {title}
           </h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 6,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              fontSize: 20,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            ×
-          </button>
         </div>
 
         {/* 内容区 */}

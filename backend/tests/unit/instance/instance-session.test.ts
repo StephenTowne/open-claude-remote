@@ -608,6 +608,71 @@ describe('InstanceSession', () => {
       expect(session.activeSource).toBe('webapp');
     });
 
+    // --- activate 消息 ---
+
+    it('should switch activeSource on activate message from webapp', () => {
+      const relay = makeMockRelay();
+      session.setRelay(relay);
+      expect(session.activeSource).toBe('local');
+
+      const ws = makeMockWs();
+      session.addClient(ws as any, 'webapp');
+      const messageHandler = ws.on.mock.calls.find((c: any[]) => c[0] === 'message')?.[1];
+
+      // 发送 activate 消息
+      messageHandler!(JSON.stringify({ type: 'activate' }));
+
+      expect(session.activeSource).toBe('webapp');
+      expect(relay.pauseResize).toHaveBeenCalled();
+    });
+
+    it('should sync size on activate when lastKnownSizes has entry', () => {
+      const relay = makeMockRelay();
+      session.setRelay(relay);
+
+      const ws = makeMockWs();
+      session.addClient(ws as any, 'webapp');
+      const messageHandler = ws.on.mock.calls.find((c: any[]) => c[0] === 'message')?.[1];
+
+      // 先发 resize（记录 size）
+      messageHandler!(JSON.stringify({ type: 'resize', cols: 375, rows: 60 }));
+      expect(session.ptyManager.resize).not.toHaveBeenCalled(); // 非活跃端
+
+      // 发 activate → 切换 + 同步 size
+      messageHandler!(JSON.stringify({ type: 'activate' }));
+      expect(session.activeSource).toBe('webapp');
+      expect(session.ptyManager.resize).toHaveBeenCalledWith(375, 60);
+    });
+
+    it('should be idempotent: activate from same source is no-op', () => {
+      const relay = makeMockRelay();
+      session.setRelay(relay);
+
+      const ws = makeMockWs();
+      session.addClient(ws as any, 'webapp');
+      const messageHandler = ws.on.mock.calls.find((c: any[]) => c[0] === 'message')?.[1];
+
+      // 首次 activate → 切换
+      messageHandler!(JSON.stringify({ type: 'activate' }));
+      expect(session.activeSource).toBe('webapp');
+
+      relay.pauseResize.mockClear();
+
+      // 再次 activate → 幂等，不重复切换
+      messageHandler!(JSON.stringify({ type: 'activate' }));
+      expect(session.activeSource).toBe('webapp');
+      expect(relay.pauseResize).not.toHaveBeenCalled();
+    });
+
+    it('should not write to PTY on activate (unlike user_input)', () => {
+      const ws = makeMockWs();
+      session.addClient(ws as any, 'webapp');
+      const messageHandler = ws.on.mock.calls.find((c: any[]) => c[0] === 'message')?.[1];
+
+      messageHandler!(JSON.stringify({ type: 'activate' }));
+      expect(session.ptyManager.write).not.toHaveBeenCalled();
+    });
+
     // --- P3: stale size cleanup ---
 
     it('should clear lastKnownSizes for disconnected client type when no remaining', () => {

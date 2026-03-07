@@ -71,6 +71,11 @@ button {
   white-space: nowrap;
 }
 
+.app-toast-top {
+  top: calc(var(--statusbar-height) + var(--safe-top) + 8px);
+  bottom: auto;
+}
+
 /* Focus-visible for keyboard navigation */
 .focus-ring:focus-visible {
   outline: none;

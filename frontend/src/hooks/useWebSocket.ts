@@ -95,6 +95,8 @@ export function useWebSocket(
       }
       setStatus('connected');
       reconnectAttempt.current = 0;
+      // 连接成功后立即发送 activate，通知后端切换到此客户端
+      ws.send(JSON.stringify({ type: 'activate' }));
     };
 
     ws.onmessage = (event) => {
@@ -165,11 +167,18 @@ export function useWebSocket(
     const handleOffline = () => {
       wsRef.current?.close();
     };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'activate' }));
+      }
+    };
     window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       isDisposedRef.current = true;
       connectionTokenRef.current++;
       window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
         reconnectTimer.current = undefined;

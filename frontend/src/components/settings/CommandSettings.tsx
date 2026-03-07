@@ -4,6 +4,7 @@ import {
   closestCenter,
   DragEndEvent,
 } from '@dnd-kit/core';
+import { useAppStore } from '../../stores/app-store.js';
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -114,13 +115,18 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
     onChange(sortByEnabled(newCommands));
   };
 
+  const showToast = useAppStore((s) => s.showToast);
+
   const toggleAutoSend = (index: number) => {
+    const newAutoSendValue = !(commands[index].autoSend ?? true);
     const newCommands = [...commands];
     newCommands[index] = {
       ...newCommands[index],
-      autoSend: !(newCommands[index].autoSend ?? true),
+      autoSend: newAutoSendValue,
     };
     onChange(newCommands);
+    // 显示 Toast 反馈
+    showToast(newAutoSendValue ? '点击命令直接发送' : '点击后在输入框编辑');
   };
 
   const addCommand = () => {

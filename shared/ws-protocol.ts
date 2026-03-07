@@ -92,7 +92,12 @@ export interface ClientHeartbeatMessage {
   timestamp: number;
 }
 
+export interface ActivateMessage {
+  type: 'activate';
+}
+
 export type ClientMessage =
   | UserInputMessage
   | ResizeMessage
-  | ClientHeartbeatMessage;
+  | ClientHeartbeatMessage
+  | ActivateMessage;

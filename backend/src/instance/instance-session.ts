@@ -416,6 +416,9 @@ export class InstanceSession extends EventEmitter {
             }
           }
           break;
+        case 'activate':
+          this.onUserInput(clientType);
+          break;
         case 'heartbeat':
           // Reply with server heartbeat
           this.sendTo(ws, { type: 'heartbeat', timestamp: Date.now() });
