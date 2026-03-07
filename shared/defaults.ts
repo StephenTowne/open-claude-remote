@@ -17,6 +17,7 @@ export interface ConfigurableCommand {
   enabled: boolean;
   desc?: string;
   autoSend?: boolean; // true=点击直接发送（默认），false=填入输入框
+  fromSkill?: boolean; // true=由 Skill 自动生成的命令
 }
 
 /**

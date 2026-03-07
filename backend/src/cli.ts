@@ -285,6 +285,17 @@ async function attachToNewInstance(
   // Start terminal relay
   relay.start();
 
+  // Fire-and-forget npm version check (non-blocking)
+  void (async () => {
+    try {
+      const { fetchLatestVersion, getCurrentVersion, isNewerVersion } = await import('./update.js');
+      const latest = await fetchLatestVersion();
+      if (isNewerVersion(latest, getCurrentVersion())) {
+        process.stderr.write(`\nUpdate available: ${getCurrentVersion()} → ${latest}. Run: claude-remote update\n`);
+      }
+    } catch { /* network failure, silently ignore */ }
+  })();
+
   // Wait for process exit
   await new Promise<void>((resolve) => {
     process.on('SIGINT', () => {
@@ -372,38 +383,14 @@ async function handleListCommand(): Promise<void> {
 }
 
 /**
- * Handle 'status' subcommand - show daemon status
+ * Handle 'status' subcommand - show daemon status (read-only, no side effects)
  */
 async function handleStatusCommand(): Promise<void> {
-  const { getDaemonStatus, isDaemonRunning, checkDaemonVersion, smartRestartDaemon } = await import('./daemon/daemon-client.js');
+  const { getDaemonStatus, isDaemonRunning, getFullVersionInfo } = await import('./daemon/daemon-client.js');
 
   if (!(await isDaemonRunning())) {
     process.stderr.write('No running daemon found.\n');
     process.exit(1);
-  }
-
-  // Check version compatibility first
-  const versionCheck = await checkDaemonVersion();
-  if (versionCheck.needsRestart) {
-    process.stderr.write(`\n⚠️  Daemon version outdated: ${versionCheck.daemonVersion} → ${versionCheck.cliVersion}\n`);
-
-    const result = await smartRestartDaemon();
-
-    if (result.restarted) {
-      process.stderr.write('✅ Daemon restarted with latest version.\n\n');
-    } else if (result.reason === 'has_instances') {
-      process.stderr.write('\n⚠️  Daemon has running instances. Restart manually with:\n');
-      process.stderr.write('   claude-remote stop && claude-remote\n\n');
-    } else if (result.reason === 'stop_failed') {
-      process.stderr.write('\n⚠️  Failed to stop daemon. Please restart manually:\n');
-      process.stderr.write('   claude-remote stop && claude-remote\n\n');
-    }
-
-    // After restart attempt, re-fetch status if daemon is running
-    if (result.restarted) {
-      // Wait briefly for daemon to stabilize
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
   }
 
   let status: import('./daemon/daemon-client.js').DaemonStatus;
@@ -434,7 +421,43 @@ async function handleStatusCommand(): Promise<void> {
   process.stdout.write(`  Port:       ${status.port}\n`);
   process.stdout.write(`  Started:    ${formatRelativeTime(status.startedAt)} (${formatDateTime(status.startedAt)})\n`);
   process.stdout.write(`  Uptime:     ${formatUptime(status.uptime)}\n`);
-  process.stdout.write(`  Instances:  ${status.instanceCount}\n\n`);
+  process.stdout.write(`  Instances:  ${status.instanceCount}\n`);
+
+  // Three-version display
+  const versionInfo = await getFullVersionInfo({ npmCheckTimeout: 5000 });
+
+  process.stdout.write('\nVersions:\n');
+  process.stdout.write(`  Installed:  ${versionInfo.cliVersion}\n`);
+
+  // Daemon version line
+  if (versionInfo.daemonVersion) {
+    const daemonTag = versionInfo.needsRestart ? ' (outdated)' : ' ✓';
+    process.stdout.write(`  Daemon:     ${versionInfo.daemonVersion}${daemonTag}\n`);
+  }
+
+  // Latest version line
+  if (versionInfo.latestVersion !== null) {
+    const latestTag = versionInfo.updateAvailable ? ' (new)' : ' ✓';
+    process.stdout.write(`  Latest:     ${versionInfo.latestVersion}${latestTag}\n`);
+  } else {
+    process.stdout.write(`  Latest:     (check failed)\n`);
+  }
+
+  // Action advice
+  switch (versionInfo.advice) {
+    case 'restart_daemon':
+      process.stdout.write('\n→ Daemon is outdated. Restart with: claude-remote stop && claude-remote\n');
+      break;
+    case 'update_available':
+      process.stdout.write('\n→ Update available. Run: claude-remote update\n');
+      break;
+    case 'update_and_restart':
+      process.stdout.write('\n→ Update first: claude-remote update\n');
+      process.stdout.write('  Then restart: claude-remote stop && claude-remote\n');
+      break;
+  }
+
+  process.stdout.write('\n');
 }
 
 /**

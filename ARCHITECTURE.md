@@ -222,6 +222,15 @@ sequenceDiagram
 **Shared**:
 - notification-types.ts: 多渠道通知类型定义、验证、迁移工具
 
+### Skill 扫描
+**Backend** (`backend/src/skills/INDEX.md`):
+- skill-scanner.ts: 扫描全局 ~/.claude/skills/ 和项目级 .claude/skills/ 目录
+- skill-commands.ts: 将 Skill 转换为 ConfigurableCommand
+- skill-command-merger.ts: 智能合并现有 commands 和新 Skill commands
+
+**Backend**:
+- api/config-routes.ts: GET /api/config 时合并 Skill commands 到返回结果
+
 ### 推送通知
 **Backend**:
 - push/push-service.ts: Web Push 服务
@@ -329,6 +338,7 @@ claude-code-remote/
 │       ├── notification/    # 钉钉等外部通知服务
 │       ├── pty/             # PTY 进程管理
 │       ├── registry/        # 共享 Token、daemon 停止工具
+│       ├── skills/          # Skill 扫描与 Command 转换
 │       ├── terminal/        # PC 终端 raw mode 透传
 │       ├── utils/           # 工具函数（二维码、IP 监控等）
 │       └── ws/              # WebSocket 服务端

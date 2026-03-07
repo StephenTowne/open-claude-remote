@@ -13,6 +13,11 @@ import {
   fillDefaultCommands,
 } from '../config.js';
 import {
+  scanSkills,
+  convertSkillsToCommands,
+  mergeSkillCommands,
+} from '../skills/index.js';
+import {
   type NotificationConfigs,
   type SafeNotificationConfigs,
   getNotificationStatus,
@@ -163,6 +168,25 @@ export function createConfigRoutes(
       }
       if (!config.commands) {
         filledConfig = fillDefaultCommands(filledConfig);
+      }
+
+      // 扫描并合并 Skill Commands
+      const claudeCwd = filledConfig.claudeCwd ?? process.cwd();
+      if (!filledConfig.claudeCwd) {
+        logger.warn({ fallbackCwd: claudeCwd }, 'claudeCwd not set in config, falling back to process.cwd() for skill scan');
+      }
+      const skills = scanSkills(claudeCwd);
+      const skillCommands = convertSkillsToCommands(skills);
+      const mergeResult = mergeSkillCommands(filledConfig.commands ?? [], skillCommands);
+      filledConfig = { ...filledConfig, commands: mergeResult.commands };
+
+      if (mergeResult.added > 0 || mergeResult.removed > 0) {
+        logger.info({
+          added: mergeResult.added,
+          removed: mergeResult.removed,
+          preserved: mergeResult.preserved,
+          total: mergeResult.total,
+        }, 'Skill commands merged');
       }
 
       // 安全处理：不暴露敏感字段（token、webhook URL 等）

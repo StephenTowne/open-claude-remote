@@ -198,6 +198,83 @@ export async function listInstances(): Promise<InstanceInfo[]> {
 }
 
 /**
+ * 三版本建议类型
+ */
+export type VersionAdvice =
+  | 'up_to_date'         // 全部最新
+  | 'restart_daemon'     // 需重启 daemon
+  | 'update_available'   // npm 有新版
+  | 'update_and_restart'; // 需更新 + 重启
+
+/**
+ * 三版本聚合信息
+ */
+export interface FullVersionInfo {
+  daemonVersion: string | null;  // null = daemon 未运行
+  cliVersion: string;
+  latestVersion: string | null;  // null = 查询失败/跳过
+  needsRestart: boolean;
+  updateAvailable: boolean;
+  advice: VersionAdvice;
+}
+
+/**
+ * 获取三版本聚合信息（daemon / CLI / npm latest）
+ */
+export async function getFullVersionInfo(opts?: {
+  skipNpmCheck?: boolean;
+  npmCheckTimeout?: number;
+}): Promise<FullVersionInfo> {
+  const { getCurrentVersion, fetchLatestVersion, isNewerVersion } = await import('../update.js');
+  const timeout = opts?.npmCheckTimeout ?? 5000;
+
+  // 1. CLI 版本（进程级缓存）
+  const cliVersion = getCurrentVersion();
+
+  // 2. Daemon 版本
+  let daemonVersion: string | null = null;
+  try {
+    const status = await getDaemonStatus();
+    daemonVersion = status.version;
+  } catch {
+    // daemon 未运行
+  }
+
+  // 3. npm 最新版（可选）
+  let latestVersion: string | null = null;
+  if (!opts?.skipNpmCheck) {
+    try {
+      latestVersion = await Promise.race([
+        fetchLatestVersion(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('npm check timeout')), timeout)
+        ),
+      ]);
+    } catch {
+      // 网络失败或超时，静默忽略
+    }
+  }
+
+  // 4. 推导状态
+  // needsRestart: CLI 版本比 daemon 新（即 daemon 过时），而非简单不等
+  const needsRestart = daemonVersion !== null && isNewerVersion(cliVersion, daemonVersion);
+  const updateAvailable = latestVersion !== null && isNewerVersion(latestVersion, cliVersion);
+
+  let advice: VersionAdvice;
+  if (needsRestart && updateAvailable) {
+    advice = 'update_and_restart';
+  } else if (needsRestart) {
+    advice = 'restart_daemon';
+  } else if (updateAvailable) {
+    advice = 'update_available';
+  } else {
+    advice = 'up_to_date';
+  }
+
+  return { daemonVersion, cliVersion, latestVersion, needsRestart, updateAvailable, advice };
+}
+
+/**
  * 版本检查结果
  */
 export interface VersionCheckResult {
