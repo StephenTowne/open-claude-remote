@@ -155,6 +155,7 @@ claude-remote attach 550e8400     # by instance ID prefix
 claude-remote list
 
 # Show daemon status (PID, port, uptime, instance count)
+# Also checks daemon version and auto-restarts if mismatch
 claude-remote status
 
 # Stop the daemon and all instances
@@ -169,6 +170,15 @@ claude-remote --version
 # Update to latest version
 claude-remote update
 ```
+
+### Automatic Daemon Restart
+
+The CLI checks daemon version on startup and when running `claude-remote status`:
+
+- **Version mismatch** (CLI newer than daemon) → Auto-restarts daemon if no instances running
+- **Running instances exist** → Shows warning to restart manually
+
+After `claude-remote update`, the daemon is automatically restarted if no instances are running. If instances exist, you'll see a reminder to restart manually.
 
 ### Stopping
 
@@ -619,6 +629,7 @@ claude-remote attach 550e8400     # 按实例 ID 前缀
 claude-remote list
 
 # 显示守护进程状态（PID、端口、运行时间、实例数）
+# 也会检测版本不匹配并自动重启
 claude-remote status
 
 # 停止守护进程和所有实例
@@ -633,6 +644,15 @@ claude-remote --version
 # 更新到最新版本
 claude-remote update
 ```
+
+### 自动重启守护进程
+
+CLI 在启动时和执行 `claude-remote status` 时会检查守护进程版本：
+
+- **版本不匹配**（CLI 版本高于 daemon）→ 无实例运行时自动重启 daemon
+- **有运行中的实例** → 显示警告提示手动重启
+
+执行 `claude-remote update` 后，如果没有运行中的实例，守护进程会自动重启。如有实例运行，会提示手动重启。
 
 ### 停止运行
 

@@ -12,21 +12,30 @@ export interface BannerOptions {
   instanceName: string;
   logDir: string;
   pid: number;
+  instanceId?: string;      // 实例 ID（截取前 8 位显示）
+  warnings?: string[];      // 警告消息数组
+  showExitHint?: boolean;   // 是否显示退出提示（默认 true）
 }
 
 /**
  * 将 banner 打印到 stderr（CLI 使用）
  */
 export function printBanner(options: BannerOptions): void {
-  const { url, token, instanceName, logDir, pid } = options;
+  const { url, token, instanceName, logDir, pid, instanceId, warnings = [], showExitHint = true } = options;
   const qrUrl = `${url}?token=${token}`;
   const qrLines = generateQRCodeLines(qrUrl);
 
   let version = '';
   try { version = getCurrentVersion(); } catch { /* ignore */ }
 
+  // Format instance line with optional ID
+  const shortId = instanceId ? instanceId.substring(0, 8) : null;
+  const instanceLine = shortId
+    ? `Instance:  ${instanceName} (${shortId})`
+    : `Instance:  ${instanceName}`;
+
   const leftLines: string[] = [];
-  leftLines.push(`Instance:  ${instanceName}`);
+  leftLines.push(instanceLine);
   leftLines.push(`URL:       ${url}`);
   leftLines.push(`PID:       ${pid}`);
   leftLines.push(`Logs:      ${logDir}`);
@@ -80,6 +89,25 @@ export function printBanner(options: BannerOptions): void {
 
   process.stderr.write(midSep + '\n');
   process.stderr.write(tokenLine + '\n');
+
+  // Warning section
+  if (warnings.length > 0) {
+    const warningSep = '╠' + '═'.repeat(totalWidth - 2) + '╣';
+    process.stderr.write(warningSep + '\n');
+    for (const warning of warnings) {
+      const warningLine = '║ ' + `⚠️  ${warning}`.padEnd(totalWidth - 4) + ' ║';
+      process.stderr.write(warningLine + '\n');
+    }
+  }
+
+  // Exit hint
+  if (showExitHint) {
+    const exitSep = '╠' + '═'.repeat(totalWidth - 2) + '╣';
+    process.stderr.write(exitSep + '\n');
+    const exitLine = '║ ' + '💡 Press Ctrl+C twice to exit'.padEnd(totalWidth - 4) + ' ║';
+    process.stderr.write(exitLine + '\n');
+  }
+
   process.stderr.write(bottomBorder + '\n');
   process.stderr.write('\n');
 }

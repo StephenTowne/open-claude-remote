@@ -55,10 +55,23 @@ export async function getDaemonStatus(): Promise<DaemonStatus> {
  * 向 daemon 发送停止请求（localhost only，无需认证）
  */
 export async function stopDaemon(): Promise<void> {
+  const result = await stopDaemonInternal();
+
+  if (!result.stopped) {
+    process.stderr.write(`${result.message}\n`);
+    process.exit(1);
+  }
+
+  process.stderr.write('Daemon stopped.\n');
+}
+
+/**
+ * 内部停止函数，不退出进程
+ */
+async function stopDaemonInternal(): Promise<{ stopped: boolean; message: string }> {
   const running = await isDaemonRunning();
   if (!running) {
-    process.stderr.write('No running daemon found.\n');
-    process.exit(1);
+    return { stopped: false, message: 'No running daemon found.' };
   }
 
   try {
@@ -68,18 +81,19 @@ export async function stopDaemon(): Promise<void> {
       body: JSON.stringify({ confirm: true }),
       signal: AbortSignal.timeout(5000),
     });
+
+    // 清除缓存的 cookie
+    cachedCookie = null;
+
     if (res.ok) {
-      process.stderr.write('Daemon stopped.\n');
-      // 清除缓存的 cookie
-      cachedCookie = null;
+      return { stopped: true, message: 'Daemon stopped.' };
     } else {
-      process.stderr.write(`Failed to stop daemon: ${res.status}\n`);
-      process.exit(1);
+      return { stopped: false, message: `Failed to stop daemon: ${res.status}` };
     }
   } catch {
     // Connection refused or reset means daemon is already stopping
-    process.stderr.write('Daemon stopped.\n');
     cachedCookie = null;
+    return { stopped: true, message: 'Daemon stopped.' };
   }
 }
 
@@ -181,4 +195,78 @@ export async function listInstances(): Promise<InstanceInfo[]> {
   }
 
   return res.json();
+}
+
+/**
+ * 版本检查结果
+ */
+export interface VersionCheckResult {
+  running: boolean;
+  daemonVersion: string | null;
+  cliVersion: string;
+  needsRestart: boolean;
+}
+
+/**
+ * 检查 daemon 是否需要重启
+ * @returns 版本检查结果
+ */
+export async function checkDaemonVersion(): Promise<VersionCheckResult> {
+  const { getCurrentVersion } = await import('../update.js');
+  const cliVersion = getCurrentVersion();
+
+  try {
+    const status = await getDaemonStatus();
+    return {
+      running: true,
+      daemonVersion: status.version,
+      cliVersion,
+      needsRestart: status.version !== cliVersion,
+    };
+  } catch {
+    return {
+      running: false,
+      daemonVersion: null,
+      cliVersion,
+      needsRestart: false,
+    };
+  }
+}
+
+/**
+ * 智能重启 daemon
+ * - 无实例时自动重启
+ * - 有实例时返回 false，由调用方提示用户
+ */
+export async function smartRestartDaemon(): Promise<{
+  restarted: boolean;
+  reason: 'auto' | 'has_instances' | 'not_running' | 'stop_failed';
+}> {
+  // 1. 检查 daemon 是否运行
+  const running = await isDaemonRunning();
+  if (!running) {
+    return { restarted: false, reason: 'not_running' };
+  }
+
+  // 2. 检查是否有运行中的实例
+  const instances = await listInstances().catch(() => []);
+
+  if (instances.length > 0) {
+    return { restarted: false, reason: 'has_instances' };
+  }
+
+  // 3. 无实例，可以安全重启
+  const stopResult = await stopDaemonInternal();
+  if (!stopResult.stopped) {
+    return { restarted: false, reason: 'stop_failed' };
+  }
+
+  // 等待进程完全退出
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  // 4. 重新启动
+  const { launchDaemon } = await import('./daemon-launcher.js');
+  await launchDaemon();
+
+  return { restarted: true, reason: 'auto' };
 }

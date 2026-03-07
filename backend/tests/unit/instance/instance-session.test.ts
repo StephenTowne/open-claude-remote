@@ -91,6 +91,38 @@ describe('InstanceSession', () => {
     expect(session.status).toBe('idle');
   });
 
+  it('should close all WS clients when PTY exits', () => {
+    // Add mock WS clients
+    const mockWs1 = {
+      readyState: 1, // WebSocket.OPEN
+      send: vi.fn(),
+      close: vi.fn(),
+      on: vi.fn(),
+      ping: vi.fn(),
+      terminate: vi.fn(),
+    };
+    const mockWs2 = {
+      readyState: 1,
+      send: vi.fn(),
+      close: vi.fn(),
+      on: vi.fn(),
+      ping: vi.fn(),
+      terminate: vi.fn(),
+    };
+
+    session.addClient(mockWs1 as any, 'webapp');
+    session.addClient(mockWs2 as any, 'attach');
+
+    expect(session.clientCount).toBe(2);
+
+    // Simulate PTY exit
+    session.ptyManager.emit('exit', 0);
+
+    // All clients should have been closed gracefully
+    expect(mockWs1.close).toHaveBeenCalledWith(1000, 'PTY exited');
+    expect(mockWs2.close).toHaveBeenCalledWith(1000, 'PTY exited');
+  });
+
   it('should track client count', () => {
     expect(session.clientCount).toBe(0);
 

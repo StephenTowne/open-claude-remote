@@ -226,6 +226,14 @@ export class InstanceSession extends EventEmitter {
         exitCode,
         reason: exitCode === 0 ? 'Process exited normally' : `Process exited with code ${exitCode}`,
       });
+
+      // Gracefully close all WS connections after sending session_ended.
+      // ws.close() queues a close frame AFTER the data frame, ensuring
+      // the client receives session_ended before the connection drops.
+      for (const client of this.clients) {
+        client.ws.close(1000, 'PTY exited');
+      }
+
       logger.info({ instanceId: this.instanceId, exitCode }, 'PTY exited');
 
       // Emit exit event so InstanceManager can auto-remove

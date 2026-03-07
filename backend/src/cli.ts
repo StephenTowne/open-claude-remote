@@ -98,7 +98,7 @@ void (async () => {
     }
 
     // Ensure daemon is running, then attach as client
-    const { isDaemonRunning } = await import('./daemon/daemon-client.js');
+    const { isDaemonRunning, checkDaemonVersion, smartRestartDaemon } = await import('./daemon/daemon-client.js');
     const { launchDaemon } = await import('./daemon/daemon-launcher.js');
     const { DEFAULT_PORT } = await import('#shared');
 
@@ -132,18 +132,36 @@ void (async () => {
       const result = await launchDaemon(cliOverrides);
       daemonPid = result.pid;
       process.stderr.write(`Daemon started (PID: ${daemonPid}).\n`);
+    } else {
+      // Daemon already running - check version compatibility
+      const versionCheck = await checkDaemonVersion();
+
+      if (versionCheck.needsRestart) {
+        process.stderr.write(`Daemon version outdated: ${versionCheck.daemonVersion} → ${versionCheck.cliVersion}\n`);
+
+        const result = await smartRestartDaemon();
+
+        if (result.restarted) {
+          process.stderr.write('Daemon restarted with latest version.\n');
+          // After restart, daemon PID needs to be fetched from status API
+        } else if (result.reason === 'has_instances') {
+          process.stderr.write('\n⚠️  Daemon has running instances. Restart manually with:\n');
+          process.stderr.write('   claude-remote stop && claude-remote\n\n');
+        } else if (result.reason === 'stop_failed') {
+          process.stderr.write('\n⚠️  Failed to stop daemon. Please restart manually:\n');
+          process.stderr.write('   claude-remote stop && claude-remote\n\n');
+        }
+      }
     }
 
-    // Print banner (CLI side)
-    const { printBanner } = await import('./utils/banner.js');
-    const { getSharedToken, getDaemonStatus } = await import('./daemon/daemon-client.js');
+    // Get config and daemon PID for banner display
+    const { getDaemonStatus } = await import('./daemon/daemon-client.js');
     const { loadConfig } = await import('./config.js');
     const config = loadConfig({
       host: options.host,
       token: options.token,
       instanceName: options.name,
     });
-    const token = getSharedToken();
 
     // Get daemon PID (from launch result or from status API)
     if (!daemonPid) {
@@ -153,16 +171,12 @@ void (async () => {
       } catch { /* ignore */ }
     }
 
-    printBanner({
-      url: `http://${config.displayIp}:${DEFAULT_PORT}`,
-      token,
-      instanceName: options.name || config.instanceName,
-      logDir: config.logDir,
-      pid: daemonPid ?? 0,
-    });
-
     // Attach as client (create instance + WS connect)
-    await attachToNewInstance(options);
+    // Returns instance info for banner display
+    await attachToNewInstance(options, {
+      config,
+      daemonPid: daemonPid ?? 0,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`\n[ERROR] Failed to start: ${message}\n`);
@@ -174,11 +188,18 @@ void (async () => {
  * When daemon is already running, create a new instance via API and WS-attach to it.
  * This provides the same terminal experience as the first instance but runs as a client.
  */
-async function attachToNewInstance(options: import('./cli-utils.js').CliOptions): Promise<void> {
+async function attachToNewInstance(
+  options: import('./cli-utils.js').CliOptions,
+  context: {
+    config: import('./config.js').AppConfig;
+    daemonPid: number;
+  }
+): Promise<void> {
   const { DEFAULT_PORT } = await import('#shared');
   const { createInstance, getSharedToken } = await import('./daemon/daemon-client.js');
   const { VirtualPtyManager } = await import('./pty/virtual-pty.js');
   const { TerminalRelay } = await import('./terminal/terminal-relay.js');
+  const { printBanner } = await import('./utils/banner.js');
   const { basename } = await import('node:path');
 
   const cwd = process.cwd();
@@ -197,10 +218,18 @@ async function attachToNewInstance(options: import('./cli-utils.js').CliOptions)
     process.exit(1);
   }
 
-  process.stderr.write(`Daemon is running. Created instance: ${instanceName} (${instanceId.substring(0, 8)})\n`);
-
   // Get shared token for WS auth
   const token = getSharedToken();
+
+  // Print banner with instance info
+  printBanner({
+    url: `http://${context.config.displayIp}:${DEFAULT_PORT}`,
+    token,
+    instanceName,
+    instanceId,
+    logDir: context.config.logDir,
+    pid: context.daemonPid,
+  });
 
   // Create VirtualPtyManager and TerminalRelay (client mode)
   const virtualPty = new VirtualPtyManager();
@@ -255,8 +284,6 @@ async function attachToNewInstance(options: import('./cli-utils.js').CliOptions)
 
   // Start terminal relay
   relay.start();
-
-  process.stderr.write(`Connected to instance ${instanceName}. Press Ctrl+C twice to exit.\n`);
 
   // Wait for process exit
   await new Promise<void>((resolve) => {
@@ -348,11 +375,35 @@ async function handleListCommand(): Promise<void> {
  * Handle 'status' subcommand - show daemon status
  */
 async function handleStatusCommand(): Promise<void> {
-  const { getDaemonStatus, isDaemonRunning } = await import('./daemon/daemon-client.js');
+  const { getDaemonStatus, isDaemonRunning, checkDaemonVersion, smartRestartDaemon } = await import('./daemon/daemon-client.js');
 
   if (!(await isDaemonRunning())) {
     process.stderr.write('No running daemon found.\n');
     process.exit(1);
+  }
+
+  // Check version compatibility first
+  const versionCheck = await checkDaemonVersion();
+  if (versionCheck.needsRestart) {
+    process.stderr.write(`\n⚠️  Daemon version outdated: ${versionCheck.daemonVersion} → ${versionCheck.cliVersion}\n`);
+
+    const result = await smartRestartDaemon();
+
+    if (result.restarted) {
+      process.stderr.write('✅ Daemon restarted with latest version.\n\n');
+    } else if (result.reason === 'has_instances') {
+      process.stderr.write('\n⚠️  Daemon has running instances. Restart manually with:\n');
+      process.stderr.write('   claude-remote stop && claude-remote\n\n');
+    } else if (result.reason === 'stop_failed') {
+      process.stderr.write('\n⚠️  Failed to stop daemon. Please restart manually:\n');
+      process.stderr.write('   claude-remote stop && claude-remote\n\n');
+    }
+
+    // After restart attempt, re-fetch status if daemon is running
+    if (result.restarted) {
+      // Wait briefly for daemon to stabilize
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
   }
 
   let status: import('./daemon/daemon-client.js').DaemonStatus;

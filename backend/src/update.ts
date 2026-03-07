@@ -140,7 +140,11 @@ export async function updatePackage(): Promise<void> {
       if (code === 0) {
         process.stdout.write(`\nSuccessfully updated to ${latestVersion}!\n`);
         logger.info({ latestVersion }, 'Package updated successfully');
-        promiseResolve();
+
+        // 检查 daemon 是否需要重启
+        handlePostUpdateRestart().then(() => {
+          promiseResolve();
+        });
       } else {
         const manualCmd = `${pm} ${args.join(' ')}`;
         process.stdout.write(`\n[ERROR] Update failed (exit code ${code}). Please run manually:\n  ${manualCmd}\n`);
@@ -159,4 +163,45 @@ export async function updatePackage(): Promise<void> {
       process.exit(1);
     });
   });
+}
+
+/**
+ * 更新完成后检查并重启 daemon
+ */
+async function handlePostUpdateRestart(): Promise<void> {
+  try {
+    const { checkDaemonVersion, smartRestartDaemon, listInstances, isDaemonRunning } = await import('./daemon/daemon-client.js');
+
+    // 检查 daemon 是否运行
+    if (!(await isDaemonRunning())) {
+      return; // daemon 未运行，无需重启
+    }
+
+    // 检查版本
+    const versionCheck = await checkDaemonVersion();
+
+    if (!versionCheck.needsRestart) {
+      return; // 版本匹配，无需重启
+    }
+
+    // 版本不匹配，尝试重启
+    const instances = await listInstances().catch(() => []);
+
+    if (instances.length === 0) {
+      process.stdout.write('\nRestarting daemon with new version...\n');
+      const result = await smartRestartDaemon();
+
+      if (result.restarted) {
+        process.stdout.write('✅ Daemon restarted.\n');
+      } else {
+        process.stdout.write('⚠️  Failed to restart daemon. Run manually: claude-remote stop && claude-remote\n');
+      }
+    } else {
+      process.stdout.write('\n⚠️  Daemon is still running old version.\n');
+      process.stdout.write('   Restart manually: claude-remote stop && claude-remote\n');
+    }
+  } catch (err) {
+    // 不影响更新流程，静默失败
+    logger.debug({ err }, 'Post-update daemon restart check failed');
+  }
 }

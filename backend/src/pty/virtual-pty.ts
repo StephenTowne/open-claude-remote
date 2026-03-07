@@ -93,6 +93,13 @@ export class VirtualPtyManager extends EventEmitter implements IPtyManager {
               }
               break;
 
+            case 'session_ended':
+              // PTY 退出通知 — 立即触发 exit 事件
+              logger.info({ exitCode: msg.exitCode, reason: msg.reason }, 'VirtualPtyManager: session ended');
+              this._connected = false;
+              this.emit('exit', msg.exitCode ?? 0);
+              break;
+
             case 'status_update':
               logger.info({ status: msg.status }, 'VirtualPtyManager: status update');
               break;

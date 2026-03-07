@@ -127,6 +127,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   const daemonMode = cliOverrides.daemonMode === true;
   let firstSession: ReturnType<typeof instanceManager.createInstance> | undefined;
   let relay: TerminalRelay | undefined;
+  let ptyDataHandler: ((data: string) => void) | undefined;
 
   if (!daemonMode) {
     const noTerminal = process.env.NO_TERMINAL === 'true';
@@ -142,9 +143,10 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     //     PTY output → stdout: InstanceSession 只广播给 WS 客户端，CLI 需要额外管道
     const isTTY = !noTerminal && process.stdin.isTTY;
     if (isTTY) {
-      firstSession.ptyManager.on('data', (data: string) => {
+      ptyDataHandler = (data: string) => {
         process.stdout.write(data);
-      });
+      };
+      firstSession.ptyManager.on('data', ptyDataHandler);
     }
     relay = isTTY ? new TerminalRelay(firstSession.ptyManager) : undefined;
     if (relay) {
@@ -188,18 +190,25 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     const session = firstSession;
     session.on('exit', (exitCode: number) => {
       logger.info({ exitCode, instanceId: session.instanceId }, 'First instance PTY exited');
-      if (relay) {
-        relay.stop();
-      }
+
       // 打印提示后 CLI 退出，daemon 后台运行
+      // 注意：先打印提示再停止 relay，确保输出可见
       process.stderr.write(`\nInstance "${session.name}" exited with code ${exitCode}.\n`);
       process.stderr.write('Daemon is still running. Use "claude-remote stop" to shut down.\n\n');
 
+      // 清理 PTY 输出监听器（避免事件循环句柄残留）
+      if (ptyDataHandler) {
+        session.ptyManager.removeListener('data', ptyDataHandler);
+      }
+
+      // 停止 terminal relay（恢复终端状态）
+      if (relay) {
+        relay.stop();
+      }
+
       // CLI 退出，daemon 继续后台运行
       // 注意：不调用 shutdown()，只移除 CLI 相关的事件监听并退出进程
-      if (!process.stdin.isTTY) {
-        process.stdin.pause();
-      }
+      process.exitCode = exitCode;
       process.exit(exitCode);
     });
   }

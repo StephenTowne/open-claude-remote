@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useInstanceStore } from '../stores/instance-store.js';
+import { useAppStore } from '../stores/app-store.js';
 import { fetchInstances } from '../services/instance-api.js';
 
 const POLL_INTERVAL_MS = 5000;
@@ -7,11 +8,12 @@ const POLL_INTERVAL_MS = 5000;
 /**
  * 每 5 秒轮询 /api/instances，更新 instance-store。
  * 首次加载自动选中 isCurrent 实例。
+ * 同时更新 serverAvailable 状态以区分"无实例"和"服务器不可用"。
  */
 export function useInstances() {
   const setInstances = useInstanceStore((s) => s.setInstances);
   const setActiveInstanceId = useInstanceStore((s) => s.setActiveInstanceId);
-  const activeInstanceId = useInstanceStore((s) => s.activeInstanceId);
+  const setServerAvailable = useAppStore((s) => s.setServerAvailable);
   const initializedRef = useRef(false);
 
   useEffect(() => {
@@ -22,22 +24,22 @@ export function useInstances() {
       try {
         const instances = await fetchInstances();
         if (cancelled) return;
+
+        setServerAvailable(true);
         setInstances(instances);
 
-        // 首次加载：如果没有选中的实例，自动选中 isCurrent 实例
-        if (!initializedRef.current && instances.length > 0) {
-          initializedRef.current = true;
-          const currentActive = useInstanceStore.getState().activeInstanceId;
-          if (!currentActive) {
-            const current = instances.find(i => i.isCurrent) ?? instances[0];
-            if (current) {
-              setActiveInstanceId(current.instanceId);
-            }
+        // 自动选中逻辑：没有活跃实例且有可用实例时，自动选中第一个
+        const currentActive = useInstanceStore.getState().activeInstanceId;
+        if (!currentActive && instances.length > 0) {
+          const current = instances.find(i => i.isCurrent) ?? instances[0];
+          if (current) {
+            setActiveInstanceId(current.instanceId);
           }
         }
 
       } catch {
-        // 轮询失败时静默处理（可能未认证）
+        if (cancelled) return;
+        setServerAvailable(false);
       }
     };
 
@@ -48,7 +50,8 @@ export function useInstances() {
       cancelled = true;
       if (timer) clearInterval(timer);
     };
-  }, [setInstances, setActiveInstanceId]);
+  }, [setInstances, setActiveInstanceId, setServerAvailable]);
 
-  return { activeInstanceId };
+  // 返回 activeInstanceId 以便使用此 hook 的组件能获取当前值
+  return { activeInstanceId: useInstanceStore((s) => s.activeInstanceId) };
 }
