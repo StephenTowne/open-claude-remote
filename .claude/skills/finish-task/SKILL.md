@@ -11,6 +11,25 @@ metadata:
   version: 1.1.0
 ---
 
+# ⛔ EXECUTION MANDATE — READ THIS FIRST
+
+You are NOT just reading this document. You MUST EXECUTE every step below.
+"Executing" means: running the actual bash commands, reading actual files, making actual edits.
+
+❌ FORBIDDEN — The following behaviors mean TASK FAILURE:
+- Outputting "skill 已启动" or "正在执行" without running actual commands
+- Summarizing what the steps would do instead of doing them
+- Skipping to the output format without executing checks
+- Calling `/auto-doc` without waiting for it to complete
+
+✅ REQUIRED — You must:
+1. Actually run each bash command shown below
+2. Actually read files when instructed
+3. Actually make edits when needed
+4. Output the final summary ONLY after all 3 steps are complete
+
+---
+
 # Task Completion Gate
 
 每个编码任务的强制收尾步骤。按顺序执行三项检查：
@@ -23,6 +42,8 @@ metadata:
 
 ## Step 1: 执行 `/auto-doc`
 
+⚠️ **你必须调用 Skill 工具执行 `/auto-doc`，并等待其返回完整结果后再继续 Step 2。不得跳过此步骤。**
+
 直接执行 `/auto-doc`。auto-doc 会自行检测源码文件的新增、删除或重命名，并决定是否需要更新文档。
 
 无需在此步骤中手动运行 git 命令检测 — auto-doc 内部已包含完整的检测逻辑。
@@ -30,6 +51,8 @@ metadata:
 ---
 
 ## Step 2: 用户可见行为检查 → `README.md`
+
+⚠️ **你必须实际运行以下 git 命令，并根据输出做出判定。不得跳过命令直接输出结论。**
 
 以**对话上下文**为主要依据（Claude 刚完成任务，清楚改了什么），git 为辅助验证：
 
@@ -58,6 +81,8 @@ git log --oneline -3          # 本次任务的近期提交
 ---
 
 ## Step 3: 需求检查 → `docs/requirements/`
+
+⚠️ **你必须基于 Step 2 的实际 git 输出和对话上下文做出判定。不得在未执行 Step 2 的情况下输出结论。**
 
 ### 核心定义
 
@@ -97,6 +122,17 @@ git log --oneline -3          # 本次任务的近期提交
 **判定：**
 - **有新增/变更需求** → 在 `docs/requirements/` 中写入或更新 `.md` 文件。包含：需求描述、验收标准、架构备注（如适用）。排除实现方案。
 - **无新需求** → 输出 "✅ requirements: 无新需求"
+
+---
+
+## ⛔ 输出门禁
+
+只有当以下条件全部满足时，才能输出最终汇总：
+- [ ] Step 1: 已实际调用 `/auto-doc` 并收到返回结果
+- [ ] Step 2: 已实际运行 `git diff --stat HEAD` 和 `git log --oneline -3`
+- [ ] Step 3: 已基于实际 git 输出做出需求判定
+
+如果你还没有执行这些步骤，停下来，回去执行它们。
 
 ---
 

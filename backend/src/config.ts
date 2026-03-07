@@ -288,6 +288,8 @@ export interface CliOverrides {
   instanceName?: string;
   claudeArgs?: string[];
   noTerminal?: boolean;
+  /** daemon 模式：跳过 firstSession/relay/stdin/banner，仅启动 HTTP+WS 服务 */
+  daemonMode?: boolean;
 }
 
 /**

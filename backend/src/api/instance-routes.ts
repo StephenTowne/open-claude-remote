@@ -117,14 +117,19 @@ export function createInstanceRoutes(
         return;
       }
 
-      // 路径安全检查
-      const allowedCwds = getAllowedCwds(instanceManager);
-      if (!isCwdAllowed(absoluteCwd, allowedCwds)) {
-        logger.warn({ absoluteCwd, allowedCwds }, 'Cwd path not allowed');
-        res.status(403).json({
-          error: 'Directory not allowed. Must be in allowed workspaces list.',
-        });
-        return;
+      // CLI 启动（headless: false）不受 workspace 限制，只有 Web 端创建的实例需要验证
+      // 原因：CLI 是本地终端启动，用户已通过 shell 进入该目录；Web 端是远程请求，需要安全限制
+      const isCliLaunch = headless === false;
+      if (!isCliLaunch) {
+        // 路径安全检查
+        const allowedCwds = getAllowedCwds(instanceManager);
+        if (!isCwdAllowed(absoluteCwd, allowedCwds)) {
+          logger.warn({ absoluteCwd, allowedCwds }, 'Cwd path not allowed');
+          res.status(403).json({
+            error: 'Directory not allowed. Must be in allowed workspaces list.',
+          });
+          return;
+        }
       }
 
       // 进程内创建实例

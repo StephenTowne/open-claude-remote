@@ -97,59 +97,73 @@ void (async () => {
       process.exit(1);
     }
 
-    // Use startOrFallback: start daemon or gracefully fall back to client mode
+    // Ensure daemon is running, then attach as client
     const { isDaemonRunning } = await import('./daemon/daemon-client.js');
-    const { startOrFallback, PortInUseError } = await import('./cli-utils.js');
+    const { launchDaemon } = await import('./daemon/daemon-launcher.js');
+    const { DEFAULT_PORT } = await import('#shared');
 
-    const result = await startOrFallback(
-      isDaemonRunning,
-      // startServer thunk: lazy-load and call with CLI overrides
-      async () => {
-        // Fix node-pty spawn-helper permissions proactively at startup
-        try {
-          const { ensureSpawnHelperPermissions } = await import('./pty/fix-pty-permissions.js');
-          ensureSpawnHelperPermissions();
-        } catch (e) {
-          const detail = e instanceof Error ? e.message : String(e);
-          process.stderr.write(
-            '\n[ERROR] Failed to fix node-pty permissions.\n' +
-            `  Reason: ${detail}\n\n` +
-            '  Try fixing manually:\n' +
-            '    chmod +x node_modules/node-pty/prebuilds/*/spawn-helper\n\n'
-          );
-          process.exit(1);
-        }
+    let daemonPid: number | undefined;
 
-        const cliOverrides = {
-          host: options.host,
-          token: options.token,
-          instanceName: options.name,
-          claudeArgs: options.claudeArgs.length > 0 ? options.claudeArgs : undefined,
-          noTerminal: options.noTerminal,
-        };
+    if (!(await isDaemonRunning())) {
+      // Fix node-pty spawn-helper permissions proactively at startup
+      try {
+        const { ensureSpawnHelperPermissions } = await import('./pty/fix-pty-permissions.js');
+        ensureSpawnHelperPermissions();
+      } catch (e) {
+        const detail = e instanceof Error ? e.message : String(e);
+        process.stderr.write(
+          '\n[ERROR] Failed to fix node-pty permissions.\n' +
+          `  Reason: ${detail}\n\n` +
+          '  Try fixing manually:\n' +
+          '    chmod +x node_modules/node-pty/prebuilds/*/spawn-helper\n\n'
+        );
+        process.exit(1);
+      }
 
-        const { startServer } = await import('./index.js');
-        await startServer(cliOverrides);
-      },
-      // attachToNewInstance thunk
-      () => attachToNewInstance(options),
-    );
+      // Launch daemon as a detached subprocess
+      const cliOverrides = {
+        host: options.host,
+        token: options.token,
+        instanceName: options.name,
+        claudeArgs: options.claudeArgs.length > 0 ? options.claudeArgs : undefined,
+        noTerminal: options.noTerminal,
+      };
 
-    if (result === 'attached') {
-      process.stderr.write('Daemon is running. Attached as client.\n');
+      const result = await launchDaemon(cliOverrides);
+      daemonPid = result.pid;
+      process.stderr.write(`Daemon started (PID: ${daemonPid}).\n`);
     }
+
+    // Print banner (CLI side)
+    const { printBanner } = await import('./utils/banner.js');
+    const { getSharedToken, getDaemonStatus } = await import('./daemon/daemon-client.js');
+    const { loadConfig } = await import('./config.js');
+    const config = loadConfig({
+      host: options.host,
+      token: options.token,
+      instanceName: options.name,
+    });
+    const token = getSharedToken();
+
+    // Get daemon PID (from launch result or from status API)
+    if (!daemonPid) {
+      try {
+        const status = await getDaemonStatus();
+        daemonPid = status.pid;
+      } catch { /* ignore */ }
+    }
+
+    printBanner({
+      url: `http://${config.displayIp}:${DEFAULT_PORT}`,
+      token,
+      instanceName: options.name || config.instanceName,
+      logDir: config.logDir,
+      pid: daemonPid ?? 0,
+    });
+
+    // Attach as client (create instance + WS connect)
+    await attachToNewInstance(options);
   } catch (err) {
-    // PortInUseError means port occupied by non-daemon process (fallback retry also failed)
-    const { PortInUseError } = await import('./cli-utils.js');
-    if (err instanceof PortInUseError) {
-      process.stderr.write(
-        `\n[ERROR] Port ${err.port} is already in use by another process.\n` +
-        '  If a previous daemon is stuck, find and kill it:\n' +
-        `    lsof -i :${err.port}\n` +
-        `    kill <PID>\n\n`
-      );
-      process.exit(1);
-    }
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`\n[ERROR] Failed to start: ${message}\n`);
     process.exit(1);

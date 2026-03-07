@@ -46,9 +46,5 @@ export const DEFAULT_COMMANDS: ConfigurableCommand[] = [
   { label: '/resume', command: '/resume', enabled: true },
   { label: '/stats', command: '/stats', enabled: true },
   { label: '/exit', command: '/exit', enabled: true },
-  { label: '/commit-commands:commit', command: '/commit-commands:commit', enabled: true },
-  { label: '/feature-dev:feature-dev', command: '/feature-dev:feature-dev', enabled: true },
-  { label: '/auto-doc', command: '/auto-doc', enabled: true },
-  { label: '/code-review-expert', command: '/code-review-expert', enabled: true },
-  { label: '/systematic-debugging', command: '/systematic-debugging', enabled: true },
+  { label: '/rename', command: '/rename', enabled: true, autoSend: false },
 ];

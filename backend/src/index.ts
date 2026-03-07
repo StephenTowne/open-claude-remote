@@ -19,8 +19,7 @@ import { createNotificationServiceFactory } from './notification/notification-se
 import { logger, setInstanceContext } from './logger/logger.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { IpMonitor } from './utils/ip-monitor.js';
-import { generateQRCodeLines } from './utils/qrcode-banner.js';
-import { getCurrentVersion } from './update.js';
+import { printBanner } from './utils/banner.js';
 
 export async function startServer(cliOverrides: CliOverrides = {}): Promise<void> {
   // 1. Load configuration (global + workdir merged)
@@ -124,27 +123,33 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     logger.warn('Frontend dist not found, skipping static file serving');
   }
 
-  // 13. Create first instance (from CLI cwd)
-  const noTerminal = process.env.NO_TERMINAL === 'true';
-  const firstSession = instanceManager.createInstance({
-    cwd: config.claudeCwd,
-    name: config.instanceName,
-    claudeCommand: config.claudeCommand,
-    claudeArgs: config.claudeArgs,
-    headless: noTerminal,
-  });
+  // 13. Create first instance (skip in daemon mode — instances created via API)
+  const daemonMode = cliOverrides.daemonMode === true;
+  let firstSession: ReturnType<typeof instanceManager.createInstance> | undefined;
+  let relay: TerminalRelay | undefined;
 
-  // 14. Terminal Relay (条件启动，headless 模式跳过)
-  //     PTY output → stdout: InstanceSession 只广播给 WS 客户端，CLI 需要额外管道
-  const isTTY = !noTerminal && process.stdin.isTTY;
-  if (isTTY) {
-    firstSession.ptyManager.on('data', (data: string) => {
-      process.stdout.write(data);
+  if (!daemonMode) {
+    const noTerminal = process.env.NO_TERMINAL === 'true';
+    firstSession = instanceManager.createInstance({
+      cwd: config.claudeCwd,
+      name: config.instanceName,
+      claudeCommand: config.claudeCommand,
+      claudeArgs: config.claudeArgs,
+      headless: noTerminal,
     });
-  }
-  const relay = isTTY ? new TerminalRelay(firstSession.ptyManager) : undefined;
-  if (relay) {
-    relay.start();
+
+    // 14. Terminal Relay (条件启动，headless 模式跳过)
+    //     PTY output → stdout: InstanceSession 只广播给 WS 客户端，CLI 需要额外管道
+    const isTTY = !noTerminal && process.stdin.isTTY;
+    if (isTTY) {
+      firstSession.ptyManager.on('data', (data: string) => {
+        process.stdout.write(data);
+      });
+    }
+    relay = isTTY ? new TerminalRelay(firstSession.ptyManager) : undefined;
+    if (relay) {
+      relay.start();
+    }
   }
 
   // 15. IP monitor
@@ -178,23 +183,26 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     setTimeout(() => process.exit(exitCode), 2000);
   };
 
-  // Handle first instance PTY exit → CLI exits, daemon continues in background
-  firstSession.on('exit', (exitCode: number) => {
-    logger.info({ exitCode, instanceId: firstSession.instanceId }, 'First instance PTY exited');
-    if (relay) {
-      relay.stop();
-    }
-    // 打印提示后 CLI 退出，daemon 后台运行
-    process.stderr.write(`\nInstance "${firstSession.name}" exited with code ${exitCode}.\n`);
-    process.stderr.write('Daemon is still running. Use "claude-remote stop" to shut down.\n\n');
+  // Handle first instance PTY exit (only in non-daemon mode)
+  if (firstSession) {
+    const session = firstSession;
+    session.on('exit', (exitCode: number) => {
+      logger.info({ exitCode, instanceId: session.instanceId }, 'First instance PTY exited');
+      if (relay) {
+        relay.stop();
+      }
+      // 打印提示后 CLI 退出，daemon 后台运行
+      process.stderr.write(`\nInstance "${session.name}" exited with code ${exitCode}.\n`);
+      process.stderr.write('Daemon is still running. Use "claude-remote stop" to shut down.\n\n');
 
-    // CLI 退出，daemon 继续后台运行
-    // 注意：不调用 shutdown()，只移除 CLI 相关的事件监听并退出进程
-    if (!process.stdin.isTTY) {
-      process.stdin.pause();
-    }
-    process.exit(exitCode);
-  });
+      // CLI 退出，daemon 继续后台运行
+      // 注意：不调用 shutdown()，只移除 CLI 相关的事件监听并退出进程
+      if (!process.stdin.isTTY) {
+        process.stdin.pause();
+      }
+      process.exit(exitCode);
+    });
+  }
 
   process.on('SIGINT', () => {
     logger.info('SIGINT received');
@@ -205,8 +213,8 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     shutdown(0);
   });
 
-  // When running via pnpm dev (stdin is a pipe, not TTY)
-  if (!process.stdin.isTTY) {
+  // When running via pnpm dev (stdin is a pipe, not TTY) — skip in daemon mode
+  if (!daemonMode && !process.stdin.isTTY) {
     process.stdin.resume();
 
     const CTRL_C = '\x03';
@@ -247,71 +255,19 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
       setDaemonStartTime(new Date().toISOString());
 
       const url = `http://${config.displayIp}:${port}`;
-      const qrUrl = `${url}?token=${token}`;
-      const qrLines = generateQRCodeLines(qrUrl);
 
-      let version = '';
-      try { version = getCurrentVersion(); } catch { /* ignore */ }
-
-      const leftLines: string[] = [];
-      leftLines.push(`Instance:  ${config.instanceName}`);
-      leftLines.push(`URL:       ${url}`);
-      leftLines.push(`PID:       ${process.pid}`);
-      leftLines.push(`Logs:      ${config.logDir}`);
-      leftLines.push('');
-      leftLines.push('Commands:');
-      leftLines.push(`  attach:  claude-remote attach ${config.instanceName}`);
-      leftLines.push('  list:    claude-remote list');
-      leftLines.push('  status:  claude-remote status');
-      leftLines.push('  stop:    claude-remote stop');
-      leftLines.push('  update:  claude-remote update');
-
-      const qrLabel = 'Scan QR to connect';
-      const rightLines: string[] = [...qrLines, ''];
-      const targetHeight = Math.max(leftLines.length, rightLines.length + 1);
-      while (rightLines.length < targetHeight - 1) {
-        rightLines.push('');
-      }
-      rightLines.push(qrLabel);
-
-      const qrWidth = Math.max(qrLines[0]?.length || 0, qrLabel.length);
-      const leftWidth = Math.max(...leftLines.map(l => l.length), 35);
-      const totalWidth = leftWidth + qrWidth + 6;
-
-      const topBorder    = '╔' + '═'.repeat(totalWidth - 2) + '╗';
-      const title        = version ? `Claude Code Remote v${version}` : 'Claude Code Remote';
-      const titleLine    = '║' + title.padStart(Math.floor((totalWidth - 2 + title.length) / 2)).padEnd(totalWidth - 2) + '║';
-      const sepLine      = '╠' + '═'.repeat(leftWidth + 1) + '╤' + '═'.repeat(qrWidth + 2) + '╣';
-      const midSep       = '╠' + '═'.repeat(leftWidth + 1) + '╧' + '═'.repeat(qrWidth + 2) + '╣';
-      const tokenLine    = '║ ' + `Token: ${token}`.padEnd(totalWidth - 4) + ' ║';
-      const bottomBorder = '╚' + '═'.repeat(totalWidth - 2) + '╝';
-
-      process.stderr.write('\n');
-      process.stderr.write(topBorder + '\n');
-      process.stderr.write(titleLine + '\n');
-      process.stderr.write(sepLine + '\n');
-
-      const maxLines = Math.max(leftLines.length, rightLines.length);
-      for (let i = 0; i < maxLines; i++) {
-        const left = (leftLines[i] || '').padEnd(leftWidth);
-        let right: string;
-        if (i < qrLines.length && rightLines[i]) {
-          right = ` ${rightLines[i]} `.padEnd(qrWidth + 2);
-        } else if (rightLines[i]) {
-          const centered = rightLines[i].padStart(Math.floor((qrWidth + rightLines[i].length) / 2)).padEnd(qrWidth);
-          right = ` ${centered} `;
-        } else {
-          right = ' '.repeat(qrWidth + 2);
-        }
-        process.stderr.write(`║ ${left}│${right}║\n`);
+      if (!daemonMode) {
+        // CLI 直接启动模式（pnpm dev 等）：打印 banner
+        printBanner({
+          url,
+          token,
+          instanceName: config.instanceName,
+          logDir: config.logDir,
+          pid: process.pid,
+        });
       }
 
-      process.stderr.write(midSep + '\n');
-      process.stderr.write(tokenLine + '\n');
-      process.stderr.write(bottomBorder + '\n');
-      process.stderr.write('\n');
-
-      logger.info({ url, host: config.host, port, instanceName: config.instanceName, tokenSource }, 'Server started');
+      logger.info({ url, host: config.host, port, instanceName: config.instanceName, tokenSource, daemonMode }, 'Server started');
       resolve();
     });
   });

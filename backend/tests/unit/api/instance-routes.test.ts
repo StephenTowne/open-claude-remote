@@ -284,6 +284,39 @@ describe('instance-routes', () => {
 
       expect(res.status).toBe(403);
     });
+
+    it('should bypass workspace validation when headless: false (CLI launch)', async () => {
+      // CLI 启动不受 workspace 限制
+      mockConfig.workspaces = [];
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/instances/create`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cwd: '/any/directory', headless: false }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockManager.createInstance).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: '/any/directory', headless: false }),
+      );
+    });
+
+    it('should apply workspace validation when headless: true (Web launch)', async () => {
+      // Web 启动需要 workspace 验证
+      mockConfig.workspaces = [];
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/instances/create`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cwd: '/any/directory', headless: true }),
+      });
+
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toContain('not allowed');
+    });
   });
 
   describe('DELETE /api/instances/:instanceId', () => {
