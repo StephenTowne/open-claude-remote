@@ -1,4 +1,5 @@
-import { mkdirSync, rmdirSync, statSync } from 'node:fs';
+import { mkdirSync, rmdirSync, statSync, existsSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 export interface FileLockOptions {
   /** 最大重试次数 (默认 50) */
@@ -28,7 +29,23 @@ function tryOnce(lockPath: string, staleMs: number): TryResult {
     mkdirSync(lockPath);
     return 'acquired';
   } catch (err: any) {
-    if (err.code !== 'EEXIST') {
+    if (err.code === 'ENOENT') {
+      // 父目录不存在，创建父目录后重试
+      const parentDir = dirname(lockPath);
+      if (!existsSync(parentDir)) {
+        mkdirSync(parentDir, { recursive: true, mode: 0o700 });
+      }
+      // 再次尝试获取锁
+      try {
+        mkdirSync(lockPath);
+        return 'acquired';
+      } catch (retryErr: any) {
+        if (retryErr.code !== 'EEXIST') {
+          throw retryErr;
+        }
+        // fallthrough to stale lock check
+      }
+    } else if (err.code !== 'EEXIST') {
       throw err;
     }
   }

@@ -143,15 +143,19 @@ export function BottomSheet({ isOpen, onClose, title, children, footer }: Bottom
       >
         {/* 拖拽手柄 */}
         <div
+          onClick={onClose}
           style={{
             width: 36,
-            height: 4,
+            height: 20,  // 扩大点击区域
             background: 'var(--text-secondary)',
             opacity: 0.5,
             borderRadius: 2,
-            margin: '12px auto',
+            margin: '8px auto 4px auto',
             flexShrink: 0,
             cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
           onTouchStart={(e) => handleDragStart(e.touches[0].clientY)}
           onTouchMove={(e) => handleDragMove(e.touches[0].clientY)}
@@ -160,6 +164,8 @@ export function BottomSheet({ isOpen, onClose, title, children, footer }: Bottom
           onMouseMove={(e) => isDragging && handleDragMove(e.clientY)}
           onMouseUp={handleDragEnd}
           onMouseLeave={handleDragEnd}
+          role="button"
+          aria-label="Close panel"
         />
 
         {/* 头部 */}

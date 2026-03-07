@@ -295,6 +295,54 @@ describe('TerminalRelay', () => {
     });
   });
 
+  describe('event emission', () => {
+    it('emits local_input when stdin data arrives', () => {
+      stubProcessIO(true);
+      const pty = makePtyManager();
+      const relay = new TerminalRelay(pty);
+      const handler = vi.fn();
+      relay.on('local_input', handler);
+      relay.start();
+
+      (process.stdin as EventEmitter).emit('data', Buffer.from('hello'));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('emits local_resize when PC terminal resizes', () => {
+      const { stdout } = stubProcessIO(true);
+      stdout.columns = 120;
+      stdout.rows = 40;
+      const pty = makePtyManager();
+      const relay = new TerminalRelay(pty);
+      const handler = vi.fn();
+      relay.on('local_resize', handler);
+      relay.start();
+
+      (process.stdout as EventEmitter).emit('resize');
+
+      expect(handler).toHaveBeenCalledWith(120, 40);
+    });
+
+    it('emits local_resize even when resize is paused', () => {
+      const { stdout } = stubProcessIO(true);
+      stdout.columns = 100;
+      stdout.rows = 30;
+      const pty = makePtyManager();
+      const relay = new TerminalRelay(pty);
+      const handler = vi.fn();
+      relay.on('local_resize', handler);
+      relay.start();
+      relay.pauseResize();
+
+      (process.stdout as EventEmitter).emit('resize');
+
+      // 事件仍然发射（用于记录 size），但 PTY 不 resize
+      expect(handler).toHaveBeenCalledWith(100, 30);
+      expect(pty.resize).not.toHaveBeenCalled();
+    });
+  });
+
   describe('stop()', () => {
     it('restores raw mode to original state and pauses stdin', () => {
       const { stdin } = stubProcessIO(true);

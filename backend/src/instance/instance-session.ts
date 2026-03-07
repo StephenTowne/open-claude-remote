@@ -7,6 +7,7 @@ import { OutputBuffer } from '../pty/output-buffer.js';
 import { HookReceiver } from '../hooks/hook-receiver.js';
 import { HookEventType } from '../hooks/hook-types.js';
 import { logger } from '../logger/logger.js';
+import type { TerminalRelay } from '../terminal/terminal-relay.js';
 import type { PushService } from '../push/push-service.js';
 import type { NotificationManager } from '../notification/notification-manager.js';
 import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
@@ -16,6 +17,9 @@ const WS_MAX_CHUNK_BYTES = 32 * 1024;
 
 /** 客户端类型：attach（从控端）或 webapp（主控端） */
 export type ClientType = 'attach' | 'webapp';
+
+/** 活跃端来源：local（PC终端）、webapp、attach、null（无活跃端） */
+export type ActiveSource = 'local' | 'webapp' | 'attach' | null;
 
 interface ClientInfo {
   ws: WebSocket;
@@ -53,6 +57,10 @@ export class InstanceSession extends EventEmitter {
   private _status: SessionStatus = 'idle';
   private buffer: OutputBuffer;
   private clients: Set<ClientInfo> = new Set();
+
+  private _activeSource: ActiveSource = null;
+  private _lastKnownSizes: Map<string, { cols: number; rows: number }> = new Map();
+  private _relay: TerminalRelay | null = null;
 
   private pushService: PushService | null = null;
   private notificationServiceFactory: NotificationServiceFactory | null = null;
@@ -110,6 +118,67 @@ export class InstanceSession extends EventEmitter {
     logger.info({ instanceId: this.instanceId, instanceUrl: url }, 'Instance URL updated');
   }
 
+  get activeSource(): ActiveSource {
+    return this._activeSource;
+  }
+
+  /**
+   * 注入 TerminalRelay 引用，设初始 activeSource 为 'local'，
+   * 监听 local_input / local_resize 事件
+   */
+  setRelay(relay: TerminalRelay): void {
+    this._relay = relay;
+    this._activeSource = 'local';
+
+    relay.on('local_input', () => {
+      this.onUserInput('local');
+    });
+
+    relay.on('local_resize', (cols: number, rows: number) => {
+      this._lastKnownSizes.set('local', { cols, rows });
+    });
+
+    logger.info({ instanceId: this.instanceId }, 'Relay connected, activeSource set to local');
+  }
+
+  /**
+   * 切换活跃端 + 同步 size + 控制 relay pause/resume
+   * 仅在来源变化时执行切换
+   */
+  private onUserInput(source: ActiveSource): void {
+    if (source === this._activeSource) return;
+
+    const prev = this._activeSource;
+    this._activeSource = source;
+
+    if (source === 'local') {
+      // resumeResize 内部已同步当前 PC 终端尺寸到 PTY，无需再调 syncActiveSourceSize
+      this._relay?.resumeResize();
+    } else {
+      if (prev === 'local' && this._relay) {
+        this._relay.pauseResize();
+      }
+      this.syncActiveSourceSize(source);
+    }
+
+    logger.info({
+      instanceId: this.instanceId,
+      prev,
+      next: source,
+    }, 'Active source switched');
+  }
+
+  /**
+   * 从 lastKnownSizes 取 size 调 ptyManager.resize
+   */
+  private syncActiveSourceSize(source: ActiveSource): void {
+    if (!source) return;
+    const size = this._lastKnownSizes.get(source);
+    if (size) {
+      this.ptyManager.resize(size.cols, size.rows);
+    }
+  }
+
   // ─── Client Management ────────────────────────────────────
 
   /**
@@ -135,16 +204,12 @@ export class InstanceSession extends EventEmitter {
     });
 
     ws.on('close', () => {
-      this.clients.delete(clientInfo);
-      logger.info({
-        instanceId: this.instanceId,
-        clientCount: this.clients.size,
-      }, 'Client disconnected from instance');
+      this.handleClientRemoval(clientInfo, 'disconnect');
     });
 
     ws.on('error', (err) => {
-      logger.error({ err, instanceId: this.instanceId, clientType }, 'Client error');
-      this.clients.delete(clientInfo);
+      logger.error({ err, instanceId: this.instanceId, clientType: clientInfo.clientType }, 'Client error');
+      this.handleClientRemoval(clientInfo, 'error');
     });
 
     // 发送历史数据
@@ -156,6 +221,44 @@ export class InstanceSession extends EventEmitter {
       cols: this.ptyManager.cols,
       rows: this.ptyManager.rows,
     });
+  }
+
+  /**
+   * 统一处理客户端移除（close / error 共用）
+   * 重入保护：若 clientInfo 已被移除则跳过
+   */
+  private handleClientRemoval(clientInfo: ClientInfo, reason: 'disconnect' | 'error'): void {
+    if (!this.clients.has(clientInfo)) return;
+    this.clients.delete(clientInfo);
+
+    const { clientType } = clientInfo;
+
+    // 活跃端断开回退逻辑
+    if (clientType === this._activeSource) {
+      const hasRemaining = [...this.clients].some(c => c.clientType === clientType);
+      if (!hasRemaining) {
+        const prev = this._activeSource;
+        this._activeSource = this._relay ? 'local' : null;
+        if (this._relay && this._activeSource === 'local') {
+          this._relay.resumeResize();
+        }
+        // 清理已无在线客户端的 size 记录，避免后续新客户端继承旧值
+        this._lastKnownSizes.delete(clientType);
+        logger.info({
+          instanceId: this.instanceId,
+          prev,
+          next: this._activeSource,
+          reason,
+        }, 'Active source fallback on disconnect');
+      }
+    }
+
+    logger.info({
+      instanceId: this.instanceId,
+      clientCount: this.clients.size,
+      clientType,
+      reason,
+    }, 'Client removed from instance');
   }
 
   /**
@@ -299,17 +402,18 @@ export class InstanceSession extends EventEmitter {
       switch (msg.type) {
         case 'user_input':
           if (typeof msg.data === 'string') {
+            this.onUserInput(clientType);
             this.ptyManager.write(msg.data);
           }
           break;
         case 'resize':
           if (typeof msg.cols === 'number' && typeof msg.rows === 'number') {
-            // webapp 在线时忽略 attach 的 resize
-            if (clientType === 'attach') {
-              const counts = this.getClientCounts();
-              if (counts.webapp > 0) return;
+            // 始终记录来源的最新 size
+            this._lastKnownSizes.set(clientType, { cols: msg.cols, rows: msg.rows });
+            // 仅活跃端（或无活跃端时任何来源）的 resize 应用到 PTY
+            if (this._activeSource === null || clientType === this._activeSource) {
+              this.ptyManager.resize(msg.cols, msg.rows);
             }
-            this.ptyManager.resize(msg.cols, msg.rows);
           }
           break;
         case 'heartbeat':

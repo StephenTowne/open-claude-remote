@@ -19,6 +19,44 @@ import { mergeTextareaStyle } from '../../styles/input.js';
 const sortByEnabled = <T extends { enabled: boolean }>(items: T[]): T[] =>
   [...items].sort((a, b) => Number(b.enabled) - Number(a.enabled));
 
+/**
+ * Auto-send 图标按钮
+ * 显示当前状态，点击切换
+ */
+function AutoSendButton({
+  autoSend,
+  onToggle,
+}: {
+  autoSend: boolean;
+  onToggle: () => void;
+}) {
+  const isAutoSend = autoSend ?? true;
+  return (
+    <button
+      onClick={onToggle}
+      aria-label={isAutoSend ? 'Auto-send is on. Click to edit in input box instead.' : 'Auto-send is off. Click to send directly.'}
+      title={isAutoSend ? 'Auto-send on click' : 'Edit in input box'}
+      style={{
+        width: 36,
+        height: 36,
+        padding: 0,
+        borderRadius: 6,
+        border: 'none',
+        background: isAutoSend ? 'var(--status-running)' : 'var(--bg-primary)',
+        color: isAutoSend ? '#fff' : 'var(--text-secondary)',
+        cursor: 'pointer',
+        fontSize: 14,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}
+    >
+      {isAutoSend ? '↗' : '✎'}
+    </button>
+  );
+}
+
 interface CommandSettingsProps {
   commands: WithId<ConfigurableCommand>[];
   onChange: (commands: WithId<ConfigurableCommand>[]) => void;
@@ -27,7 +65,6 @@ interface CommandSettingsProps {
 export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const sensors = useDndSensors();
 
   const startEdit = (index: number) => {
@@ -86,10 +123,6 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
     onChange(newCommands);
   };
 
-  const toggleExpand = (index: number) => {
-    setExpandedIndex(prev => prev === index ? null : index);
-  };
-
   const addCommand = () => {
     // 新项添加到列表开头，enabled: true，autoSend: true（默认），排序后自然在最前面
     const newCommands: WithId<ConfigurableCommand>[] = [{ label: '/new', command: '/new', enabled: true, autoSend: true, _id: generateId() }, ...commands];
@@ -102,13 +135,6 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
   const deleteCommand = (index: number) => {
     const newCommands = commands.filter((_, i) => i !== index);
     onChange(newCommands);
-    // 如果删除的是展开的项，关闭展开状态
-    if (expandedIndex === index) {
-      setExpandedIndex(null);
-    } else if (expandedIndex !== null && expandedIndex > index) {
-      // 如果删除的项在展开项之前，更新展开项索引
-      setExpandedIndex(expandedIndex - 1);
-    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -122,17 +148,6 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
       const [removed] = newCommands.splice(oldIndex, 1);
       newCommands.splice(newIndex, 0, removed);
       onChange(newCommands);
-
-      // 更新展开状态索引
-      if (expandedIndex !== null) {
-        if (expandedIndex === oldIndex) {
-          setExpandedIndex(newIndex);
-        } else if (oldIndex < expandedIndex && newIndex >= expandedIndex) {
-          setExpandedIndex(expandedIndex - 1);
-        } else if (oldIndex > expandedIndex && newIndex <= expandedIndex) {
-          setExpandedIndex(expandedIndex + 1);
-        }
-      }
     }
   };
 
@@ -190,42 +205,11 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
               enabled={cmd.enabled}
               onToggle={() => toggleEnabled(index)}
               onDelete={() => deleteCommand(index)}
-              isExpandable={true}
-              isExpanded={expandedIndex === index}
-              onToggleExpand={() => toggleExpand(index)}
-              detailContent={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button
-                    role="switch"
-                    aria-checked={cmd.autoSend ?? true}
-                    aria-label={(cmd.autoSend ?? true) ? 'Auto-send is on, click to turn off' : 'Auto-send is off, click to turn on'}
-                    onClick={() => toggleAutoSend(index)}
-                    style={{
-                      width: 36,
-                      height: 22,
-                      borderRadius: 11,
-                      border: 'none',
-                      background: (cmd.autoSend ?? true) ? 'var(--status-running)' : 'var(--bg-primary)',
-                      cursor: 'pointer',
-                      position: 'relative' as const,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <span style={{
-                      position: 'absolute' as const,
-                      top: 2,
-                      left: (cmd.autoSend ?? true) ? 16 : 2,
-                      width: 18,
-                      height: 18,
-                      borderRadius: '50%',
-                      background: '#fff',
-                      transition: 'left 0.15s ease',
-                    }} />
-                  </button>
-                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    Auto-send on click
-                  </span>
-                </div>
+              extraAction={
+                <AutoSendButton
+                  autoSend={cmd.autoSend ?? true}
+                  onToggle={() => toggleAutoSend(index)}
+                />
               }
             >
               {/* 命令输入/显示 */}

@@ -156,6 +156,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     relay = isTTY ? new TerminalRelay(firstSession.ptyManager) : undefined;
     if (relay) {
       relay.start();
+      firstSession.setRelay(relay);
     }
   }
 
