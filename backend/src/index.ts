@@ -19,6 +19,7 @@ import { createNotificationServiceFactory } from './notification/notification-se
 import { logger, setInstanceContext } from './logger/logger.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { IpMonitor } from './utils/ip-monitor.js';
+import { detectAllLocalIps } from './utils/network.js';
 import { printBanner } from './utils/banner.js';
 
 export async function startServer(cliOverrides: CliOverrides = {}): Promise<void> {
@@ -41,6 +42,11 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 5. Create Express app
   const app = express();
   app.use(express.json());
+
+  // Build CORS allowlist from all local NIC IPs + loopback
+  const localIpSet = new Set([...detectAllLocalIps(), 'localhost', '127.0.0.1']);
+  logger.info({ allowedHosts: [...localIpSet] }, 'CORS allowlist initialized');
+
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin) {
@@ -49,8 +55,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
       }
       try {
         const url = new URL(origin);
-        const allowedHosts = [config.displayIp, 'localhost', '127.0.0.1'];
-        if (allowedHosts.includes(url.hostname)) {
+        if (localIpSet.has(url.hostname)) {
           callback(null, true);
           return;
         }
@@ -159,6 +164,16 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     logger.info({ oldIp, newIp }, 'IP change detected');
     config.displayIp = newIp;
     instanceManager.updateDisplayIp(newIp);
+
+    // Refresh CORS allowlist on NIC change
+    const freshIps = detectAllLocalIps();
+    localIpSet.clear();
+    localIpSet.add('localhost');
+    localIpSet.add('127.0.0.1');
+    for (const ip of freshIps) {
+      localIpSet.add(ip);
+    }
+    logger.info({ allowedHosts: [...localIpSet] }, 'CORS allowlist refreshed');
   }, 30000, 2);
 
   ipMonitor.start(config.displayIp);

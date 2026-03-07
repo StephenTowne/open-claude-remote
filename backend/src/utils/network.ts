@@ -37,6 +37,23 @@ export function detectLanIp(): string | null {
 }
 
 /**
+ * Detect all non-internal IPv4 addresses across all network interfaces.
+ * Used to build the CORS allowlist so requests from any local NIC are accepted.
+ */
+export function detectAllLocalIps(): string[] {
+  const nets = networkInterfaces();
+  const ips: string[] = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] ?? []) {
+      if (net.family === 'IPv4' && !net.internal) {
+        ips.push(net.address);
+      }
+    }
+  }
+  return ips;
+}
+
+/**
  * Detect the first non-internal IPv4 address.
  * This is more permissive than detectLanIp - it will return any non-loopback IP.
  * Useful for environments with non-RFC1918 internal networks (e.g., corporate networks).

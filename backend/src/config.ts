@@ -649,6 +649,51 @@ export function getSettingsDirs(userConfig?: UserConfig): string[] {
 }
 
 /**
+ * 获取工作目录配置文件路径
+ * @param cwd 工作目录路径
+ * @returns 配置文件完整路径
+ */
+export function getWorkdirConfigPath(cwd: string): string {
+  return resolve(cwd, CLAUDE_REMOTE_DIR, CONFIG_FILENAME);
+}
+
+/**
+ * 获取工作目录配置文件锁路径
+ * @param cwd 工作目录路径
+ * @returns 锁文件完整路径
+ */
+export function getWorkdirConfigLock(cwd: string): string {
+  return getWorkdirConfigPath(cwd) + '.lock';
+}
+
+/**
+ * 保存工作目录配置
+ * @param cwd 工作目录路径
+ * @param config 工作目录配置对象
+ */
+export async function saveWorkdirConfig(cwd: string, config: WorkdirConfig): Promise<void> {
+  const configDir = resolve(cwd, CLAUDE_REMOTE_DIR);
+  const configPath = getWorkdirConfigPath(cwd);
+
+  // 确保目录存在
+  if (!existsSync(configDir)) {
+    await mkdir(configDir, { recursive: true, mode: 0o700 });
+  }
+
+  // 只保存 WorkdirConfig 允许的字段，忽略未定义的字段
+  const workdirConfig: WorkdirConfig = {};
+  if (config.claudeCommand !== undefined) workdirConfig.claudeCommand = config.claudeCommand;
+  if (config.claudeArgs !== undefined) workdirConfig.claudeArgs = config.claudeArgs;
+  if (config.instanceName !== undefined) workdirConfig.instanceName = config.instanceName;
+  if (config.maxBufferLines !== undefined) workdirConfig.maxBufferLines = config.maxBufferLines;
+  if (config.shortcuts !== undefined) workdirConfig.shortcuts = config.shortcuts;
+  if (config.commands !== undefined) workdirConfig.commands = config.commands;
+
+  await writeFile(configPath, JSON.stringify(workdirConfig, null, 2), { mode: 0o600 });
+  logger.info({ configPath, cwd }, 'Workdir config saved');
+}
+
+/**
  * 安全检查：文件名是否合法
  * - 不能包含路径分隔符
  * - 不能包含路径遍历字符
