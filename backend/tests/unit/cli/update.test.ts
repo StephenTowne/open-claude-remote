@@ -33,6 +33,7 @@ vi.mock('node:fs', () => ({
 describe('update module', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.resetModules();
   });
 
   afterEach(() => {

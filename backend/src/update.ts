@@ -53,8 +53,13 @@ export function fetchLatestVersion(): Promise<string> {
   });
 }
 
+/** 进程级版本缓存 — 版本在进程生命周期内不会变化 */
+let cachedVersion: string | null = null;
+
 /** 从 import.meta.url 向上查找项目 package.json 获取当前版本 */
 export function getCurrentVersion(): string {
+  if (cachedVersion) return cachedVersion;
+
   // 从当前文件向上逐级查找 package.json
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 10; i++) {
@@ -62,6 +67,7 @@ export function getCurrentVersion(): string {
     if (existsSync(pkgPath)) {
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { name?: string; version?: string };
       if (pkg.name === PKG_NAME && pkg.version) {
+        cachedVersion = pkg.version;
         return pkg.version;
       }
     }
