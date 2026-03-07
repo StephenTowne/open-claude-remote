@@ -18,7 +18,7 @@
 | Terminal Relay | PC 终端 stdin/stdout 与 PTY 的 raw mode 透传 |
 | Instance | 一个 PTY 实例，由 Daemon 进程内的 InstanceSession 管理 |
 | InstanceManager | 管理所有 InstanceSession，进程内创建/销毁实例 |
-| Daemon | 单进程多实例服务，固定端口 6666，管理所有 PTY 实例 |
+| Daemon | 单进程多实例服务，固定端口 8866，管理所有 PTY 实例 |
 | Shared Token | ~/.claude-remote/token 共享认证令牌，所有实例共用 |
 
 ## 2. Stack
@@ -37,7 +37,7 @@
 │  InstanceTabs → useInstances → instance-store        │
 └──────────────────────────────────────────────────────┘
                         ↕ WebSocket + REST
-┌─ Backend (Node.js Daemon, port 6666) ──────────────────┐
+┌─ Backend (Node.js Daemon, port 8866) ──────────────────┐
 │  API Routes → InstanceManager → InstanceSession(s)     │
 │                    ↕                ↕                   │
 │  WS Server (/ws/:instanceId)   PTY Manager             │
@@ -299,7 +299,7 @@ cd frontend && npx tsc --noEmit
 ### ENV vars
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| PORT | 6666 | 服务端口（固定） |
+| PORT | 8866 | 服务端口（固定） |
 | HOST | 自动检测 LAN IP | 绑定地址 |
 | CLAUDE_COMMAND | claude | CLI 命令 |
 | CLAUDE_ARGS | [] | CLI 额外参数 (JSON array) |

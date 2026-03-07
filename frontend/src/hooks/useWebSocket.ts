@@ -61,15 +61,18 @@ export function useWebSocket(
   }, []);
 
   const connect = useCallback(async () => {
+    // 无有效 URL 时不连接（等待实例加载完成）
+    if (!wsUrl) {
+      setStatus('disconnected');
+      return;
+    }
+
     // Prevent duplicate connections
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       return;
     }
 
-    const url = wsUrl ?? (() => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      return `${protocol}//${window.location.host}/ws`;
-    })();
+    const url = wsUrl;
 
     if (reconnectTimer.current) {
       clearTimeout(reconnectTimer.current);

@@ -124,6 +124,32 @@ describe('REST API Endpoints', () => {
     });
   });
 
+  // ─── GET /api/status (session validation) ─────────────────────────────────
+
+  describe('GET /api/status', () => {
+    it('should return 401 without authentication', async () => {
+      const res = await fetch(`${ctx.baseUrl}/api/status`);
+      expect(res.status).toBe(401);
+    });
+
+    it('should return 401 with invalid session cookie', async () => {
+      const res = await fetch(`${ctx.baseUrl}/api/status`, {
+        headers: { cookie: 'session_id_test=invalid-session-id' },
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it('should return 200 with status ok when authenticated', async () => {
+      const cookie = await authenticate(ctx.baseUrl);
+      const res = await fetch(`${ctx.baseUrl}/api/status`, {
+        headers: { cookie },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toEqual({ status: 'ok' });
+    });
+  });
+
   // ─── GET /api/status/:instanceId ────────────────────────────────────────
 
   describe('GET /api/status/:instanceId', () => {

@@ -12,6 +12,7 @@ import { WsServer } from './ws/ws-server.js';
 import { InstanceManager } from './instance/instance-manager.js';
 import { TerminalRelay } from './terminal/terminal-relay.js';
 import { createApiRouter } from './api/router.js';
+import { setDaemonStartTime } from './api/health-routes.js';
 import { PushService } from './push/push-service.js';
 import { createNotificationManager } from './notification/notification-manager.js';
 import { createNotificationServiceFactory } from './notification/notification-service-factory.js';
@@ -32,7 +33,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   const homeConfigDir = resolve(process.env.HOME ?? process.env.USERPROFILE ?? '', '.claude-remote');
   const { token, source: tokenSource } = getOrCreateSharedToken(homeConfigDir, config.token ?? undefined);
 
-  // 3. Fixed port (6666)
+  // 3. Fixed port (8866)
   const port = config.port; // DEFAULT_PORT
 
   // 设置日志实例上下文
@@ -242,6 +243,9 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     });
 
     httpServer.listen(port, config.host, () => {
+      // Record daemon start time
+      setDaemonStartTime(new Date().toISOString());
+
       const url = `http://${config.displayIp}:${port}`;
       const qrUrl = `${url}?token=${token}`;
       const qrLines = generateQRCodeLines(qrUrl);
@@ -257,6 +261,8 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
       leftLines.push('');
       leftLines.push('Commands:');
       leftLines.push(`  attach:  claude-remote attach ${config.instanceName}`);
+      leftLines.push('  list:    claude-remote list');
+      leftLines.push('  status:  claude-remote status');
       leftLines.push('  stop:    claude-remote stop');
       leftLines.push('  update:  claude-remote update');
 

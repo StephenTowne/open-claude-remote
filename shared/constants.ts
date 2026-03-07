@@ -1,4 +1,4 @@
-export const DEFAULT_PORT = 6666;
+export const DEFAULT_PORT = 8866;
 export const SESSION_COOKIE_NAME = 'session_id';
 export const DEFAULT_SESSION_TTL_MS = 86400000; // 24 hours
 export const DEFAULT_AUTH_RATE_LIMIT = 20; // per minute per IP

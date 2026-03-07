@@ -3,12 +3,12 @@ import { PortInUseError, startOrFallback } from '../../../src/cli-utils.js';
 
 describe('PortInUseError', () => {
   it('should have correct name, message, and port', () => {
-    const err = new PortInUseError(6666);
+    const err = new PortInUseError(8866);
     expect(err).toBeInstanceOf(Error);
     expect(err).toBeInstanceOf(PortInUseError);
     expect(err.name).toBe('PortInUseError');
-    expect(err.port).toBe(6666);
-    expect(err.message).toContain('6666');
+    expect(err.port).toBe(8866);
+    expect(err.message).toContain('8866');
   });
 });
 
@@ -41,7 +41,7 @@ describe('startOrFallback', () => {
     const isDaemonRunning = vi.fn()
       .mockResolvedValueOnce(false)   // First check: no daemon
       .mockResolvedValueOnce(true);   // Retry: daemon found
-    const startServer = vi.fn().mockRejectedValue(new PortInUseError(6666));
+    const startServer = vi.fn().mockRejectedValue(new PortInUseError(8866));
     const attach = vi.fn().mockResolvedValue(undefined);
 
     const result = await startOrFallback(isDaemonRunning, startServer, attach);
@@ -53,7 +53,7 @@ describe('startOrFallback', () => {
 
   it('should throw PortInUseError when port in use and no daemon on retry', async () => {
     const isDaemonRunning = vi.fn().mockResolvedValue(false);
-    const startServer = vi.fn().mockRejectedValue(new PortInUseError(6666));
+    const startServer = vi.fn().mockRejectedValue(new PortInUseError(8866));
     const attach = vi.fn();
 
     await expect(startOrFallback(isDaemonRunning, startServer, attach))

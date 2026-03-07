@@ -230,7 +230,7 @@ describe('useWebSocket connection isolation', () => {
     mockedAuthenticate.mockResolvedValue(true);
 
     const { result } = renderHook(() =>
-      useWebSocket(vi.fn(), 'ws://localhost:6666/ws/inst-1', 'instance-test'),
+      useWebSocket(vi.fn(), 'ws://localhost:8866/ws/inst-1', 'instance-test'),
     );
 
     await act(async () => {
@@ -252,5 +252,20 @@ describe('useWebSocket connection isolation', () => {
     // 同源认证
     expect(mockedAuthenticate).toHaveBeenCalledWith('cached-token-123');
     expect(useAppStore.getState().instanceConnectionStatus['instance-test']).toBe('disconnected');
+  });
+
+  it('should NOT connect when wsUrl is undefined', async () => {
+    const { result } = renderHook(() =>
+      useWebSocket(vi.fn(), undefined, 'no-url-instance'),
+    );
+
+    await act(async () => {
+      result.current.connect();
+    });
+
+    // 不应该创建任何 WebSocket 连接
+    expect(sockets.length).toBe(0);
+    // 状态应该是 disconnected（不是 connecting 或 connected）
+    expect(useAppStore.getState().instanceConnectionStatus['no-url-instance']).toBe('disconnected');
   });
 });

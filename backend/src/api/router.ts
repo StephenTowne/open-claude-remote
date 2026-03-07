@@ -26,7 +26,7 @@ export interface ApiRouterOptions {
 export function createApiRouter(opts: ApiRouterOptions): Router {
   const router = Router();
 
-  router.use(createHealthRoutes());
+  router.use(createHealthRoutes(opts.instanceManager));
   router.use(createAuthRoutes(opts.authModule));
   router.use(createStatusRoutes(opts.authModule, opts.instanceManager));
   router.use(createHookRoutes(opts.instanceManager));

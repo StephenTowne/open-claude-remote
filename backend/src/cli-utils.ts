@@ -14,6 +14,10 @@ export interface CliOptions {
   claudeArgs: string[];
   /** attach subcommand */
   attach?: string;
+  /** list subcommand */
+  list?: boolean;
+  /** status subcommand */
+  status?: boolean;
   /** update subcommand */
   update?: boolean;
   /** stop subcommand */
@@ -38,6 +42,14 @@ export function parseCliArgs(argv: string[]): CliOptions {
         throw new Error('attach requires a target instance (name or id)');
       }
       options.attach = argv[3];
+      return options;
+    }
+    if (firstArg === 'list') {
+      options.list = true;
+      return options;
+    }
+    if (firstArg === 'status') {
+      options.status = true;
       return options;
     }
     if (firstArg === 'update') {
@@ -101,11 +113,15 @@ Claude Code Remote - Control Claude Code from your mobile browser over LAN
 Usage:
   claude-remote [options] [--] [claude args...]
   claude-remote attach <name|id>
+  claude-remote list
+  claude-remote status
   claude-remote stop
   claude-remote update
 
 Subcommands:
   attach <name|id>     Attach to a running instance (by name or id)
+  list                 List all running instances
+  status               Show daemon status (PID, port, uptime, instance count)
   stop                 Stop the running daemon and all instances
   update               Update to the latest version (auto-detects npm/pnpm)
 

@@ -1,4 +1,5 @@
 import { DEFAULT_PORT } from '#shared';
+import type { InstanceInfo } from '#shared';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { getOrCreateSharedToken } from '../registry/shared-token.js';
@@ -9,6 +10,19 @@ const DAEMON_BASE_URL = `http://localhost:${DEFAULT_PORT}`;
 let cachedCookie: string | null = null;
 let cookieExpiry: number = 0;
 const COOKIE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Daemon 状态信息
+ */
+export interface DaemonStatus {
+  status: 'ok';
+  version: string;
+  pid: number;
+  port: number;
+  startedAt: string | null;
+  uptime: number | null;
+  instanceCount: number;
+}
 
 /**
  * 检查 daemon 是否正在运行
@@ -22,6 +36,19 @@ export async function isDaemonRunning(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * 获取 daemon 状态信息
+ */
+export async function getDaemonStatus(): Promise<DaemonStatus> {
+  const res = await fetch(`${DAEMON_BASE_URL}/api/health`, {
+    signal: AbortSignal.timeout(2000),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to get daemon status: ${res.status}`);
+  }
+  return res.json();
 }
 
 /**
@@ -141,7 +168,7 @@ export async function createInstance(options: {
 /**
  * 获取运行中的实例列表
  */
-export async function listInstances(): Promise<Array<{ instanceId: string; name: string; cwd: string }>> {
+export async function listInstances(): Promise<InstanceInfo[]> {
   const cookie = await getAuthCookie();
 
   const res = await fetch(`${DAEMON_BASE_URL}/api/instances`, {

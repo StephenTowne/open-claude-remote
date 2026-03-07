@@ -29,7 +29,7 @@ export function useInstances() {
           initializedRef.current = true;
           const currentActive = useInstanceStore.getState().activeInstanceId;
           if (!currentActive) {
-            const current = instances.find(i => i.isCurrent);
+            const current = instances.find(i => i.isCurrent) ?? instances[0];
             if (current) {
               setActiveInstanceId(current.instanceId);
             }

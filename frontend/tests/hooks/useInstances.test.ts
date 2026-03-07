@@ -134,6 +134,31 @@ describe('useInstances', () => {
     });
   });
 
+  it('should fallback to first instance when no isCurrent instance exists', async () => {
+    mockedFetchInstances.mockResolvedValue([
+      {
+        instanceId: 'inst-1',
+        name: 'First',
+        cwd: '/tmp',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        isCurrent: false,
+      },
+      {
+        instanceId: 'inst-2',
+        name: 'Second',
+        cwd: '/tmp',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        isCurrent: false,
+      },
+    ]);
+
+    renderHook(() => useInstances());
+
+    await waitFor(() => {
+      expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
+    });
+  });
+
   it('should silently handle fetch errors', async () => {
     mockedFetchInstances.mockRejectedValue(new Error('Network error'));
 

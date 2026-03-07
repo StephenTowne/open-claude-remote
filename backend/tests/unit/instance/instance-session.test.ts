@@ -100,7 +100,7 @@ describe('InstanceSession', () => {
   });
 
   it('should set instance URL', () => {
-    session.setInstanceUrl('http://192.168.1.1:6666');
+    session.setInstanceUrl('http://192.168.1.1:8866');
     // No direct getter, but should not throw
   });
 

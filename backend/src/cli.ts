@@ -60,6 +60,18 @@ void (async () => {
       return;
     }
 
+    // Handle list subcommand
+    if (options.list) {
+      await handleListCommand();
+      return;
+    }
+
+    // Handle status subcommand
+    if (options.status) {
+      await handleStatusCommand();
+      return;
+    }
+
     // Handle update subcommand
     if (options.update) {
       const { updatePackage } = await import('./update.js');
@@ -243,4 +255,135 @@ async function attachToNewInstance(options: import('./cli-utils.js').CliOptions)
       resolve();
     });
   });
+}
+
+/**
+ * Handle 'list' subcommand - show all running instances
+ */
+async function handleListCommand(): Promise<void> {
+  const { listInstances, isDaemonRunning } = await import('./daemon/daemon-client.js');
+
+  if (!(await isDaemonRunning())) {
+    process.stderr.write('No running daemon found.\n');
+    process.exit(1);
+  }
+
+  let instances: import('#shared').InstanceInfo[];
+  try {
+    instances = await listInstances();
+  } catch (err) {
+    process.stderr.write(`Failed to list instances: ${err instanceof Error ? err.message : err}\n`);
+    process.exit(1);
+  }
+
+  if (instances.length === 0) {
+    process.stdout.write('No running instances.\n');
+    return;
+  }
+
+  // Format output as table
+  const formatRelativeTime = (isoString: string): string => {
+    const diffMs = Date.now() - new Date(isoString).getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) return `${diffDays}d ago`;
+    if (diffHours > 0) return `${diffHours}h ago`;
+    if (diffMins > 0) return `${diffMins}m ago`;
+    return 'just now';
+  };
+
+  process.stdout.write(`\nInstances (${instances.length} total):\n\n`);
+
+  // 计算各列动态宽度
+  const idWidth = 8;
+  const nameWidth = Math.max(12, ...instances.map(i => i.name.length));
+  const statusWidth = Math.max(8, ...instances.map(i => (i.status ?? 'unknown').length));
+  const clientsWidth = 7;
+  const startedWidth = 10;
+
+  // Table header
+  const header = [
+    'ID'.padEnd(idWidth),
+    'NAME'.padEnd(nameWidth),
+    'STATUS'.padEnd(statusWidth),
+    'CLIENTS'.padEnd(clientsWidth),
+    'STARTED'.padEnd(startedWidth),
+    'CWD',
+  ].join('  ');
+  process.stdout.write(`  ${header}\n`);
+
+  // Table rows
+  for (const inst of instances) {
+    const row = [
+      inst.instanceId.substring(0, idWidth).padEnd(idWidth),
+      inst.name.padEnd(nameWidth),
+      (inst.status ?? 'unknown').padEnd(statusWidth),
+      String(inst.clientCount ?? 0).padEnd(clientsWidth),
+      formatRelativeTime(inst.startedAt).padEnd(startedWidth),
+      inst.cwd,
+    ].join('  ');
+    process.stdout.write(`  ${row}\n`);
+  }
+
+  process.stdout.write('\n');
+}
+
+/**
+ * Handle 'status' subcommand - show daemon status
+ */
+async function handleStatusCommand(): Promise<void> {
+  const { getDaemonStatus, isDaemonRunning } = await import('./daemon/daemon-client.js');
+
+  if (!(await isDaemonRunning())) {
+    process.stderr.write('No running daemon found.\n');
+    process.exit(1);
+  }
+
+  let status: import('./daemon/daemon-client.js').DaemonStatus;
+  try {
+    status = await getDaemonStatus();
+  } catch (err) {
+    process.stderr.write(`Failed to get daemon status: ${err instanceof Error ? err.message : err}\n`);
+    process.exit(1);
+  }
+
+  const formatUptime = (seconds: number | null): string => {
+    if (seconds === null) return 'unknown';
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hours}h ${mins}m ${secs}s`;
+  };
+
+  const formatDateTime = (isoString: string | null): string => {
+    if (!isoString) return 'unknown';
+    return new Date(isoString).toLocaleString();
+  };
+
+  process.stdout.write('\nDaemon Status:\n');
+  process.stdout.write(`  Status:     running\n`);
+  process.stdout.write(`  Version:    ${status.version}\n`);
+  process.stdout.write(`  PID:        ${status.pid}\n`);
+  process.stdout.write(`  Port:       ${status.port}\n`);
+  process.stdout.write(`  Started:    ${formatRelativeTime(status.startedAt)} (${formatDateTime(status.startedAt)})\n`);
+  process.stdout.write(`  Uptime:     ${formatUptime(status.uptime)}\n`);
+  process.stdout.write(`  Instances:  ${status.instanceCount}\n\n`);
+}
+
+/**
+ * Format relative time for status command
+ */
+function formatRelativeTime(isoString: string | null): string {
+  if (!isoString) return 'unknown';
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays > 0) return `${diffDays}d ago`;
+  if (diffHours > 0) return `${diffHours}h ago`;
+  if (diffMins > 0) return `${diffMins}m ago`;
+  return 'just now';
 }

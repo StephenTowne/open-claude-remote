@@ -85,4 +85,24 @@ describe('parseCliArgs', () => {
     expect(options.claudeArgs).toContain('--port');
     expect(options.claudeArgs).toContain('8080');
   });
+
+  it('should parse "list" subcommand', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'list']);
+    expect(options.list).toBe(true);
+  });
+
+  it('should not pass "list" to claudeArgs', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'list']);
+    expect(options.claudeArgs).toEqual([]);
+  });
+
+  it('should parse "status" subcommand', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'status']);
+    expect(options.status).toBe(true);
+  });
+
+  it('should not pass "status" to claudeArgs', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'status']);
+    expect(options.claudeArgs).toEqual([]);
+  });
 });

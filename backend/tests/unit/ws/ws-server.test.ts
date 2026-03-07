@@ -15,7 +15,7 @@ function createMockAuthModule() {
 function createMockHttpServer() {
   const emitter = new EventEmitter();
   return Object.assign(emitter, {
-    address: vi.fn(() => ({ port: 6666 })),
+    address: vi.fn(() => ({ port: 8866 })),
   });
 }
 

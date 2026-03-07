@@ -55,7 +55,7 @@ Scan the QR code shown in your terminal with your phone. The auth token is auto-
 
 ### Multi-Instance
 - Run multiple `claude-remote` instances simultaneously in a single daemon process
-- Fixed port 6666 — all instances share same origin, no cross-port auth needed
+- Fixed port 8866 — all instances share same origin, no cross-port auth needed
 - Browser tab bar for switching — no re-authentication needed
 - Auto-switch when an instance goes offline
 - Spawn new instances from the web UI ("+" button)
@@ -142,6 +142,12 @@ claude-remote --token my-secret-token
 claude-remote attach my-project  # by name
 claude-remote attach 550e8400     # by instance ID prefix
 
+# List all running instances
+claude-remote list
+
+# Show daemon status (PID, port, uptime, instance count)
+claude-remote status
+
 # Stop the daemon and all instances
 claude-remote stop
 
@@ -183,7 +189,7 @@ Config file: `~/.claude-remote/settings.json` (legacy `config.json` is auto-migr
 | `settingsDirs` | string[] | ["~/.claude/", "~/.claude-remote/settings/"] | Directories to scan for settings files |
 | `notifications` | object | — | Notification channels config (see below) |
 
-> **Note**: Port is fixed at 6666. All instances run in a single daemon process.
+> **Note**: Port is fixed at 8866. All instances run in a single daemon process.
 
 **Notification channel config:**
 
@@ -400,7 +406,7 @@ Install build tools:
 
 ### Phone can't connect?
 
-1. Check your PC firewall allows port 6666
+1. Check your PC firewall allows port 8866
 2. Verify the URL shows the correct LAN IP
 3. If using a VPN, try setting the `host` option explicitly
 

@@ -556,14 +556,14 @@ describe('ConsolePage', () => {
         type: 'ip_changed',
         oldIp: '192.168.1.10',
         newIp: '192.168.1.20',
-        newUrl: 'http://192.168.1.20:6666',
+        newUrl: 'http://192.168.1.20:8866',
       });
     });
 
     expect(useAppStore.getState().ipChangeInfo).toEqual({
       oldIp: '192.168.1.10',
       newIp: '192.168.1.20',
-      newUrl: 'http://192.168.1.20:6666',
+      newUrl: 'http://192.168.1.20:8866',
     });
   });
 

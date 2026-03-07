@@ -308,7 +308,7 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
   // Detect IP for display (try private IP first, then any non-loopback)
   const displayIp = detectLanIp() ?? detectNonLoopbackIp() ?? '127.0.0.1';
 
-  // 端口固定为 DEFAULT_PORT (6666)
+  // 端口固定为 DEFAULT_PORT (8866)
   const port = DEFAULT_PORT;
 
   // claudeArgs 合并策略：配置文件参数 + CLI 参数，去重以防止重复
