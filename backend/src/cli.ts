@@ -136,8 +136,11 @@ void (async () => {
       // Daemon already running - check version compatibility
       const versionCheck = await checkDaemonVersion();
 
+      // Collect warnings to display in banner
+      const versionWarnings: string[] = [];
+
       if (versionCheck.needsRestart) {
-        process.stderr.write(`Daemon version outdated: ${versionCheck.daemonVersion} → ${versionCheck.cliVersion}\n`);
+        const versionMsg = `Daemon outdated: ${versionCheck.daemonVersion} → ${versionCheck.cliVersion}`;
 
         const result = await smartRestartDaemon();
 
@@ -145,13 +148,18 @@ void (async () => {
           process.stderr.write('Daemon restarted with latest version.\n');
           // After restart, daemon PID needs to be fetched from status API
         } else if (result.reason === 'has_instances') {
-          process.stderr.write('\n⚠️  Daemon has running instances. Restart manually with:\n');
-          process.stderr.write('   claude-remote stop && claude-remote\n\n');
+          versionWarnings.push(versionMsg);
+          versionWarnings.push('Instances are running on old version.');
+          versionWarnings.push('Run: claude-remote stop');
         } else if (result.reason === 'stop_failed') {
-          process.stderr.write('\n⚠️  Failed to stop daemon. Please restart manually:\n');
-          process.stderr.write('   claude-remote stop && claude-remote\n\n');
+          versionWarnings.push(versionMsg);
+          versionWarnings.push('Failed to stop daemon.');
+          versionWarnings.push('Run: claude-remote stop');
         }
       }
+
+      // Store warnings for banner display
+      process.env.CLI_VERSION_WARNINGS = JSON.stringify(versionWarnings);
     }
 
     // Get config and daemon PID for banner display
@@ -173,9 +181,14 @@ void (async () => {
 
     // Attach as client (create instance + WS connect)
     // Returns instance info for banner display
+    const versionWarnings = process.env.CLI_VERSION_WARNINGS
+      ? JSON.parse(process.env.CLI_VERSION_WARNINGS) as string[]
+      : [];
+
     await attachToNewInstance(options, {
       config,
       daemonPid: daemonPid ?? 0,
+      versionWarnings,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -193,6 +206,7 @@ async function attachToNewInstance(
   context: {
     config: import('./config.js').AppConfig;
     daemonPid: number;
+    versionWarnings?: string[];
   }
 ): Promise<void> {
   const { DEFAULT_PORT } = await import('#shared');
@@ -229,6 +243,8 @@ async function attachToNewInstance(
     instanceId,
     logDir: context.config.logDir,
     pid: context.daemonPid,
+    warnings: context.versionWarnings,
+    showExitHint: false,
   });
 
   // Create VirtualPtyManager and TerminalRelay (client mode)
