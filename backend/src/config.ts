@@ -1,5 +1,6 @@
 import {
   DEFAULT_PORT,
+  SESSION_COOKIE_NAME,
   DEFAULT_SESSION_TTL_MS,
   DEFAULT_AUTH_RATE_LIMIT,
   DEFAULT_MAX_BUFFER_LINES,
@@ -14,7 +15,7 @@ import {
 } from '#shared';
 import { basename, dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { detectLanIp, detectNonLoopbackIp } from './utils/network.js';
@@ -22,13 +23,11 @@ import { logger } from './logger/logger.js';
 import { withFileLockAsync } from './utils/file-lock.js';
 
 /**
- * 用户配置文件结构 (~/.claude-remote/config.json)
- * 这些是用户可以持久化的配置项
+ * 全局用户配置文件结构 (~/.claude-remote/settings.json)
+ * 公共配置，所有实例共享
  */
 export interface UserConfig {
   // === 服务配置 ===
-  /** 服务端口 (默认: 3000) */
-  port?: number;
   /** 绑定地址 (默认: 0.0.0.0) */
   host?: string;
   /** 认证 Token (默认: 自动生成共享 Token) */
@@ -45,7 +44,7 @@ export interface UserConfig {
   // === 运行时配置 ===
   /** Session TTL 毫秒数 (默认: 24小时) */
   sessionTtlMs?: number;
-  /** 认证速率限制 (每分钟每 IP 次数, 默认: 5) */
+  /** 认证速率限制 (每分钟每 IP 次数, 默认: 20) */
   authRateLimit?: number;
   /** 输出缓冲区最大行数 (默认: 10000) */
   maxBufferLines?: number;
@@ -62,7 +61,7 @@ export interface UserConfig {
   /** 预设工作目录列表 */
   workspaces?: string[];
 
-  // === 多渠道通知配置 ===
+  // === 多渠道通知配置（仅公共） ===
   /** 多渠道通知配置 */
   notifications?: NotificationConfigs;
 
@@ -72,7 +71,21 @@ export interface UserConfig {
 }
 
 /**
- * 运行时配置结构 (融合用户配置 + CLI 参数 + 默认值)
+ * 工作路径配置 (<cwd>/.claude-remote/settings.json)
+ * 项目级配置，覆盖公共配置中的对应字段
+ * 注意：token、notifications 不在此接口（仅公共配置管理）
+ */
+export interface WorkdirConfig {
+  claudeCommand?: string;
+  claudeArgs?: string[];
+  instanceName?: string;
+  maxBufferLines?: number;
+  shortcuts?: Array<{ label: string; data: string; enabled: boolean; desc?: string }>;
+  commands?: Array<{ label: string; command: string; enabled: boolean; desc?: string }>;
+}
+
+/**
+ * 运行时配置结构 (融合全局配置 + 工作路径配置 + CLI 参数 + 默认值)
  */
 export interface AppConfig {
   port: number;
@@ -90,8 +103,10 @@ export interface AppConfig {
   sessionCookieName: string;
 }
 
-/** 配置文件名 */
-const CONFIG_FILENAME = 'config.json';
+/** 配置文件名（新） */
+const CONFIG_FILENAME = 'settings.json';
+/** 旧配置文件名（用于迁移） */
+const LEGACY_CONFIG_FILENAME = 'config.json';
 
 /**
  * 获取用户配置目录路径 (~/.claude-remote/)
@@ -108,12 +123,33 @@ export function getUserConfigPath(): string {
 }
 
 /**
- * 加载用户配置文件
+ * 迁移旧版 config.json → settings.json（同步，仅在启动阶段调用）
+ */
+function migrateConfigFile(configDir: string): void {
+  const oldPath = resolve(configDir, LEGACY_CONFIG_FILENAME);
+  const newPath = resolve(configDir, CONFIG_FILENAME);
+
+  if (existsSync(oldPath) && !existsSync(newPath)) {
+    try {
+      renameSync(oldPath, newPath);
+      logger.info({ oldPath, newPath }, 'Migrated config.json to settings.json');
+    } catch (err) {
+      logger.warn({ oldPath, newPath, err }, 'Failed to migrate config.json to settings.json');
+    }
+  }
+}
+
+/**
+ * 加载全局用户配置文件
  * @param configDir 配置目录路径 (默认: ~/.claude-remote/)
  * @returns 用户配置对象，文件不存在或解析失败返回空对象
  */
 export function loadUserConfig(configDir?: string): UserConfig {
   const dir = configDir ?? getUserConfigDir();
+
+  // 自动迁移旧版 config.json → settings.json
+  migrateConfigFile(dir);
+
   const configPath = resolve(dir, CONFIG_FILENAME);
 
   if (!existsSync(configPath)) {
@@ -151,6 +187,13 @@ export function loadUserConfig(configDir?: string): UserConfig {
       needsSave = true;
     }
 
+    // 迁移旧版 port 字段（不再可配置，直接移除）
+    if (rawConfig.port !== undefined) {
+      delete rawConfig.port;
+      needsSave = true;
+      logger.info('Removed deprecated port field from config');
+    }
+
     // 如果有迁移发生，保存更新后的配置
     if (needsSave) {
       writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
@@ -166,33 +209,109 @@ export function loadUserConfig(configDir?: string): UserConfig {
 }
 
 /**
+ * 加载工作路径配置 (<cwd>/.claude-remote/settings.json)
+ * @param cwd 工作目录路径
+ * @returns 工作路径配置对象，文件不存在或解析失败返回空对象
+ */
+export function loadWorkdirConfig(cwd: string): WorkdirConfig {
+  const configPath = resolve(cwd, CLAUDE_REMOTE_DIR, CONFIG_FILENAME);
+
+  if (!existsSync(configPath)) {
+    return {};
+  }
+
+  try {
+    const content = readFileSync(configPath, 'utf-8');
+    const raw = JSON.parse(content) as Record<string, unknown>;
+
+    // 只提取 WorkdirConfig 允许的字段，忽略 token/notifications 等全局字段
+    const config: WorkdirConfig = {};
+    if (typeof raw.claudeCommand === 'string') config.claudeCommand = raw.claudeCommand;
+    if (Array.isArray(raw.claudeArgs)) config.claudeArgs = raw.claudeArgs;
+    if (typeof raw.instanceName === 'string') config.instanceName = raw.instanceName;
+    if (typeof raw.maxBufferLines === 'number') config.maxBufferLines = raw.maxBufferLines;
+    if (Array.isArray(raw.shortcuts)) config.shortcuts = raw.shortcuts;
+    if (Array.isArray(raw.commands)) config.commands = raw.commands;
+
+    logger.debug({ configPath, keys: Object.keys(config) }, 'Workdir config loaded');
+    return config;
+  } catch (err) {
+    logger.warn({ configPath, err }, 'Failed to parse workdir config, ignoring');
+    return {};
+  }
+}
+
+/**
+ * 合并全局配置和工作路径配置
+ * 标量字段：工作路径覆盖全局
+ * 数组字段：合并去重
+ */
+export function mergeConfigs(global: UserConfig, workdir: WorkdirConfig): UserConfig {
+  const merged = { ...global };
+
+  // 标量字段：工作路径覆盖全局
+  if (workdir.claudeCommand !== undefined) merged.claudeCommand = workdir.claudeCommand;
+  if (workdir.instanceName !== undefined) merged.instanceName = workdir.instanceName;
+  if (workdir.maxBufferLines !== undefined) merged.maxBufferLines = workdir.maxBufferLines;
+
+  // 数组字段：合并去重
+  if (workdir.claudeArgs && workdir.claudeArgs.length > 0) {
+    const globalArgs = merged.claudeArgs ?? [];
+    merged.claudeArgs = Array.from(new Set([...globalArgs, ...workdir.claudeArgs]));
+  }
+
+  if (workdir.shortcuts && workdir.shortcuts.length > 0) {
+    // shortcuts 按 label 去重（工作路径优先）
+    const globalShortcuts = merged.shortcuts ?? [];
+    const workdirLabels = new Set(workdir.shortcuts.map(s => s.label));
+    const nonConflicting = globalShortcuts.filter(s => !workdirLabels.has(s.label));
+    merged.shortcuts = [...workdir.shortcuts, ...nonConflicting];
+  }
+
+  if (workdir.commands && workdir.commands.length > 0) {
+    // commands 按 label 去重（工作路径优先）
+    const globalCommands = merged.commands ?? [];
+    const workdirLabels = new Set(workdir.commands.map(c => c.label));
+    const nonConflicting = globalCommands.filter(c => !workdirLabels.has(c.label));
+    merged.commands = [...workdir.commands, ...nonConflicting];
+  }
+
+  return merged;
+}
+
+/**
  * CLI 覆盖参数 (优先级最高)
  */
 export interface CliOverrides {
-  port?: number;
   host?: string;
   token?: string;
   instanceName?: string;
   claudeArgs?: string[];
   noTerminal?: boolean;
+  /** daemon 模式：跳过 firstSession/relay/stdin/banner，仅启动 HTTP+WS 服务 */
+  daemonMode?: boolean;
 }
 
 /**
  * 加载运行时配置
- * 优先级: CLI 参数 > 用户配置文件 > 默认值
+ * 优先级: CLI 参数 > 工作路径配置 > 全局配置 > 默认值
  *
  * @param cliOverrides CLI 传入的覆盖参数
- * @param configDir 配置目录路径 (默认: ~/.claude-remote/)
+ * @param configDir 全局配置目录路径 (默认: ~/.claude-remote/)
  */
 export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string): AppConfig {
-  const userConfig = loadUserConfig(configDir);
+  const globalConfig = loadUserConfig(configDir);
+  const claudeCwd = globalConfig.claudeCwd ?? process.cwd();
+
+  // 加载工作路径配置并合并
+  const workdirConfig = loadWorkdirConfig(claudeCwd);
+  const userConfig = mergeConfigs(globalConfig, workdirConfig);
 
   // Detect IP for display (try private IP first, then any non-loopback)
   const displayIp = detectLanIp() ?? detectNonLoopbackIp() ?? '127.0.0.1';
 
-  // 优先级: CLI > 用户配置 > 默认值
-  const port = cliOverrides.port ?? userConfig.port ?? DEFAULT_PORT;
-  const claudeCwd = userConfig.claudeCwd ?? process.cwd();
+  // 端口固定为 DEFAULT_PORT (8866)
+  const port = DEFAULT_PORT;
 
   // claudeArgs 合并策略：配置文件参数 + CLI 参数，去重以防止重复
   const userArgs = userConfig.claudeArgs ?? [];
@@ -228,7 +347,7 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
     maxBufferLines: userConfig.maxBufferLines ?? DEFAULT_MAX_BUFFER_LINES,
     instanceName: cliOverrides.instanceName ?? userConfig.instanceName ?? basename(claudeCwd),
     logDir: process.env.LOG_DIR ?? resolve(homedir(), CLAUDE_REMOTE_DIR, 'logs'),
-    sessionCookieName: createSessionCookieName(port),
+    sessionCookieName: SESSION_COOKIE_NAME,
   };
 
   logger.info({
@@ -244,10 +363,6 @@ export function loadConfig(cliOverrides: CliOverrides = {}, configDir?: string):
   }, 'Configuration loaded');
 
   return config;
-}
-
-export function createSessionCookieName(port: number): string {
-  return `session_id_p${port}`;
 }
 
 /** 默认快捷键列表 - 从 shared 包导入 */
@@ -274,11 +389,11 @@ export function fillDefaultCommands(config: UserConfig): UserConfig {
 
 /**
  * 生成 Claude Code 专属配置（包含 hook URL）
- * @param port 服务端口
+ * @param instanceId 实例 ID，用于路由 hook 到正确的实例
  * @param existingSettings 可选的现有 settings 对象，会与 hooks 合并
  */
-export function createClaudeSettings(port: number, existingSettings?: Record<string, unknown>): Record<string, unknown> {
-  const hookUrl = `http://localhost:${port}/api/hook`;
+export function createClaudeSettings(instanceId: string, existingSettings?: Record<string, unknown>): Record<string, unknown> {
+  const hookUrl = `http://localhost:${DEFAULT_PORT}/api/hook/${instanceId}`;
   // 使用 -d @- 从 stdin 读取 hook payload，避免 shell 转义问题
   const hookCommand = `curl -s -X POST ${hookUrl} -H 'Content-Type: application/json' -d @-`;
 
@@ -329,12 +444,12 @@ export function createClaudeSettings(port: number, existingSettings?: Record<str
 
 /**
  * 保存 Claude Code settings 到文件，返回文件路径
- * 文件保存在 ~/.claude-remote/settings/{port}.json
+ * 文件保存在 ~/.claude-remote/settings/{instanceId}.json
  * 注意：使用同步写入，仅在启动阶段调用
  */
 export function saveClaudeSettings(
   settings: Record<string, unknown>,
-  port: number,
+  instanceId: string,
   sharedConfigDir: string
 ): string {
   const settingsDir = resolve(sharedConfigDir, SETTINGS_DIR);
@@ -344,10 +459,10 @@ export function saveClaudeSettings(
     mkdirSync(settingsDir, { recursive: true });
   }
 
-  const settingsPath = resolve(settingsDir, `${port}.json`);
+  const settingsPath = resolve(settingsDir, `${instanceId}.json`);
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 
-  logger.info({ settingsPath, port }, 'Claude settings saved to file');
+  logger.info({ settingsPath, instanceId }, 'Claude settings saved to file');
   return settingsPath;
 }
 
@@ -554,13 +669,18 @@ function isSafeSettingsFilename(filename: string): boolean {
 /**
  * 检查文件名是否为有效的 settings 文件
  * - 以 "settings" 开头（不区分大小写）
- * - 或者为有效的自定义配置文件名（非纯数字）
+ * - 或者为有效的自定义配置文件名（非纯数字，非 UUID）
  */
 function isValidSettingsFilename(filename: string): boolean {
   const baseName = filename.slice(0, -5); // 去掉 .json 后缀
 
-  // 排除纯数字文件名（如 3000.json，这些是端口配置）
+  // 排除纯数字文件名（如 3000.json，旧版端口配置）
   if (/^\d+$/.test(baseName)) {
+    return false;
+  }
+
+  // 排除 UUID 文件名（instanceId 的 settings 文件）
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(baseName)) {
     return false;
   }
 

@@ -96,6 +96,7 @@ export class TerminalRelay {
 
   /**
    * Stop relaying and restore terminal state.
+   * Order: setRawMode(false) → resume() → pause() to ensure terminal state is fully restored.
    */
   stop(): void {
     if (this.stdinHandler) {
@@ -108,7 +109,12 @@ export class TerminalRelay {
     }
 
     if (process.stdin.isTTY) {
+      // Restore terminal state in correct order:
+      // 1. Disable raw mode first (so terminal processes special chars again)
+      // 2. Resume to allow any pending data to flow
+      // 3. Pause to clean up the stream
       process.stdin.setRawMode(this.wasRaw);
+      process.stdin.resume();
       process.stdin.pause();
     }
 

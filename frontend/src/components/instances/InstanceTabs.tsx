@@ -177,7 +177,7 @@ export function InstanceTabs({ onSwitch, onCopySuccess }: InstanceTabsProps) {
                   color: 'var(--text-tertiary, var(--text-secondary))',
                   opacity: 0.7,
                 }}>
-                  :{inst.port}
+                  #{inst.instanceId.substring(0, 6)}
                 </span>
               </button>
             );

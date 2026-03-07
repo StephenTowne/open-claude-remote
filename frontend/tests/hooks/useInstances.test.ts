@@ -18,7 +18,6 @@ describe('useInstances', () => {
     useInstanceStore.setState({
       instances: [],
       activeInstanceId: null,
-      currentHostOverride: null,
     });
   });
 
@@ -27,9 +26,6 @@ describe('useInstances', () => {
       {
         instanceId: 'inst-1',
         name: 'Test',
-        host: '127.0.0.1',
-        port: 3000,
-        pid: 12345,
         cwd: '/tmp',
         startedAt: '2026-01-01T00:00:00.000Z',
         isCurrent: true,
@@ -48,9 +44,6 @@ describe('useInstances', () => {
       {
         instanceId: 'inst-1',
         name: 'Test',
-        host: '127.0.0.1',
-        port: 3000,
-        pid: 12345,
         cwd: '/tmp',
         startedAt: '2026-01-01T00:00:00.000Z',
         isCurrent: true,
@@ -58,9 +51,6 @@ describe('useInstances', () => {
       {
         instanceId: 'inst-2',
         name: 'Other',
-        host: '127.0.0.1',
-        port: 3001,
-        pid: 12346,
         cwd: '/tmp',
         startedAt: '2026-01-01T00:00:00.000Z',
         isCurrent: false,
@@ -107,9 +97,6 @@ describe('useInstances', () => {
       {
         instanceId: 'inst-1',
         name: 'Test',
-        host: '127.0.0.1',
-        port: 3000,
-        pid: 12345,
         cwd: '/tmp',
         startedAt: '2026-01-01T00:00:00.000Z',
         isCurrent: true,
@@ -133,9 +120,6 @@ describe('useInstances', () => {
       {
         instanceId: 'inst-1',
         name: 'Test',
-        host: '127.0.0.1',
-        port: 3000,
-        pid: 12345,
         cwd: '/tmp',
         startedAt: '2026-01-01T00:00:00.000Z',
         isCurrent: true,
@@ -147,6 +131,31 @@ describe('useInstances', () => {
 
     await waitFor(() => {
       expect(useInstanceStore.getState().instances).toEqual(mockInstances);
+    });
+  });
+
+  it('should fallback to first instance when no isCurrent instance exists', async () => {
+    mockedFetchInstances.mockResolvedValue([
+      {
+        instanceId: 'inst-1',
+        name: 'First',
+        cwd: '/tmp',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        isCurrent: false,
+      },
+      {
+        instanceId: 'inst-2',
+        name: 'Second',
+        cwd: '/tmp',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        isCurrent: false,
+      },
+    ]);
+
+    renderHook(() => useInstances());
+
+    await waitFor(() => {
+      expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
     });
   });
 

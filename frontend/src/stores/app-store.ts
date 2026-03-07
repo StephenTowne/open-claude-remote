@@ -16,6 +16,11 @@ interface AppState {
   setAuthenticated: (value: boolean) => void;
   setCheckingAuth: (value: boolean) => void;
 
+  // Server availability
+  // null = not checked yet, true = server is up, false = server unreachable
+  serverAvailable: boolean | null;
+  setServerAvailable: (value: boolean | null) => void;
+
   // Connection
   connectionStatus: ConnectionStatus;
   instanceConnectionStatus: Record<string, ConnectionStatus>;
@@ -46,6 +51,9 @@ export const useAppStore = create<AppState>((set) => ({
   isCheckingAuth: true, // Start with checking state
   setAuthenticated: (value) => set({ isAuthenticated: value, isCheckingAuth: false }),
   setCheckingAuth: (value) => set({ isCheckingAuth: value }),
+
+  serverAvailable: null,
+  setServerAvailable: (value) => set({ serverAvailable: value }),
 
   connectionStatus: 'disconnected',
   instanceConnectionStatus: {},

@@ -3,15 +3,10 @@ import { renderHook, act } from '@testing-library/react';
 import { useWebSocket } from '../../src/hooks/useWebSocket.js';
 import { useAppStore } from '../../src/stores/app-store.js';
 import { authenticate } from '../../src/services/api-client.js';
-import { authenticateToInstance } from '../../src/services/instance-api.js';
 import { loadToken } from '../../src/services/token-storage.js';
 
 vi.mock('../../src/services/api-client.js', () => ({
   authenticate: vi.fn(),
-}));
-
-vi.mock('../../src/services/instance-api.js', () => ({
-  authenticateToInstance: vi.fn(),
 }));
 
 vi.mock('../../src/services/token-storage.js', () => ({
@@ -21,7 +16,6 @@ vi.mock('../../src/services/token-storage.js', () => ({
 }));
 
 const mockedAuthenticate = vi.mocked(authenticate);
-const mockedAuthenticateToInstance = vi.mocked(authenticateToInstance);
 const mockedLoadToken = vi.mocked(loadToken);
 
 type MockSocket = {
@@ -231,15 +225,14 @@ describe('useWebSocket connection isolation', () => {
     expect(useAppStore.getState().connectionStatus).toBe('connected');
   });
 
-  it('should re-authenticate against wsUrl target instance on socket close', async () => {
+  it('should re-authenticate with same-origin authenticate() on socket close', async () => {
     mockedLoadToken.mockReturnValue('cached-token-123');
-    mockedAuthenticateToInstance.mockResolvedValue(true);
+    mockedAuthenticate.mockResolvedValue(true);
 
     const { result } = renderHook(() =>
-      useWebSocket(vi.fn(), 'ws://10.0.0.8:3000/ws', 'instance-test'),
+      useWebSocket(vi.fn(), 'ws://localhost:8866/ws/inst-1', 'instance-test'),
     );
 
-    // connect() 现在是异步的，需要等待认证完成
     await act(async () => {
       result.current.connect();
     });
@@ -256,39 +249,23 @@ describe('useWebSocket connection isolation', () => {
       socket.onclose?.();
     });
 
-    // 初始连接时认证一次 + onclose 时认证一次 = 共 2 次
-    expect(mockedAuthenticateToInstance).toHaveBeenCalledTimes(2);
-    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('10.0.0.8', 3000, 'cached-token-123');
-    expect(mockedAuthenticate).not.toHaveBeenCalled();
+    // 同源认证
+    expect(mockedAuthenticate).toHaveBeenCalledWith('cached-token-123');
     expect(useAppStore.getState().instanceConnectionStatus['instance-test']).toBe('disconnected');
   });
 
-  it('should still reconnect even when target-instance re-authentication fails', async () => {
-    mockedLoadToken.mockReturnValue('invalid-token');
-    mockedAuthenticateToInstance.mockResolvedValue(false);
-
+  it('should NOT connect when wsUrl is undefined', async () => {
     const { result } = renderHook(() =>
-      useWebSocket(vi.fn(), 'ws://example:3000/ws', 'instance-test'),
+      useWebSocket(vi.fn(), undefined, 'no-url-instance'),
     );
 
-    // connect() 是异步的，认证失败时会安排重连而不是创建 WebSocket
     await act(async () => {
       result.current.connect();
     });
 
-    // 认证失败时状态为 disconnected，且会安排重连
-    expect(useAppStore.getState().instanceConnectionStatus['instance-test']).toBe('connecting');
-
-    // 第一次重连会再次尝试认证（仍失败）
-    await act(async () => {
-      vi.advanceTimersByTime(1000);
-    });
-
-    // 认证被调用了两次（初始 + 第一次重连）
-    expect(mockedAuthenticateToInstance).toHaveBeenCalledTimes(2);
-    expect(mockedAuthenticateToInstance).toHaveBeenCalledWith('example', 3000, 'invalid-token');
-
-    // 没有 WebSocket 被创建（因为认证一直失败）
+    // 不应该创建任何 WebSocket 连接
     expect(sockets.length).toBe(0);
+    // 状态应该是 disconnected（不是 connecting 或 connected）
+    expect(useAppStore.getState().instanceConnectionStatus['no-url-instance']).toBe('disconnected');
   });
 });

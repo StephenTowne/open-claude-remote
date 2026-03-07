@@ -1,19 +1,27 @@
 import { Router } from 'express';
-import type { SessionController } from '../session/session-controller.js';
 import { AuthModule } from '../auth/auth-middleware.js';
+import type { InstanceManager } from '../instance/instance-manager.js';
 
-export function createStatusRoutes(authModule: AuthModule, getController: () => SessionController | null): Router {
+export function createStatusRoutes(authModule: AuthModule, instanceManager: InstanceManager): Router {
   const router = Router();
 
+  // Session validation endpoint - checks if user is authenticated
   router.get('/status', authModule.requireAuth, (_req, res) => {
-    const controller = getController();
-    if (!controller) {
-      res.json({ status: 'not_started' });
+    res.json({ status: 'ok' });
+  });
+
+  router.get('/status/:instanceId', authModule.requireAuth, (req, res) => {
+    const instanceId = req.params.instanceId as string;
+    const session = instanceManager.getInstance(instanceId);
+
+    if (!session) {
+      res.json({ status: 'not_found' });
       return;
     }
+
     res.json({
-      status: controller.status,
-      connectedClients: controller.connectedClients,
+      status: session.status,
+      connectedClients: session.clientCount,
     });
   });
 

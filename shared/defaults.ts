@@ -17,6 +17,7 @@ export interface ConfigurableCommand {
   enabled: boolean;
   desc?: string;
   autoSend?: boolean; // true=点击直接发送（默认），false=填入输入框
+  fromSkill?: boolean; // true=由 Skill 自动生成的命令
 }
 
 /**
@@ -46,9 +47,5 @@ export const DEFAULT_COMMANDS: ConfigurableCommand[] = [
   { label: '/resume', command: '/resume', enabled: true },
   { label: '/stats', command: '/stats', enabled: true },
   { label: '/exit', command: '/exit', enabled: true },
-  { label: '/commit-commands:commit', command: '/commit-commands:commit', enabled: true },
-  { label: '/feature-dev:feature-dev', command: '/feature-dev:feature-dev', enabled: true },
-  { label: '/auto-doc', command: '/auto-doc', enabled: true },
-  { label: '/code-review-expert', command: '/code-review-expert', enabled: true },
-  { label: '/systematic-debugging', command: '/systematic-debugging', enabled: true },
+  { label: '/rename', command: '/rename', enabled: true, autoSend: false },
 ];

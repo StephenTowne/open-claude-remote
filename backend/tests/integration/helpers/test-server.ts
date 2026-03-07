@@ -1,5 +1,5 @@
 /**
- * Integration test helper: spins up a real HTTP server + WS + EchoPty + AuthModule + SessionController.
+ * Integration test helper: spins up a real HTTP server + WS + InstanceManager with EchoPty.
  * EchoPtyManager simulates `cat` echo without depending on node-pty (which may fail in CI/sandbox).
  */
 import { createServer, Server as HttpServer } from 'node:http';
@@ -9,8 +9,8 @@ import { WebSocket } from 'ws';
 import { AuthModule } from '../../../src/auth/auth-middleware.js';
 import type { PtyManager } from '../../../src/pty/pty-manager.js';
 import { WsServer } from '../../../src/ws/ws-server.js';
-import { HookReceiver } from '../../../src/hooks/hook-receiver.js';
-import { SessionController } from '../../../src/session/session-controller.js';
+import { InstanceManager } from '../../../src/instance/instance-manager.js';
+import { InstanceSession } from '../../../src/instance/instance-session.js';
 import { createApiRouter } from '../../../src/api/router.js';
 import { PushService } from '../../../src/push/push-service.js';
 
@@ -66,8 +66,9 @@ export interface TestContext {
   authModule: AuthModule;
   ptyManager: EchoPtyManager;
   wsServer: WsServer;
-  hookReceiver: HookReceiver;
-  sessionController: SessionController;
+  instanceManager: InstanceManager;
+  instanceSession: InstanceSession;
+  instanceId: string;
   pushService: PushService;
   baseUrl: string;
   port: number;
@@ -79,7 +80,7 @@ export interface TestServerOptions {
 }
 
 /**
- * Start a fully wired test server (HTTP + WS + PTY with `cat`).
+ * Start a fully wired test server (HTTP + WS + InstanceManager with echo PTY).
  * Each call allocates a unique port to allow parallel test files.
  */
 export async function startTestServer(options?: TestServerOptions): Promise<TestContext> {
@@ -96,30 +97,39 @@ export async function startTestServer(options?: TestServerOptions): Promise<Test
   const authModule = new AuthModule({
     token: TEST_TOKEN,
     sessionTtlMs: options?.sessionTtlMs ?? 60_000, // 1 minute default for tests
-    rateLimitPerMinute: options?.rateLimitPerMinute ?? 100, // High limit default; rate-limit tests pass lower values
+    rateLimitPerMinute: options?.rateLimitPerMinute ?? 100,
     cookieName: 'session_id_test',
   });
 
-  const hookReceiver = new HookReceiver();
-
-  let sessionController: SessionController | null = null;
+  const instanceManager = new InstanceManager();
   const pushService = new PushService('/tmp/test-push-integration');
 
-  app.use('/api', createApiRouter(authModule, hookReceiver, () => sessionController, pushService));
+  // Mount API routes
+  app.use('/api', createApiRouter({
+    authModule,
+    instanceManager,
+    pushService,
+  }));
 
+  // Setup WS server with instance routing
   const wsServer = new WsServer(httpServer, authModule);
+  wsServer.setInstanceManager(instanceManager);
 
-  const ptyManager = new EchoPtyManager();
+  // Create a test instance with injected echo PTY
+  const echoPty = new EchoPtyManager();
+  const instanceSession = new InstanceSession({
+    instanceId: 'test-instance-id',
+    name: 'test-instance',
+    cwd: '/tmp/test',
+    maxBufferLines: 1000,
+    headless: false,
+    ptyManager: echoPty as unknown as PtyManager,
+  });
 
-  // EchoPtyManager duck-types PtyManager (EventEmitter + write/resize/cols/rows)
-  sessionController = new SessionController(ptyManager as unknown as PtyManager, wsServer, hookReceiver, 1000);
+  instanceSession.setStatus('running');
 
-  sessionController.setStatus('running');
-
-  // Suppress PTY output from going to test runner's stdout
-  // We do this by overriding process.stdout.write temporarily — but that's global.
-  // Instead, we accept that SessionController writes to process.stdout in tests.
-  // The logger is already silent in test mode.
+  // Register in instance manager
+  (instanceManager as any).instances.set('test-instance-id', instanceSession);
 
   const baseUrl = `http://${host}:${port}`;
 
@@ -131,10 +141,11 @@ export async function startTestServer(options?: TestServerOptions): Promise<Test
     app,
     httpServer,
     authModule,
-    ptyManager,
+    ptyManager: echoPty,
     wsServer,
-    hookReceiver,
-    sessionController: sessionController!,
+    instanceManager,
+    instanceSession,
+    instanceId: 'test-instance-id',
     pushService,
     baseUrl,
     port,
@@ -145,7 +156,7 @@ export async function startTestServer(options?: TestServerOptions): Promise<Test
  * Stop and clean up the test server.
  */
 export async function stopTestServer(ctx: TestContext): Promise<void> {
-  ctx.ptyManager.destroy();
+  ctx.instanceManager.destroyAll();
   ctx.wsServer.destroy();
   ctx.authModule.destroy();
   await new Promise<void>((resolve) => {
@@ -165,12 +176,10 @@ export async function authenticate(baseUrl: string, token: string = TEST_TOKEN):
   if (!res.ok) {
     throw new Error(`Auth failed: ${res.status}`);
   }
-  // Extract Set-Cookie header
   const setCookie = res.headers.get('set-cookie');
   if (!setCookie) {
     throw new Error('No Set-Cookie header in auth response');
   }
-  // Return just the cookie key=value part (e.g. "session_id=abc123")
   return setCookie.split(';')[0];
 }
 
@@ -180,15 +189,14 @@ interface BufferedWebSocket extends WebSocket {
 }
 
 /**
- * Open an authenticated WebSocket connection.
- * Captures messages from the moment of connection into `ws.__earlyMessages`
- * so callers don't miss fast server messages like `history_sync`.
+ * Open an authenticated WebSocket connection to a specific instance.
  */
 export async function openAuthenticatedWs(
   baseUrl: string,
   cookie: string,
+  instanceId: string = 'test-instance-id',
 ): Promise<BufferedWebSocket> {
-  const wsUrl = baseUrl.replace('http://', 'ws://') + '/ws';
+  const wsUrl = baseUrl.replace('http://', 'ws://') + `/ws/${instanceId}`;
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(wsUrl, {
       headers: { cookie },

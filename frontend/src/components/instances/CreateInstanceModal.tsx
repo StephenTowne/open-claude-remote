@@ -232,6 +232,13 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
     }
   }, [config]);
 
+  // 工作目录只有一个选项时自动选择
+  useEffect(() => {
+    if (config && config.workspaces.length === 1 && !cwd) {
+      setCwd(config.workspaces[0]);
+    }
+  }, [config, cwd]);
+
   const loadConfig = async (isCopyMode: boolean) => {
     try {
       const cfg = await getInstanceConfig();

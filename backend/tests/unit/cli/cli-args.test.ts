@@ -2,29 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { parseCliArgs } from '../../../src/cli-utils.js';
 
 describe('parseCliArgs', () => {
-  it('should parse valid --port and --host and --token', () => {
-    const options = parseCliArgs(['node', 'cli.js', '--port', '8080', '--host', '127.0.0.1', '--token', 'abc']);
-    expect(options.port).toBe(8080);
+  it('should parse --host and --token', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--host', '127.0.0.1', '--token', 'abc']);
     expect(options.host).toBe('127.0.0.1');
     expect(options.token).toBe('abc');
     expect(options.help).toBe(false);
-  });
-
-  it('should throw error when --port is missing value', () => {
-    expect(() => parseCliArgs(['node', 'cli.js', '--port'])).toThrow('--port requires a numeric value');
-  });
-
-  it('should throw error when --port value is not a valid integer', () => {
-    expect(() => parseCliArgs(['node', 'cli.js', '--port', 'abc'])).toThrow('--port requires a numeric value');
-  });
-
-  it('should parse --port=<value> form', () => {
-    const options = parseCliArgs(['node', 'cli.js', '--port=8081']);
-    expect(options.port).toBe(8081);
-  });
-
-  it('should throw error when --port is out of range', () => {
-    expect(() => parseCliArgs(['node', 'cli.js', '--port', '70000'])).toThrow('--port must be between 1 and 65535');
   });
 
   it('should pass unknown args to claudeArgs', () => {
@@ -43,14 +25,9 @@ describe('parseCliArgs', () => {
   });
 
   it('should combine --name with other options', () => {
-    const options = parseCliArgs(['node', 'cli.js', '--port', '8080', '--name', 'backend']);
-    expect(options.port).toBe(8080);
+    const options = parseCliArgs(['node', 'cli.js', '--host', '0.0.0.0', '--name', 'backend']);
+    expect(options.host).toBe('0.0.0.0');
     expect(options.name).toBe('backend');
-  });
-
-  it('should parse "attach 3001" correctly', () => {
-    const options = parseCliArgs(['node', 'cli.js', 'attach', '3001']);
-    expect(options.attach).toBe('3001');
   });
 
   it('should parse "attach myproject" correctly', () => {
@@ -67,12 +44,6 @@ describe('parseCliArgs', () => {
     expect(options.noTerminal).toBe(true);
   });
 
-  it('should combine --no-terminal with other options', () => {
-    const options = parseCliArgs(['node', 'cli.js', '--no-terminal', '--port', '3001']);
-    expect(options.noTerminal).toBe(true);
-    expect(options.port).toBe(3001);
-  });
-
   it('should parse "update" subcommand', () => {
     const options = parseCliArgs(['node', 'cli.js', 'update']);
     expect(options.update).toBe(true);
@@ -80,6 +51,16 @@ describe('parseCliArgs', () => {
 
   it('should not pass "update" to claudeArgs', () => {
     const options = parseCliArgs(['node', 'cli.js', 'update']);
+    expect(options.claudeArgs).toEqual([]);
+  });
+
+  it('should parse "stop" subcommand', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'stop']);
+    expect(options.stop).toBe(true);
+  });
+
+  it('should not pass "stop" to claudeArgs', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'stop']);
     expect(options.claudeArgs).toEqual([]);
   });
 
@@ -97,5 +78,31 @@ describe('parseCliArgs', () => {
     const options = parseCliArgs(['node', 'cli.js', '-v']);
     expect(options.version).toBe(false);
     expect(options.claudeArgs).toEqual(['-v']);
+  });
+
+  it('should pass --port to claudeArgs (no longer a server option)', () => {
+    const options = parseCliArgs(['node', 'cli.js', '--port', '8080']);
+    expect(options.claudeArgs).toContain('--port');
+    expect(options.claudeArgs).toContain('8080');
+  });
+
+  it('should parse "list" subcommand', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'list']);
+    expect(options.list).toBe(true);
+  });
+
+  it('should not pass "list" to claudeArgs', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'list']);
+    expect(options.claudeArgs).toEqual([]);
+  });
+
+  it('should parse "status" subcommand', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'status']);
+    expect(options.status).toBe(true);
+  });
+
+  it('should not pass "status" to claudeArgs', () => {
+    const options = parseCliArgs(['node', 'cli.js', 'status']);
+    expect(options.claudeArgs).toEqual([]);
   });
 });

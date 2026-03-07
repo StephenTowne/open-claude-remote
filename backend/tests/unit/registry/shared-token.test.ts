@@ -32,8 +32,8 @@ describe('shared-token', () => {
     expect(result.source).toBe('cli');
   });
 
-  it('should read existing token from config.json', async () => {
-    const configPath = join(testDir, 'config.json');
+  it('should read existing token from settings.json', async () => {
+    const configPath = join(testDir, 'settings.json');
     const config = { token: 'config-token-456', shortcuts: [], commands: [] };
     writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
 
@@ -43,21 +43,21 @@ describe('shared-token', () => {
     expect(result.source).toBe('file');
   });
 
-  it('should generate and persist token to config.json if none exists', async () => {
+  it('should generate and persist token to settings.json if none exists', async () => {
     const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
     const result = getOrCreateSharedToken(testDir);
     expect(result.token).toBeTruthy();
     expect(result.token.length).toBe(64); // 32 bytes hex
     expect(result.source).toBe('generated');
 
-    // Verify token was written to config.json
-    const configPath = join(testDir, 'config.json');
+    // Verify token was written to settings.json
+    const configPath = join(testDir, 'settings.json');
     expect(existsSync(configPath)).toBe(true);
     const config = JSON.parse(readFileSync(configPath, 'utf-8'));
     expect(config.token).toBe(result.token);
   });
 
-  it('should migrate old token file to config.json', async () => {
+  it('should migrate old token file to settings.json', async () => {
     // 创建旧的 token 文件
     const oldTokenPath = join(testDir, 'token');
     writeFileSync(oldTokenPath, 'migration-token-789', { mode: 0o600 });
@@ -67,8 +67,8 @@ describe('shared-token', () => {
     expect(result.token).toBe('migration-token-789');
     expect(result.source).toBe('file');
 
-    // 验证 token 已迁移到 config.json
-    const configPath = join(testDir, 'config.json');
+    // 验证 token 已迁移到 settings.json
+    const configPath = join(testDir, 'settings.json');
     const config = JSON.parse(readFileSync(configPath, 'utf-8'));
     expect(config.token).toBe('migration-token-789');
 
@@ -76,11 +76,11 @@ describe('shared-token', () => {
     expect(existsSync(oldTokenPath)).toBe(false);
   });
 
-  it('should create config.json if not exists when generating token', async () => {
+  it('should create settings.json if not exists when generating token', async () => {
     const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
     const result = getOrCreateSharedToken(testDir);
 
-    const configPath = join(testDir, 'config.json');
+    const configPath = join(testDir, 'settings.json');
     expect(existsSync(configPath)).toBe(true);
 
     const config = JSON.parse(readFileSync(configPath, 'utf-8'));
@@ -89,7 +89,7 @@ describe('shared-token', () => {
   });
 
   it('should preserve existing config fields when adding token', async () => {
-    const configPath = join(testDir, 'config.json');
+    const configPath = join(testDir, 'settings.json');
     const existingConfig = {
       shortcuts: [{ label: 'Test', data: 'test data', enabled: true }],
       commands: [{ label: 'Cmd', command: 'echo test', enabled: false }],
@@ -106,8 +106,8 @@ describe('shared-token', () => {
     expect(config.commands).toEqual(existingConfig.commands);
   });
 
-  it('should prioritize CLI token over config.json', async () => {
-    const configPath = join(testDir, 'config.json');
+  it('should prioritize CLI token over settings.json', async () => {
+    const configPath = join(testDir, 'settings.json');
     const config = { token: 'config-loses', shortcuts: [], commands: [] };
     writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
 
@@ -126,16 +126,16 @@ describe('shared-token', () => {
     expect(stat.mode & 0o777).toBe(0o700);
   });
 
-  it('should set config.json file permissions to 0o600', async () => {
+  it('should set settings.json file permissions to 0o600', async () => {
     const { getOrCreateSharedToken } = await import('../../../src/registry/shared-token.js');
     getOrCreateSharedToken(testDir);
-    const configPath = join(testDir, 'config.json');
+    const configPath = join(testDir, 'settings.json');
     const stat = statSync(configPath);
     expect(stat.mode & 0o777).toBe(0o600);
   });
 
-  it('should skip empty token in config.json and generate new one', async () => {
-    const configPath = join(testDir, 'config.json');
+  it('should skip empty token in settings.json and generate new one', async () => {
+    const configPath = join(testDir, 'settings.json');
     const config = { token: '  \n', shortcuts: [], commands: [] };
     writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
 
@@ -165,9 +165,9 @@ describe('shared-token', () => {
     expect(lockDirs).toHaveLength(0);
   });
 
-  it('should prioritize config.json token over old token file', async () => {
-    // 创建 config.json 带有 token
-    const configPath = join(testDir, 'config.json');
+  it('should prioritize settings.json token over old token file', async () => {
+    // 创建 settings.json 带有 token
+    const configPath = join(testDir, 'settings.json');
     const config = { token: 'config-token-priority', shortcuts: [], commands: [] };
     writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
 

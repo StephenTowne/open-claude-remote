@@ -93,7 +93,7 @@ describe('CommandPicker', () => {
       expect(screen.getByText('/resume')).toBeDefined();
       expect(screen.getByText('/stats')).toBeDefined();
       expect(screen.getByText('/exit')).toBeDefined();
-      expect(screen.getByText('/auto-doc')).toBeDefined();
+      expect(screen.getByText('/rename')).toBeDefined();
     });
   });
 

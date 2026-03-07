@@ -48,7 +48,7 @@ describe('Hook → Notification Flow', () => {
 
   describe('hook triggers status update', () => {
     it('should broadcast status_update to waiting_input after Notification hook POST', async () => {
-      ctx.sessionController.setStatus('running');
+      ctx.instanceSession.setStatus('running');
 
       const ws = trackWs(await openAuthenticatedWs(ctx.baseUrl, cookie));
       await waitForMessage(ws, 'history_sync');
@@ -56,8 +56,8 @@ describe('Hook → Notification Flow', () => {
       // Listen for status_update
       const statusPromise = waitForMessage<StatusUpdateMessage>(ws, 'status_update', 3000);
 
-      // Send Notification hook POST (permission_prompt)
-      await fetch(`${ctx.baseUrl}/api/hook`, {
+      // Send Notification hook POST (with instanceId in URL)
+      await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -74,9 +74,9 @@ describe('Hook → Notification Flow', () => {
     });
 
     it('should update session status to waiting_input from Notification permission_prompt', async () => {
-      ctx.sessionController.setStatus('running');
+      ctx.instanceSession.setStatus('running');
 
-      await fetch(`${ctx.baseUrl}/api/hook`, {
+      await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -86,11 +86,11 @@ describe('Hook → Notification Flow', () => {
         }),
       });
 
-      expect(ctx.sessionController.status).toBe('waiting_input');
+      expect(ctx.instanceSession.status).toBe('waiting_input');
     });
 
     it('should broadcast status_update to multiple clients', async () => {
-      ctx.sessionController.setStatus('running');
+      ctx.instanceSession.setStatus('running');
 
       const ws1 = trackWs(await openAuthenticatedWs(ctx.baseUrl, cookie));
       const ws2 = trackWs(await openAuthenticatedWs(ctx.baseUrl, cookie));
@@ -102,7 +102,7 @@ describe('Hook → Notification Flow', () => {
       const p1 = waitForMessage<StatusUpdateMessage>(ws1, 'status_update', 3000);
       const p2 = waitForMessage<StatusUpdateMessage>(ws2, 'status_update', 3000);
 
-      await fetch(`${ctx.baseUrl}/api/hook`, {
+      await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -122,14 +122,13 @@ describe('Hook → Notification Flow', () => {
 
   describe('user input writes to PTY', () => {
     it('should write user input to PTY and receive echo', async () => {
-      ctx.sessionController.setStatus('running');
+      ctx.instanceSession.setStatus('running');
 
       const ws = trackWs(await openAuthenticatedWs(ctx.baseUrl, cookie));
       await waitForMessage(ws, 'history_sync');
 
       const outputPromise = waitForMessage<{ type: string; data: string }>(ws, 'terminal_output', 3000);
 
-      // Send user input (the PTY runs `cat`, which echoes input)
       ws.send(JSON.stringify({ type: 'user_input', data: 'hello-test\n' }));
 
       const output = await outputPromise;
@@ -141,11 +140,10 @@ describe('Hook → Notification Flow', () => {
   // ─── Status via REST API during waiting_input ────────────────────
 
   describe('status API reflects waiting_input state', () => {
-    it('should show waiting_input status in /api/status after Notification permission_prompt', async () => {
-      ctx.sessionController.setStatus('running');
+    it('should show waiting_input status in /api/status/:instanceId after Notification permission_prompt', async () => {
+      ctx.instanceSession.setStatus('running');
 
-      // Trigger Notification permission_prompt
-      await fetch(`${ctx.baseUrl}/api/hook`, {
+      await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -155,8 +153,7 @@ describe('Hook → Notification Flow', () => {
         }),
       });
 
-      // Check status API
-      const statusRes = await fetch(`${ctx.baseUrl}/api/status`, {
+      const statusRes = await fetch(`${ctx.baseUrl}/api/status/${ctx.instanceId}`, {
         headers: { cookie },
       });
       const body = await statusRes.json();
@@ -168,10 +165,9 @@ describe('Hook → Notification Flow', () => {
 
   describe('new connection receives correct status', () => {
     it('should include waiting_input status in history_sync for new connections', async () => {
-      ctx.sessionController.setStatus('running');
+      ctx.instanceSession.setStatus('running');
 
-      // Trigger notification via Notification event
-      await fetch(`${ctx.baseUrl}/api/hook`, {
+      await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -181,7 +177,6 @@ describe('Hook → Notification Flow', () => {
         }),
       });
 
-      // New client connects
       const ws = trackWs(await openAuthenticatedWs(ctx.baseUrl, cookie));
       const history = await waitForMessage<{ type: string; status: string }>(ws, 'history_sync');
 
@@ -193,16 +188,14 @@ describe('Hook → Notification Flow', () => {
 
   describe('Stop event handling', () => {
     it('should resume running status after Stop event when previously waiting_input', async () => {
-      ctx.sessionController.setStatus('waiting_input');
+      ctx.instanceSession.setStatus('waiting_input');
 
       const ws = trackWs(await openAuthenticatedWs(ctx.baseUrl, cookie));
       await waitForMessage(ws, 'history_sync');
 
-      // Listen for status_update
       const statusPromise = waitForMessage<StatusUpdateMessage>(ws, 'status_update', 3000);
 
-      // Send Stop hook POST
-      await fetch(`${ctx.baseUrl}/api/hook`, {
+      await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -217,10 +210,9 @@ describe('Hook → Notification Flow', () => {
     });
 
     it('should not change status on Stop when not waiting_input', async () => {
-      ctx.sessionController.setStatus('idle');
+      ctx.instanceSession.setStatus('idle');
 
-      // Send Stop hook POST
-      await fetch(`${ctx.baseUrl}/api/hook`, {
+      await fetch(`${ctx.baseUrl}/api/hook/${ctx.instanceId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -229,8 +221,7 @@ describe('Hook → Notification Flow', () => {
         }),
       });
 
-      // Status should remain idle
-      expect(ctx.sessionController.status).toBe('idle');
+      expect(ctx.instanceSession.status).toBe('idle');
     });
   });
 });

@@ -1,20 +1,16 @@
 export interface InstanceInfo {
   instanceId: string;   // UUID
   name: string;         // 项目名 (CWD basename 或 --name)
-  host: string;
-  port: number;
-  pid: number;
   cwd: string;
   startedAt: string;    // ISO
+  /** 会话状态 */
+  status?: string;
   /** 是否为无终端模式（web 创建的实例） */
   headless?: boolean;
+  /** 当前连接的客户端数量 */
+  clientCount?: number;
   /** 创建时的 Claude 参数（可选，包含 --settings 等） */
   claudeArgs?: string[];
-}
-
-export interface InstanceRegistry {
-  version: 1;
-  instances: InstanceInfo[];
 }
 
 export interface InstanceListItem extends InstanceInfo {
@@ -23,9 +19,6 @@ export interface InstanceListItem extends InstanceInfo {
 
 /** ~/.claude-remote 目录名 */
 export const CLAUDE_REMOTE_DIR = '.claude-remote';
-
-/** 注册表文件名 */
-export const REGISTRY_FILENAME = 'instances.json';
 
 /** Claude Code settings 目录名 */
 export const SETTINGS_DIR = 'settings';

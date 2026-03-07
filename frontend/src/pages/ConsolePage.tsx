@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useMemo } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import type { ServerMessage, InstanceListItem } from '#shared';
 import { StatusBar } from '../components/status/StatusBar.js';
 import { TerminalView } from '../components/terminal/TerminalView.js';
@@ -17,9 +17,9 @@ import { useInstances } from '../hooks/useInstances.js';
 import { useAppStore } from '../stores/app-store.js';
 import { useInstanceStore } from '../stores/instance-store.js';
 import { authenticate } from '../services/api-client.js';
-import { authenticateToInstance, buildInstanceWsUrl } from '../services/instance-api.js';
+import { buildInstanceWsUrl } from '../services/instance-api.js';
 
-function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, onIpChanged }: { wsUrl?: string; instanceId?: string; showCommandPicker: boolean; isKeyboardOpen: boolean; onIpChanged?: (newIp: string) => void }) {
+function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen }: { wsUrl?: string; instanceId?: string; showCommandPicker: boolean; isKeyboardOpen: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputBarRef = useRef<InputBarRef>(null);
   const setSessionStatus = useAppStore((s) => s.setSessionStatus);
@@ -85,10 +85,9 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
           newIp: msg.newIp,
           newUrl: msg.newUrl,
         });
-        onIpChanged?.(msg.newIp);
         break;
     }
-  }, [setSessionStatus, setIpChangeInfo, onIpChanged, showNotification]);
+  }, [setSessionStatus, setIpChangeInfo, showNotification]);
 
   const { connect, send } = useWebSocket(handleMessage, wsUrl, instanceId);
   sendRef.current = send;
@@ -165,25 +164,11 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen, 
   );
 }
 
-function getAutoSwitchCandidates(instances: InstanceListItem[], currentInstanceId: string, currentPort?: number) {
-  const sorted = instances
+function getAutoSwitchCandidates(instances: InstanceListItem[], currentInstanceId: string) {
+  // Sort by startedAt ascending (oldest first) — prefer more established instances
+  return instances
     .filter((instance) => instance.instanceId !== currentInstanceId)
-    .sort((a, b) => a.port - b.port);
-
-  if (sorted.length === 0) {
-    return [];
-  }
-
-  if (currentPort === undefined) {
-    return sorted;
-  }
-
-  const startIndex = sorted.findIndex((instance) => instance.port > currentPort);
-  if (startIndex === -1) {
-    return sorted;
-  }
-
-  return [...sorted.slice(startIndex), ...sorted.slice(0, startIndex)];
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 }
 
 export function ConsolePage() {
@@ -199,8 +184,6 @@ export function ConsolePage() {
   const instances = useInstanceStore((s) => s.instances);
   const activeInstanceId = useInstanceStore((s) => s.activeInstanceId);
   const setActiveInstanceId = useInstanceStore((s) => s.setActiveInstanceId);
-  const currentHostOverride = useInstanceStore((s) => s.currentHostOverride);
-  const setCurrentHostOverride = useInstanceStore((s) => s.setCurrentHostOverride);
 
   const cachedToken = useAppStore((s) => s.cachedToken);
   const instanceConnectionStatus = useAppStore((s) => s.instanceConnectionStatus);
@@ -210,33 +193,10 @@ export function ConsolePage() {
 
   const isAutoSwitchingRef = useRef(false);
   const lastSwitchSourceRef = useRef<string | null>(null);
-  const lastKnownActivePortRef = useRef<number | undefined>(undefined);
 
-  // 计算当前活跃实例的 WS URL
+  // 计算当前活跃实例的 WS URL（同源，按 instanceId 路由）
   const activeInstance = instances.find(i => i.instanceId === activeInstanceId);
-  const isCurrent = activeInstance?.isCurrent ?? true;
-  const effectiveHost = useMemo(() => {
-    if (!activeInstance) return undefined;
-    return activeInstance.isCurrent
-      ? (currentHostOverride ?? activeInstance.host)
-      : activeInstance.host;
-  }, [activeInstance, currentHostOverride]);
-
-  const wsUrl = activeInstance && effectiveHost
-    ? buildInstanceWsUrl(effectiveHost, activeInstance.port)
-    : undefined;
-
-  useEffect(() => {
-    if (activeInstance?.port !== undefined) {
-      lastKnownActivePortRef.current = activeInstance.port;
-    }
-  }, [activeInstance]);
-
-  useEffect(() => {
-    if (!activeInstance?.isCurrent) {
-      setCurrentHostOverride(null);
-    }
-  }, [activeInstance, setCurrentHostOverride]);
+  const wsUrl = activeInstanceId ? buildInstanceWsUrl(activeInstanceId) : undefined;
 
   useEffect(() => {
     if (!activeInstanceId) {
@@ -255,8 +215,7 @@ export function ConsolePage() {
       return;
     }
 
-    const currentPort = activeInstance?.port ?? lastKnownActivePortRef.current;
-    const candidates = getAutoSwitchCandidates(instances, activeInstanceId, currentPort);
+    const candidates = getAutoSwitchCandidates(instances, activeInstanceId);
     if (candidates.length === 0) {
       return;
     }
@@ -265,27 +224,18 @@ export function ConsolePage() {
     lastSwitchSourceRef.current = activeInstanceId;
 
     const run = async () => {
-      for (const candidate of candidates) {
-        if (cachedToken) {
-          try {
-            if (candidate.isCurrent) {
-              await authenticate(cachedToken);
-            } else {
-              const authenticated = await authenticateToInstance(candidate.host, candidate.port, cachedToken);
-              if (!authenticated) {
-                continue;
-              }
-            }
-          } catch {
-            continue;
-          }
+      // 同源认证：所有实例共享同一个 session
+      if (cachedToken) {
+        try {
+          await authenticate(cachedToken);
+        } catch {
+          // 认证失败仍然尝试切换
         }
-
-        setActiveInstanceId(candidate.instanceId);
-        showToast(`已切换到 ${candidate.port}`);
-        break;
       }
 
+      const candidate = candidates[0];
+      setActiveInstanceId(candidate.instanceId);
+      showToast(`Switched to ${candidate.name}`);
       isAutoSwitchingRef.current = false;
     };
 
@@ -308,29 +258,16 @@ export function ConsolePage() {
   }, [toastMessage, hideToast]);
 
   const handleInstanceSwitch = useCallback(async (targetId: string) => {
-    const target = instances.find(i => i.instanceId === targetId);
-    if (!target) return;
-
-    // 所有实例都需要认证：isCurrent 用同源 authenticate，非 isCurrent 用跨实例认证
+    // 同源认证：确保 session 有效
     if (cachedToken) {
       try {
-        if (target.isCurrent) {
-          await authenticate(cachedToken);
-        } else {
-          await authenticateToInstance(target.host, target.port, cachedToken);
-        }
+        await authenticate(cachedToken);
       } catch {
-        // 认证失败时仍然切换，WS 连接会失败并显示 Disconnected
+        // 认证失败时仍然切换
       }
     }
-
-    setCurrentHostOverride(null);
     setActiveInstanceId(targetId);
-  }, [instances, cachedToken, setActiveInstanceId, setCurrentHostOverride]);
-
-  const handleCurrentInstanceIpChanged = useCallback((newIp: string) => {
-    setCurrentHostOverride(newIp);
-  }, [setCurrentHostOverride]);
+  }, [cachedToken, setActiveInstanceId]);
 
   // 复制成功后自动切换到新实例
   // InstanceTabs.handleCreateSuccess 已轮询并更新了 store，这里直接读取切换
@@ -346,22 +283,9 @@ export function ConsolePage() {
       return;
     }
 
-    // 认证到新实例
-    if (cachedToken) {
-      try {
-        if (found.isCurrent) {
-          await authenticate(cachedToken);
-        } else {
-          await authenticateToInstance(found.host, found.port, cachedToken);
-        }
-      } catch {
-        // 认证失败时仍然切换
-      }
-    }
-    setCurrentHostOverride(null);
     setActiveInstanceId(found.instanceId);
     showToast(`Created and switched to ${newInstanceName}`);
-  }, [cachedToken, setActiveInstanceId, setCurrentHostOverride, showToast]);
+  }, [setActiveInstanceId, showToast]);
 
   return (
     <div data-testid="console-page" style={{
@@ -384,12 +308,11 @@ export function ConsolePage() {
       {/* key=activeInstanceId 强制 React 重建整个终端+WS */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <ConsoleContent
-          key={`${activeInstanceId ?? 'default'}:${effectiveHost ?? 'none'}`}
+          key={activeInstanceId ?? 'default'}
           wsUrl={wsUrl}
           instanceId={activeInstanceId ?? undefined}
           showCommandPicker={showCommandPicker}
           isKeyboardOpen={isKeyboardOpen}
-          onIpChanged={activeInstance?.isCurrent ? handleCurrentInstanceIpChanged : undefined}
         />
       </div>
       {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}

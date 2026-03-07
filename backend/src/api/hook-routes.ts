@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { HookReceiver } from '../hooks/hook-receiver.js';
+import type { InstanceManager } from '../instance/instance-manager.js';
 import { logger } from '../logger/logger.js';
 
-export function createHookRoutes(hookReceiver: HookReceiver): Router {
+export function createHookRoutes(instanceManager: InstanceManager): Router {
   const router = Router();
 
-  router.post('/hook', async (req: Request, res: Response) => {
+  router.post('/hook/:instanceId', async (req: Request, res: Response) => {
     // Only accept from localhost
     const ip = req.ip ?? req.socket.remoteAddress ?? '';
     const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
@@ -15,13 +15,21 @@ export function createHookRoutes(hookReceiver: HookReceiver): Router {
       return;
     }
 
+    const instanceId = req.params.instanceId as string;
+    const session = instanceManager.getInstance(instanceId);
+    if (!session) {
+      logger.warn({ instanceId }, 'Hook request for unknown instance');
+      res.status(404).json({ error: 'Instance not found' });
+      return;
+    }
+
     const payload = req.body;
     if (!payload || typeof payload !== 'object') {
       res.status(400).json({ error: 'Invalid payload' });
       return;
     }
 
-    const result = hookReceiver.processHook(payload);
+    const result = session.hookReceiver.processHook(payload);
 
     switch (result.type) {
       case 'notification':

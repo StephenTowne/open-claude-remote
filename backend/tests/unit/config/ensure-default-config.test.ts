@@ -6,7 +6,7 @@ import { ensureDefaultUserConfig, DEFAULT_SHORTCUTS, DEFAULT_COMMANDS } from '..
 
 describe('ensureDefaultUserConfig', () => {
   const testDir = resolve(tmpdir(), `claude-remote-ensure-config-test-${Date.now()}`);
-  const configPath = resolve(testDir, 'config.json');
+  const configPath = resolve(testDir, 'settings.json');
 
   beforeEach(() => {
     rmSync(testDir, { recursive: true, force: true });

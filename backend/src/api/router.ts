@@ -7,77 +7,65 @@ import { createPushRoutes } from './push-routes.js';
 import { createInstanceRoutes } from './instance-routes.js';
 import { createConfigRoutes } from './config-routes.js';
 import { AuthModule } from '../auth/auth-middleware.js';
-import { HookReceiver } from '../hooks/hook-receiver.js';
 import { PushService } from '../push/push-service.js';
-import { InstanceSpawner } from '../registry/instance-spawner.js';
-import type { SessionController } from '../session/session-controller.js';
+import type { InstanceManager } from '../instance/instance-manager.js';
 import type { NotificationManager } from '../notification/notification-manager.js';
 import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
-import type { WsServer } from '../ws/ws-server.js';
-import type { InstanceInfo } from '#shared';
+import { logger } from '../logger/logger.js';
 
 export interface ApiRouterOptions {
   authModule: AuthModule;
-  hookReceiver: HookReceiver;
-  getController: () => SessionController | null;
+  instanceManager: InstanceManager;
   pushService?: PushService;
-  listInstances?: () => Promise<InstanceInfo[]>;
-  currentInstanceId?: string;
-  instanceSpawner?: InstanceSpawner;
   notificationManager?: NotificationManager;
   notificationServiceFactory?: NotificationServiceFactory;
-  wsServer?: WsServer;
+  /** 关闭 daemon 的回调 */
+  onShutdown?: () => void;
 }
 
-export function createApiRouter(opts: ApiRouterOptions): Router;
-export function createApiRouter(
-  authModule: AuthModule,
-  hookReceiver: HookReceiver,
-  getController: () => SessionController | null,
-  pushService?: PushService,
-): Router;
-export function createApiRouter(
-  authModuleOrOpts: AuthModule | ApiRouterOptions,
-  hookReceiver?: HookReceiver,
-  getController?: () => SessionController | null,
-  pushService?: PushService,
-): Router {
-  let opts: ApiRouterOptions;
-  if (authModuleOrOpts instanceof AuthModule) {
-    opts = {
-      authModule: authModuleOrOpts,
-      hookReceiver: hookReceiver!,
-      getController: getController!,
-      pushService,
-    };
-  } else {
-    opts = authModuleOrOpts;
-  }
-
+export function createApiRouter(opts: ApiRouterOptions): Router {
   const router = Router();
 
-  router.use(createHealthRoutes());
+  router.use(createHealthRoutes(opts.instanceManager));
   router.use(createAuthRoutes(opts.authModule));
-  router.use(createStatusRoutes(opts.authModule, opts.getController));
-  router.use(createHookRoutes(opts.hookReceiver));
+  router.use(createStatusRoutes(opts.authModule, opts.instanceManager));
+  router.use(createHookRoutes(opts.instanceManager));
   router.use(createConfigRoutes(
     opts.authModule,
     opts.notificationManager,
     opts.notificationServiceFactory,
-    opts.wsServer,
+    opts.instanceManager,
   ));
 
   if (opts.pushService) {
     router.use(createPushRoutes(opts.authModule, opts.pushService));
   }
 
-  if (opts.listInstances && opts.currentInstanceId) {
-    router.use(createInstanceRoutes(
-      opts.authModule,
-      opts.listInstances,
-      opts.currentInstanceId,
-      opts.instanceSpawner,
-    ));
+  router.use(createInstanceRoutes(opts.authModule, opts.instanceManager));
+
+  // Shutdown endpoint (localhost only, requires confirmation)
+  if (opts.onShutdown) {
+    const shutdownFn = opts.onShutdown;
+    router.post('/shutdown', (req, res) => {
+      const ip = req.ip ?? req.socket.remoteAddress ?? '';
+      const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+      if (!isLocalhost) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+
+      // Require confirmation in request body
+      const { confirm } = req.body as { confirm?: boolean };
+      if (!confirm) {
+        res.status(400).json({ error: 'Shutdown requires confirmation. Include { "confirm": true } in request body.' });
+        return;
+      }
+
+      logger.info('Shutdown requested via API (confirmed)');
+      res.json({ ok: true });
+      // Delay shutdown to let the response flush
+      setTimeout(shutdownFn, 100);
+    });
   }
 
   return router;

@@ -13,7 +13,7 @@ describe('NotificationManager', () => {
     // 创建临时目录
     tempDir = resolve(tmpdir(), `notification-manager-test-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
-    configPath = resolve(tempDir, 'config.json');
+    configPath = resolve(tempDir, 'settings.json');
     manager = new NotificationManager(configPath);
   });
 

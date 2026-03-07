@@ -207,6 +207,42 @@ describe('VirtualPtyManager', () => {
       expect(dataHandler).not.toHaveBeenCalled();
     });
 
+    it('should emit "exit" on session_ended message', async () => {
+      const exitHandler = vi.fn();
+      virtualPty.on('exit', exitHandler);
+
+      const connectPromise = virtualPty.connect('ws://localhost:3000', 'test-token');
+      const ws = getLastMockWs();
+      ws?.emit('open');
+      await connectPromise;
+
+      ws?.emit('message', Buffer.from(JSON.stringify({
+        type: 'session_ended',
+        exitCode: 0,
+        reason: 'Process exited normally',
+      })));
+
+      expect(exitHandler).toHaveBeenCalledWith(0);
+    });
+
+    it('should emit "exit" with non-zero code on session_ended', async () => {
+      const exitHandler = vi.fn();
+      virtualPty.on('exit', exitHandler);
+
+      const connectPromise = virtualPty.connect('ws://localhost:3000', 'test-token');
+      const ws = getLastMockWs();
+      ws?.emit('open');
+      await connectPromise;
+
+      ws?.emit('message', Buffer.from(JSON.stringify({
+        type: 'session_ended',
+        exitCode: 1,
+        reason: 'Process exited with code 1',
+      })));
+
+      expect(exitHandler).toHaveBeenCalledWith(1);
+    });
+
     it('should update local size on history_sync when server size differs (slave mode)', async () => {
       const connectPromise = virtualPty.connect('ws://localhost:3000', 'test-token');
       const ws = getLastMockWs();

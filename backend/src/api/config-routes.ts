@@ -13,6 +13,11 @@ import {
   fillDefaultCommands,
 } from '../config.js';
 import {
+  scanSkills,
+  convertSkillsToCommands,
+  mergeSkillCommands,
+} from '../skills/index.js';
+import {
   type NotificationConfigs,
   type SafeNotificationConfigs,
   getNotificationStatus,
@@ -20,10 +25,10 @@ import {
 import type { NotificationChannel } from '../hooks/hook-types.js';
 import type { NotificationManager } from '../notification/notification-manager.js';
 import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
-import type { WsServer } from '../ws/ws-server.js';
+import type { InstanceManager } from '../instance/instance-manager.js';
 
 const CONFIG_DIR = join(homedir(), '.claude-remote');
-const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
+const CONFIG_FILE = join(CONFIG_DIR, 'settings.json');
 const CONFIG_LOCK = CONFIG_FILE + '.lock';
 
 /**
@@ -135,7 +140,7 @@ export function createConfigRoutes(
   authModule: AuthModule,
   notificationManager?: NotificationManager,
   notificationServiceFactory?: NotificationServiceFactory,
-  wsServer?: WsServer,
+  instanceManager?: InstanceManager,
 ): Router {
   const router = Router();
 
@@ -163,6 +168,25 @@ export function createConfigRoutes(
       }
       if (!config.commands) {
         filledConfig = fillDefaultCommands(filledConfig);
+      }
+
+      // 扫描并合并 Skill Commands
+      const claudeCwd = filledConfig.claudeCwd ?? process.cwd();
+      if (!filledConfig.claudeCwd) {
+        logger.warn({ fallbackCwd: claudeCwd }, 'claudeCwd not set in config, falling back to process.cwd() for skill scan');
+      }
+      const skills = scanSkills(claudeCwd);
+      const skillCommands = convertSkillsToCommands(skills);
+      const mergeResult = mergeSkillCommands(filledConfig.commands ?? [], skillCommands);
+      filledConfig = { ...filledConfig, commands: mergeResult.commands };
+
+      if (mergeResult.added > 0 || mergeResult.removed > 0) {
+        logger.info({
+          added: mergeResult.added,
+          removed: mergeResult.removed,
+          preserved: mergeResult.preserved,
+          total: mergeResult.total,
+        }, 'Skill commands merged');
       }
 
       // 安全处理：不暴露敏感字段（token、webhook URL 等）
@@ -227,8 +251,8 @@ export function createConfigRoutes(
       }
 
       // 广播刷新消息通知其他实例
-      if (wsServer) {
-        wsServer.broadcast({
+      if (instanceManager) {
+        instanceManager.broadcastAll({
           type: 'service_refresh',
           source: 'config_update',
         });
@@ -307,8 +331,8 @@ export function createConfigRoutes(
       }
 
       // 广播刷新消息通知其他实例
-      if (wsServer) {
-        wsServer.broadcast({
+      if (instanceManager) {
+        instanceManager.broadcastAll({
           type: 'service_refresh',
           channel: channel as 'dingtalk' | 'wechat_work',
           source: 'config_update',
