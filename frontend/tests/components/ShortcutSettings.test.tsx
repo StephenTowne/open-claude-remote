@@ -46,48 +46,63 @@ describe('ShortcutSettings', () => {
   });
 
   describe('启用/禁用切换', () => {
-    it('点击 toggle 切换启用状态，但不改变位置', () => {
+    it('enabled -> disabled 后顺序不变（视觉顺序）', () => {
       const shortcuts = createShortcuts();
-      render(<ShortcutSettings shortcuts={shortcuts} onChange={mockOnChange} />);
+      const { rerender } = render(<ShortcutSettings shortcuts={shortcuts} onChange={mockOnChange} />);
+
+      const beforeInputs = screen.getAllByPlaceholderText('Press key to capture').map((el) => (el as HTMLInputElement).value);
+      expect(beforeInputs).toEqual(['Esc', 'Enter', 'Ctrl+C']);
 
       const toggles = screen.getAllByRole('switch');
-      expect(toggles[0].getAttribute('aria-checked')).toBe('true');
-
-      // 点击第一个快捷键的 toggle（Esc）
       fireEvent.click(toggles[0]);
 
-      // onChange 被调用，且顺序保持不变
       expect(mockOnChange).toHaveBeenCalledTimes(1);
       const newShortcuts = mockOnChange.mock.calls[0][0] as WithId<ConfigurableShortcut>[];
-      expect(newShortcuts[0]._id).toBe('sc1');
+      expect(newShortcuts.map((s) => s._id)).toEqual(['sc1', 'sc2', 'sc3']);
       expect(newShortcuts[0].enabled).toBe(false);
-      expect(newShortcuts[1]._id).toBe('sc2');
-      expect(newShortcuts[2]._id).toBe('sc3');
+
+      rerender(<ShortcutSettings shortcuts={newShortcuts} onChange={mockOnChange} />);
+      const afterInputs = screen.getAllByPlaceholderText('Press key to capture').map((el) => (el as HTMLInputElement).value);
+      expect(afterInputs).toEqual(['Esc', 'Enter', 'Ctrl+C']);
     });
 
-    it('禁用后再启用，位置不变', () => {
-      let shortcuts = createShortcuts();
+    it('disabled -> enabled 后顺序不变（视觉顺序）', () => {
+      const shortcuts = createShortcuts();
       const { rerender } = render(<ShortcutSettings shortcuts={shortcuts} onChange={mockOnChange} />);
 
       const toggles = screen.getAllByRole('switch');
+      fireEvent.click(toggles[1]); // Enter: disabled -> enabled
 
-      // 禁用 Esc
-      fireEvent.click(toggles[0]);
+      const newShortcuts = mockOnChange.mock.calls[0][0] as WithId<ConfigurableShortcut>[];
+      expect(newShortcuts.map((s) => s._id)).toEqual(['sc1', 'sc2', 'sc3']);
+      expect(newShortcuts[1].enabled).toBe(true);
+
+      rerender(<ShortcutSettings shortcuts={newShortcuts} onChange={mockOnChange} />);
+      const labels = screen.getAllByPlaceholderText('Press key to capture').map((el) => (el as HTMLInputElement).value);
+      expect(labels).toEqual(['Esc', 'Enter', 'Ctrl+C']);
+    });
+
+    it('排序后再 toggle 不应再次重排', () => {
+      let shortcuts = createShortcuts();
+      const { rerender } = render(<ShortcutSettings shortcuts={shortcuts} onChange={mockOnChange} />);
+
+      const moveToFirstButtons = screen.getAllByRole('button', { name: 'Move to first' });
+      fireEvent.click(moveToFirstButtons[2]); // Ctrl+C 移到首位
       shortcuts = mockOnChange.mock.calls[0][0] as WithId<ConfigurableShortcut>[];
-      expect(shortcuts[0].enabled).toBe(false);
+      expect(shortcuts.map((s) => s._id)).toEqual(['sc3', 'sc1', 'sc2']);
 
-      // 使用 rerender 更新 props
       mockOnChange.mockClear();
       rerender(<ShortcutSettings shortcuts={shortcuts} onChange={mockOnChange} />);
 
-      // 再次启用 Esc
-      const newToggles = screen.getAllByRole('switch');
-      fireEvent.click(newToggles[0]);
+      const toggles = screen.getAllByRole('switch');
+      fireEvent.click(toggles[0]); // toggle 当前首项
 
-      const newShortcuts = mockOnChange.mock.calls[0][0] as WithId<ConfigurableShortcut>[];
-      expect(newShortcuts[0]._id).toBe('sc1');
-      expect(newShortcuts[0].enabled).toBe(true);
-      expect(newShortcuts[1]._id).toBe('sc2');
+      const toggledShortcuts = mockOnChange.mock.calls[0][0] as WithId<ConfigurableShortcut>[];
+      expect(toggledShortcuts.map((s) => s._id)).toEqual(['sc3', 'sc1', 'sc2']);
+
+      rerender(<ShortcutSettings shortcuts={toggledShortcuts} onChange={mockOnChange} />);
+      const labels = screen.getAllByPlaceholderText('Press key to capture').map((el) => (el as HTMLInputElement).value);
+      expect(labels).toEqual(['Ctrl+C', 'Esc', 'Enter']);
     });
   });
 

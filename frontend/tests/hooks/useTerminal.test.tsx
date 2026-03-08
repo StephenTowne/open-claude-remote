@@ -464,6 +464,172 @@ describe('useTerminal', () => {
 
       vi.useRealTimers();
     });
+
+    it('should NOT auto-scroll when user has scrolled up and user intent is active', async () => {
+      // 回归测试：用户手动上滑后，新输出不应强制拉回底部
+      vi.useFakeTimers();
+
+      const { result } = renderUseTerminal();
+
+      expect(mockTermOnScroll).toHaveBeenCalled();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      // 设置初始位置（底部）
+      mockBuffer.active.viewportY = 76;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback(); // 初始化 lastViewportYRef
+      });
+
+      // 用户向上滚动（模拟手动上滑）
+      mockBuffer.active.viewportY = 50;
+      act(() => {
+        scrollCallback();
+      });
+
+      // 确认用户滚动意图已触发，按钮显示
+      expect(result.current.showScrollHint).toBe(true);
+
+      // 清空之前的 scrollToBottom 调用记录
+      mockTermScrollToBottom.mockClear();
+
+      // 模拟新输出到达（PTY 持续输出）
+      act(() => {
+        result.current.write('new output line 1\n');
+      });
+
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // 关键断言：scrollToBottom 不应被调用（用户正在浏览历史）
+      expect(mockTermScrollToBottom).not.toHaveBeenCalled();
+
+      // 再次输出
+      mockTermScrollToBottom.mockClear();
+      act(() => {
+        result.current.write('new output line 2\n');
+      });
+
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // 仍然不应自动滚动
+      expect(mockTermScrollToBottom).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('should prioritize user scroll intent over programmatic scroll proximity', async () => {
+      // 回归测试：程序滚动与用户滚动近邻发生时，用户意图优先
+      vi.useFakeTimers();
+
+      const { result } = renderUseTerminal();
+
+      expect(mockTermOnScroll).toHaveBeenCalled();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      // 设置初始位置（底部）
+      mockBuffer.active.viewportY = 76;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback(); // 初始化
+      });
+
+      // 模拟 PTY 持续输出触发 auto-scroll
+      act(() => {
+        result.current.write('output before scroll');
+      });
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // 等待程序滚动时间戳过期
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+
+      // 用户向上滚动（此时应该能正常检测）
+      mockBuffer.active.viewportY = 40;
+      act(() => {
+        scrollCallback();
+      });
+
+      // 按钮应该显示（用户意图被正确识别）
+      expect(result.current.showScrollHint).toBe(true);
+
+      // 清空记录
+      mockTermScrollToBottom.mockClear();
+
+      // 快速再次写入（模拟紧随其后的输出）
+      act(() => {
+        result.current.write('rapid follow-up output');
+      });
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // 不应该自动滚动，因为用户意图仍然有效
+      expect(mockTermScrollToBottom).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('should resume auto-scroll only after explicit scrollToBottom call and setAutoFollow(true)', async () => {
+      // 回归测试：点击"回到底部"后恢复自动跟随
+      vi.useFakeTimers();
+
+      const { result } = renderUseTerminal();
+
+      expect(mockTermOnScroll).toHaveBeenCalled();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      // 设置初始位置（底部）
+      mockBuffer.active.viewportY = 76;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback();
+      });
+
+      // 用户向上滚动
+      mockBuffer.active.viewportY = 50;
+      act(() => {
+        scrollCallback();
+      });
+
+      expect(result.current.showScrollHint).toBe(true);
+
+      // 模拟用户点击"回到底部"按钮
+      act(() => {
+        result.current.scrollToBottom();
+        result.current.setAutoFollow(true);
+      });
+
+      // 按钮应该隐藏
+      expect(result.current.showScrollHint).toBe(false);
+
+      // 清空记录
+      mockTermScrollToBottom.mockClear();
+
+      // 新输出应该触发自动滚动
+      act(() => {
+        result.current.write('output after returning to bottom');
+      });
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      expect(mockTermScrollToBottom).toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
   });
 
     it('should deduplicate identical resize events', () => {

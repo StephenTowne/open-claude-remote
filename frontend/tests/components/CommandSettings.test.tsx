@@ -52,49 +52,75 @@ describe('CommandSettings', () => {
   });
 
   describe('启用/禁用切换', () => {
-    it('点击 toggle 切换启用状态，但不改变位置', () => {
+    it('enabled -> disabled 后顺序不变（视觉顺序）', () => {
       const commands = createCommands();
-      render(<CommandSettings commands={commands} onChange={mockOnChange} />);
+      const { rerender } = render(<CommandSettings commands={commands} onChange={mockOnChange} />);
+
+      const beforeLabels = screen
+        .getAllByRole('button')
+        .filter((b) => b.getAttribute('aria-label')?.startsWith('Edit command '))
+        .map((b) => b.textContent);
+      expect(beforeLabels).toEqual(['/help', '/clear', '/status']);
 
       const toggles = screen.getAllByRole('switch');
-      expect(toggles[0].getAttribute('aria-checked')).toBe('true');
-
-      // 点击第一个命令的 toggle（/help）
       fireEvent.click(toggles[0]);
 
-      // onChange 被调用，且顺序保持不变
       expect(mockOnChange).toHaveBeenCalledTimes(1);
       const newCommands = mockOnChange.mock.calls[0][0] as WithId<ConfigurableCommand>[];
-      expect(newCommands[0]._id).toBe('cmd1');
+      expect(newCommands.map((c) => c._id)).toEqual(['cmd1', 'cmd2', 'cmd3']);
       expect(newCommands[0].enabled).toBe(false);
-      expect(newCommands[1]._id).toBe('cmd2');
-      expect(newCommands[2]._id).toBe('cmd3');
+
+      rerender(<CommandSettings commands={newCommands} onChange={mockOnChange} />);
+      const afterLabels = screen
+        .getAllByRole('button')
+        .filter((b) => b.getAttribute('aria-label')?.startsWith('Edit command '))
+        .map((b) => b.textContent);
+      expect(afterLabels).toEqual(['/help', '/clear', '/status']);
     });
 
-    it('禁用后再启用，位置不变', () => {
-      let commands = createCommands();
+    it('disabled -> enabled 后顺序不变（视觉顺序）', () => {
+      const commands = createCommands();
       const { rerender } = render(<CommandSettings commands={commands} onChange={mockOnChange} />);
 
       const toggles = screen.getAllByRole('switch');
+      fireEvent.click(toggles[1]); // /clear: disabled -> enabled
 
-      // 禁用 /help
-      fireEvent.click(toggles[0]);
-      expect(mockOnChange).toHaveBeenCalledTimes(1);
+      const newCommands = mockOnChange.mock.calls[0][0] as WithId<ConfigurableCommand>[];
+      expect(newCommands.map((c) => c._id)).toEqual(['cmd1', 'cmd2', 'cmd3']);
+      expect(newCommands[1].enabled).toBe(true);
+
+      rerender(<CommandSettings commands={newCommands} onChange={mockOnChange} />);
+      const labels = screen
+        .getAllByRole('button')
+        .filter((b) => b.getAttribute('aria-label')?.startsWith('Edit command '))
+        .map((b) => b.textContent);
+      expect(labels).toEqual(['/help', '/clear', '/status']);
+    });
+
+    it('排序后再 toggle 不应再次重排', () => {
+      let commands = createCommands();
+      const { rerender } = render(<CommandSettings commands={commands} onChange={mockOnChange} />);
+
+      const moveToFirstButtons = screen.getAllByRole('button', { name: 'Move to first' });
+      fireEvent.click(moveToFirstButtons[2]); // /status 移到首位
       commands = mockOnChange.mock.calls[0][0] as WithId<ConfigurableCommand>[];
-      expect(commands[0].enabled).toBe(false);
+      expect(commands.map((c) => c._id)).toEqual(['cmd3', 'cmd1', 'cmd2']);
 
-      // 使用 rerender 更新 props
       mockOnChange.mockClear();
       rerender(<CommandSettings commands={commands} onChange={mockOnChange} />);
 
-      // 再次启用 /help
-      const newToggles = screen.getAllByRole('switch');
-      fireEvent.click(newToggles[0]);
+      const toggles = screen.getAllByRole('switch');
+      fireEvent.click(toggles[0]); // toggle 当前首项 /status
 
-      const newCommands = mockOnChange.mock.calls[0][0] as WithId<ConfigurableCommand>[];
-      expect(newCommands[0]._id).toBe('cmd1');
-      expect(newCommands[0].enabled).toBe(true);
-      expect(newCommands[1]._id).toBe('cmd2');
+      const toggledCommands = mockOnChange.mock.calls[0][0] as WithId<ConfigurableCommand>[];
+      expect(toggledCommands.map((c) => c._id)).toEqual(['cmd3', 'cmd1', 'cmd2']);
+
+      rerender(<CommandSettings commands={toggledCommands} onChange={mockOnChange} />);
+      const labels = screen
+        .getAllByRole('button')
+        .filter((b) => b.getAttribute('aria-label')?.startsWith('Edit command '))
+        .map((b) => b.textContent);
+      expect(labels).toEqual(['/status', '/help', '/clear']);
     });
   });
 
@@ -239,13 +265,31 @@ describe('CommandSettings', () => {
     });
   });
 
-  describe('auto-send 切换', () => {
+  describe('操作按钮提示与交互', () => {
+    it('所有行内操作按钮都具备 aria-label 与 title 提示', () => {
+      const commands = createCommands();
+      render(<CommandSettings commands={commands} onChange={mockOnChange} />);
+
+      const assertButtonsHaveLabelAndTitle = (name: string, expectedCount: number) => {
+        const buttons = screen.getAllByRole('button', { name });
+        expect(buttons).toHaveLength(expectedCount);
+        buttons.forEach((button) => {
+          expect(button.getAttribute('aria-label')).toBe(name);
+          expect(button.getAttribute('title')).toBe(name);
+        });
+      };
+
+      assertButtonsHaveLabelAndTitle('Auto-send toggle', 3);
+      assertButtonsHaveLabelAndTitle('Move to first', 3);
+      assertButtonsHaveLabelAndTitle('Move to last', 3);
+      assertButtonsHaveLabelAndTitle('Delete', 3);
+    });
+
     it('点击 auto-send 按钮切换状态', () => {
       const commands = createCommands();
       render(<CommandSettings commands={commands} onChange={mockOnChange} />);
 
-      const autoSendButtons = screen.getAllByRole('button')
-        .filter(b => b.getAttribute('aria-label')?.includes('Auto-send'));
+      const autoSendButtons = screen.getAllByRole('button', { name: 'Auto-send toggle' });
       expect(autoSendButtons).toHaveLength(3);
 
       // 第一个命令 autoSend 是 true

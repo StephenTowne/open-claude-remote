@@ -36,11 +36,11 @@ function AutoSendButton({
   return (
     <button
       onClick={onToggle}
-      aria-label={isAutoSend ? 'Auto-send is on. Click to edit in input box instead.' : 'Auto-send is off. Click to send directly.'}
-      title={isAutoSend ? 'Auto-send on click' : 'Edit in input box'}
+      aria-label="Auto-send toggle"
+      title="Auto-send toggle"
       style={{
-        width: 36,
-        height: 36,
+        width: 32,
+        height: 32,
         padding: 0,
         borderRadius: 6,
         border: 'none',
@@ -258,7 +258,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                   placeholder="Enter command…"
                   aria-label={`Edit ${cmd.label}`}
                   style={mergeTextareaStyle({
-                    flex: 1,
+                    flex: '1 1 180px',
                     minWidth: 0,
                     height: 36,
                     padding: '0 12px',
@@ -274,7 +274,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                   onClick={() => startEdit(cmd._id)}
                   aria-label={`Edit command ${cmd.label}`}
                   style={{
-                    flex: 1,
+                    flex: '1 1 180px',
                     minWidth: 0,
                     height: 36,
                     padding: '0 12px',

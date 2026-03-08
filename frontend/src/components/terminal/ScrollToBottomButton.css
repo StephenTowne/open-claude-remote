@@ -1,9 +1,11 @@
 .scroll-to-bottom-btn {
   position: fixed;
   right: 16px;
-  bottom: calc(var(--inputbar-height, 56px) + var(--safe-bottom, 0px) + 16px);
+  bottom: calc(var(--inputbar-height, 56px) + var(--safe-bottom, env(safe-area-inset-bottom, 0px)) + 16px);
   width: 48px;
   height: 48px;
+  min-width: 44px; /* 移动端触控区域 >= 44px */
+  min-height: 44px;
   border-radius: 50%;
   background: var(--accent-primary, #3b82f6);
   color: white;
@@ -16,7 +18,9 @@
   z-index: 1000;
   font-size: 20px;
   touch-action: manipulation;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  pointer-events: auto; /* 确保在父容器有 transform 时仍可点击 */
+  -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
 }
 
 .scroll-to-bottom-btn:hover {

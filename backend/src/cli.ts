@@ -98,7 +98,7 @@ void (async () => {
     }
 
     // Ensure daemon is running, then attach as client
-    const { isDaemonRunning, checkDaemonVersion, smartRestartDaemon } = await import('./daemon/daemon-client.js');
+    const { isDaemonRunning, checkDaemonVersion } = await import('./daemon/daemon-client.js');
     const { launchDaemon } = await import('./daemon/daemon-launcher.js');
     const { DEFAULT_PORT } = await import('#shared');
 
@@ -140,22 +140,8 @@ void (async () => {
       const versionWarnings: string[] = [];
 
       if (versionCheck.needsRestart) {
-        const versionMsg = `Daemon outdated: ${versionCheck.daemonVersion} → ${versionCheck.cliVersion}`;
-
-        const result = await smartRestartDaemon();
-
-        if (result.restarted) {
-          process.stderr.write('Daemon restarted with latest version.\n');
-          // After restart, daemon PID needs to be fetched from status API
-        } else if (result.reason === 'has_instances') {
-          versionWarnings.push(versionMsg);
-          versionWarnings.push('Instances are running on old version.');
-          versionWarnings.push('Run: claude-remote stop');
-        } else if (result.reason === 'stop_failed') {
-          versionWarnings.push(versionMsg);
-          versionWarnings.push('Failed to stop daemon.');
-          versionWarnings.push('Run: claude-remote stop');
-        }
+        versionWarnings.push(`Daemon outdated: ${versionCheck.daemonVersion} → ${versionCheck.cliVersion}`);
+        versionWarnings.push('Run `claude-remote stop && claude-remote` to restart.');
       }
 
       // Store warnings for banner display

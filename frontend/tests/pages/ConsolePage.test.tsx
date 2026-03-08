@@ -51,6 +51,7 @@ const mockScrollToBottom = vi.fn();
 const mockScrollToTop = vi.fn();
 const mockSetOnScrollPositionChange = vi.fn();
 const mockAdaptToPtyCols = vi.fn();
+const mockSetAutoFollow = vi.fn();
 
 vi.mock('../../src/hooks/useTerminal.js', () => ({
   useTerminal: () => ({
@@ -60,6 +61,8 @@ vi.mock('../../src/hooks/useTerminal.js', () => ({
     scrollToTop: mockScrollToTop,
     setOnScrollPositionChange: mockSetOnScrollPositionChange,
     adaptToPtyCols: mockAdaptToPtyCols,
+    setAutoFollow: mockSetAutoFollow,
+    showScrollHint: true, // 默认显示以测试按钮渲染
   }),
 }));
 
@@ -100,6 +103,17 @@ vi.mock('../../src/components/terminal/TerminalView.js', () => ({
 
 vi.mock('../../src/components/terminal/ScrollButtons.js', () => ({
   ScrollButtons: () => <div>ScrollButtons</div>,
+}));
+
+const mockScrollToBottomButtonClick = vi.fn();
+vi.mock('../../src/components/terminal/ScrollToBottomButton.js', () => ({
+  ScrollToBottomButton: ({ visible, onClick }: { visible: boolean; onClick: () => void }) => {
+    return visible ? (
+      <button data-testid="scroll-to-bottom-btn" onClick={onClick}>
+        Jump to latest
+      </button>
+    ) : null;
+  },
 }));
 
 vi.mock('../../src/services/instance-api.js', () => ({
@@ -465,7 +479,8 @@ describe('ConsolePage', () => {
 
   // ---- PTY cols adaptation tests ----
 
-  it('should call adaptToPtyCols when history_sync has cols', async () => {
+  it('should call adaptToPtyCols when history_sync has cols (without forced scroll)', async () => {
+    mockScrollToBottom.mockClear();
     render(<ConsolePage />);
 
     await act(async () => {
@@ -483,10 +498,12 @@ describe('ConsolePage', () => {
     // 无论 PTY 尺寸如何，始终调用 adaptToPtyCols(0,0) 让终端适配自己的可视区域
     expect(mockAdaptToPtyCols).toHaveBeenCalledWith(0, 0);
     expect(mockWrite).toHaveBeenCalledWith('hello');
-    expect(mockScrollToBottom).toHaveBeenCalled();
+    // 不再强制滚动到底部，尊重用户的当前滚动位置
+    expect(mockScrollToBottom).not.toHaveBeenCalled();
   });
 
-  it('should call adaptToPtyCols(0,0) when history_sync has no cols (still adapt to viewport)', async () => {
+  it('should call adaptToPtyCols(0,0) when history_sync has no cols (respect user scroll position)', async () => {
+    mockScrollToBottom.mockClear();
     render(<ConsolePage />);
 
     await act(async () => {
@@ -502,7 +519,8 @@ describe('ConsolePage', () => {
     // 即使没有 cols，仍然调用 adaptToPtyCols 以确保终端适配自己的可视区域
     expect(mockAdaptToPtyCols).toHaveBeenCalledWith(0, 0);
     expect(mockWrite).toHaveBeenCalledWith('hello');
-    expect(mockScrollToBottom).toHaveBeenCalled();
+    // 不再强制滚动到底部，尊重用户的当前滚动位置
+    expect(mockScrollToBottom).not.toHaveBeenCalled();
   });
 
   it('should call adaptToPtyCols with cols and rows when terminal_resize message is received', async () => {
@@ -636,5 +654,31 @@ describe('ConsolePage', () => {
 
     // 应选中 startedAt 最新的 inst-new-copy，而非 inst-old-copy
     expect(useInstanceStore.getState().activeInstanceId).toBe('inst-new-copy');
+  });
+
+  // ---- Scroll-to-bottom integration tests ----
+
+  it('should render ScrollToBottomButton when showScrollHint is true', () => {
+    render(<ConsolePage />);
+
+    // 按钮应该渲染（useTerminal mock 返回 showScrollHint: true）
+    expect(screen.getByTestId('scroll-to-bottom-btn')).toBeTruthy();
+  });
+
+  it('should call scrollToBottom and setAutoFollow when scroll to bottom button is clicked', async () => {
+    mockScrollToBottom.mockClear();
+    mockSetAutoFollow.mockClear();
+
+    render(<ConsolePage />);
+
+    // 获取按钮并点击
+    const button = screen.getByTestId('scroll-to-bottom-btn');
+    await act(async () => {
+      button.click();
+    });
+
+    // 验证回调被正确调用
+    expect(mockScrollToBottom).toHaveBeenCalled();
+    expect(mockSetAutoFollow).toHaveBeenCalledWith(true);
   });
 });

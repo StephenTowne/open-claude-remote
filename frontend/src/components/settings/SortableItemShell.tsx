@@ -58,8 +58,8 @@ export function SortableItemShell({
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
-        padding: '12px 16px',
+        gap: 8,
+        padding: '12px 12px',
         minHeight: 'var(--min-touch-target, 44px)',
         overflow: 'hidden',
       }}>
@@ -129,6 +129,7 @@ export function SortableItemShell({
             {onMoveToFirst && (
               <button
                 aria-label="Move to first"
+                title="Move to first"
                 onClick={onMoveToFirst}
                 style={{
                   width: 32,
@@ -150,6 +151,7 @@ export function SortableItemShell({
             {onMoveToLast && (
               <button
                 aria-label="Move to last"
+                title="Move to last"
                 onClick={onMoveToLast}
                 style={{
                   width: 32,
@@ -174,6 +176,7 @@ export function SortableItemShell({
         {/* 删除按钮 */}
         <button
           aria-label="Delete"
+          title="Delete"
           onClick={onDelete}
           style={{
             width: 32,

@@ -50,7 +50,7 @@ Scan the QR code shown in your terminal with your phone. The auth token is auto-
 - Full ANSI color rendering via xterm.js
 - 10K-line scrollback buffer, auto-restored on reconnect
 - LAN IP change notification with new connection URL
-- Smart auto-scroll with a "scroll to bottom" floating button
+- Smart auto-scroll with a "scroll to bottom" floating button — respects your scroll position when browsing history
 
 ### Quick Actions
 - One-tap keys: Esc, Enter, Tab, arrows, Shift+Tab
@@ -544,7 +544,7 @@ claude-remote
 - 通过 xterm.js 完整渲染 ANSI 颜色
 - 1万行滚动缓冲区，重连时自动恢复
 - 局域网 IP 变更通知，附带新连接地址
-- 智能自动滚动，配有"滚动到底部"悬浮按钮
+- 智能自动滚动，配有"滚动到底部"悬浮按钮 — 浏览历史时尊重你的滚动位置
 
 ### 快捷操作
 - 一键发送：Esc、Enter、Tab、方向键、Shift+Tab

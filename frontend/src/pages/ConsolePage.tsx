@@ -48,7 +48,8 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen }
         adaptToPtyColsRef.current(0, 0);
         writeRef.current(msg.data);
         setSessionStatus(msg.status);
-        scrollToBottomRef.current();
+        // 注意：不强制滚动到底部，尊重用户的当前滚动位置
+        // 如果用户正在浏览历史内容，保持其视图位置
         break;
       case 'terminal_resize':
         if (msg.cols && msg.cols > 0) {
