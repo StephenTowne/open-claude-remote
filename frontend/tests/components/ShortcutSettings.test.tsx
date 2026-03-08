@@ -4,8 +4,16 @@ import { ShortcutSettings } from '../../src/components/settings/ShortcutSettings
 import type { ConfigurableShortcut } from '../../src/config/commands.js';
 import type { WithId } from '../../src/components/settings/SettingsModal.js';
 
+// Mock the useIsMobile hook
+vi.mock('../../src/hooks/useIsMobile.js', () => ({
+  useIsMobile: vi.fn(),
+}));
+
+import { useIsMobile } from '../../src/hooks/useIsMobile.js';
+
 describe('ShortcutSettings', () => {
   const mockOnChange = vi.fn();
+  const mockedUseIsMobile = vi.mocked(useIsMobile);
 
   const createShortcuts = (): WithId<ConfigurableShortcut>[] => [
     { _id: 'sc1', label: 'Esc', data: '\x1b', enabled: true },
@@ -15,6 +23,7 @@ describe('ShortcutSettings', () => {
 
   beforeEach(() => {
     mockOnChange.mockClear();
+    mockedUseIsMobile.mockReturnValue(false); // Default to PC
   });
 
   afterEach(() => {
@@ -279,6 +288,73 @@ describe('ShortcutSettings', () => {
       const newShortcuts = mockOnChange.mock.calls[0][0] as WithId<ConfigurableShortcut>[];
       expect(newShortcuts[0].label).toBe('A');
       expect(newShortcuts[0].data).toBe('a');
+    });
+  });
+
+  describe('移动端行为', () => {
+    it('移动端显示警告提示', () => {
+      mockedUseIsMobile.mockReturnValue(true);
+      const shortcuts = createShortcuts();
+      render(<ShortcutSettings shortcuts={shortcuts} onChange={mockOnChange} />);
+
+      // 应该显示移动端警告
+      expect(screen.getByText(/移动端无法新增快捷键/)).toBeDefined();
+    });
+
+    it('移动端禁用 Add 按钮', () => {
+      mockedUseIsMobile.mockReturnValue(true);
+      const shortcuts = createShortcuts();
+      render(<ShortcutSettings shortcuts={shortcuts} onChange={mockOnChange} />);
+
+      const addButton = screen.getByRole('button', { name: /add/i });
+      expect(addButton.hasAttribute('disabled')).toBe(true);
+
+      // 点击不应触发 onChange
+      fireEvent.click(addButton);
+      expect(mockOnChange).not.toHaveBeenCalled();
+    });
+
+    it('移动端允许编辑已有快捷键', () => {
+      mockedUseIsMobile.mockReturnValue(true);
+      const shortcuts = createShortcuts();
+      render(<ShortcutSettings shortcuts={shortcuts} onChange={mockOnChange} />);
+
+      // 移动端已有快捷键应该可以编辑
+      const input = screen.getByDisplayValue('Esc');
+      expect(input.hasAttribute('disabled')).toBe(false);
+
+      // 点击应开始捕获（虽然提示不显示，但功能正常）
+      fireEvent.click(input);
+
+      // 模拟按键应该能修改快捷键
+      fireEvent.keyDown(input, { key: 'x', ctrlKey: true });
+      expect(mockOnChange).toHaveBeenCalledTimes(1);
+      const newShortcuts = mockOnChange.mock.calls[0][0] as WithId<ConfigurableShortcut>[];
+      expect(newShortcuts[0].label).toBe('Ctrl+X');
+    });
+
+    it('PC端不显示移动端警告', () => {
+      mockedUseIsMobile.mockReturnValue(false);
+      const shortcuts = createShortcuts();
+      render(<ShortcutSettings shortcuts={shortcuts} onChange={mockOnChange} />);
+
+      // 不应显示移动端警告
+      expect(screen.queryByText(/移动端无法新增快捷键/)).toBeNull();
+    });
+
+    it('PC端可以新增快捷键', () => {
+      mockedUseIsMobile.mockReturnValue(false);
+      const shortcuts = createShortcuts();
+      render(<ShortcutSettings shortcuts={shortcuts} onChange={mockOnChange} />);
+
+      const addButton = screen.getByRole('button', { name: /add/i });
+      expect(addButton.hasAttribute('disabled')).toBe(false);
+
+      // 点击应触发 onChange 新增快捷键
+      fireEvent.click(addButton);
+      expect(mockOnChange).toHaveBeenCalledTimes(1);
+      const newShortcuts = mockOnChange.mock.calls[0][0] as WithId<ConfigurableShortcut>[];
+      expect(newShortcuts).toHaveLength(4);
     });
   });
 });

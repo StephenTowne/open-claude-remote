@@ -13,10 +13,12 @@ import { generateId } from '../../utils/id.js';
 import type { WithId } from './SettingsModal.js';
 import { SortableItemShell } from './SortableItemShell.js';
 import { useDndSensors } from './useDndSensors.js';
+import { useIsMobile } from '../../hooks/useIsMobile.js';
 
 /**
  * ShortcutSettings 组件
  * 管理可配置的快捷键列表，支持拖拽排序、启用/禁用、按键捕获、删除
+ * 移动端禁止新增快捷键（虚拟键盘无法输入组合键），但允许编辑已有快捷键
  */
 
 interface ShortcutSettingsProps {
@@ -122,7 +124,9 @@ function keyEventToAnsi(e: React.KeyboardEvent): { label: string; data: string }
 
 export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps) {
   const [capturingId, setCapturingId] = useState<string | null>(null);
+  const [showMobileWarning, setShowMobileWarning] = useState(false);
   const sensors = useDndSensors();
+  const isMobile = useIsMobile();
 
   const handleKeyDown = (e: React.KeyboardEvent, id: string) => {
     e.preventDefault();
@@ -148,6 +152,11 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
   };
 
   const addShortcut = () => {
+    if (isMobile) {
+      setShowMobileWarning(true);
+      setTimeout(() => setShowMobileWarning(false), 3000);
+      return;
+    }
     const newId = generateId();
     // 新项目添加到列表末尾，不再自动排序
     const newShortcuts = [
@@ -209,6 +218,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
         </span>
         <button
           onClick={addShortcut}
+          disabled={isMobile}
           style={{
             padding: '8px 16px',
             fontSize: 13,
@@ -216,12 +226,31 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
             border: '1px solid var(--border-color)',
             background: 'var(--bg-tertiary)',
             color: 'var(--text-primary)',
-            cursor: 'pointer',
+            cursor: isMobile ? 'not-allowed' : 'pointer',
+            opacity: isMobile ? 0.5 : 1,
           }}
         >
           + Add
         </button>
       </div>
+
+      {/* 移动端提示 */}
+      {isMobile && (
+        <div style={{
+          padding: '10px 12px',
+          backgroundColor: 'var(--bg-warning, #fff8e6)',
+          border: '1px solid var(--border-warning, #ffd666)',
+          borderRadius: 6,
+          fontSize: 13,
+          color: 'var(--text-warning, #ad6800)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <span style={{ fontSize: 16 }}>⚠️</span>
+          <span>移动端无法新增快捷键，请在PC端浏览器中添加</span>
+        </div>
+      )}
 
       {shortcuts.length === 0 && (
         <div style={{
@@ -317,7 +346,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
         </SortableContext>
       </DndContext>
 
-      {capturingId !== null && (
+      {capturingId !== null && !isMobile && (
         <div style={{
           fontSize: 12,
           color: 'var(--text-secondary)',
@@ -325,6 +354,27 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
           marginTop: 4,
         }}>
           Press a key to capture…
+        </div>
+      )}
+
+      {/* 移动端新增警告提示（临时显示） */}
+      {showMobileWarning && (
+        <div style={{
+          position: 'fixed',
+          bottom: 80,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          padding: '12px 20px',
+          backgroundColor: 'var(--bg-secondary, #333)',
+          color: 'var(--text-inverse, #fff)',
+          borderRadius: 8,
+          fontSize: 14,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          zIndex: 1000,
+          whiteSpace: 'nowrap',
+          animation: 'fadeInOut 3s ease',
+        }}>
+          请在PC端浏览器中新增快捷键
         </div>
       )}
     </div>
