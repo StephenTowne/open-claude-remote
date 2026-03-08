@@ -664,6 +664,40 @@ describe('useTerminal', () => {
       expect(result.current.showScrollHint).toBe(true);
     });
 
+    it('should NOT show scroll hint on touch scroll when content fits in one screen', () => {
+      // 模拟内容不足一屏的情况：buffer length <= rows
+      mockBuffer.active.length = 24; // 等于 rows
+      mockTermState.rows = 24;
+      mockBuffer.active.viewportY = 0;
+
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireTouchStart(container, 200);
+        fireTouchMove(container, 250); // 50px > 20px threshold
+      });
+
+      // 内容不足一屏，不应该显示回到底部按钮
+      expect(result.current.showScrollHint).toBe(false);
+    });
+
+    it('should show scroll hint on touch scroll when content exceeds one screen', () => {
+      // 模拟内容超过一屏的情况：buffer length > rows
+      mockBuffer.active.length = 100; // 远大于 rows
+      mockTermState.rows = 24;
+      mockBuffer.active.viewportY = 76;
+
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireTouchStart(container, 200);
+        fireTouchMove(container, 250); // 50px > 20px threshold
+      });
+
+      // 内容超过一屏，应该显示回到底部按钮
+      expect(result.current.showScrollHint).toBe(true);
+    });
+
     it('should NOT disable auto-follow when touch distance below threshold', () => {
       const { result, container } = renderUseTerminal();
 
@@ -710,6 +744,38 @@ describe('useTerminal', () => {
         fireWheelUp(container);
       });
 
+      expect(result.current.showScrollHint).toBe(true);
+    });
+
+    it('should NOT show scroll hint on wheel scroll when content fits in one screen', () => {
+      // 模拟内容不足一屏的情况：buffer length <= rows
+      mockBuffer.active.length = 24; // 等于 rows
+      mockTermState.rows = 24;
+      mockBuffer.active.viewportY = 0;
+
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireWheelUp(container);
+      });
+
+      // 内容不足一屏，不应该显示回到底部按钮
+      expect(result.current.showScrollHint).toBe(false);
+    });
+
+    it('should show scroll hint on wheel scroll when content exceeds one screen', () => {
+      // 模拟内容超过一屏的情况：buffer length > rows
+      mockBuffer.active.length = 100; // 远大于 rows
+      mockTermState.rows = 24;
+      mockBuffer.active.viewportY = 76;
+
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireWheelUp(container);
+      });
+
+      // 内容超过一屏，应该显示回到底部按钮
       expect(result.current.showScrollHint).toBe(true);
     });
 

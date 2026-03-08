@@ -221,6 +221,9 @@ export function useTerminal(
       const deltaY = touch.clientY - touchStartYRef.current;
       // deltaY > 0: 手指向下滑 = 内容向上移 = 查看历史
       if (deltaY > TOUCH_SCROLL_THRESHOLD) {
+        // 只有内容超过一屏时才显示回到底部按钮
+        const canScroll = term.buffer.active.length > term.rows;
+        if (!canScroll) return;
         autoFollowRef.current = false;
         setShowScrollHint(true);
       }
@@ -233,6 +236,9 @@ export function useTerminal(
     const handleWheel = (e: Event) => {
       // deltaY < 0: 向上滚动 = 查看历史内容
       if ((e as WheelEvent).deltaY < 0) {
+        // 只有内容超过一屏时才显示回到底部按钮
+        const canScroll = term.buffer.active.length > term.rows;
+        if (!canScroll) return;
         autoFollowRef.current = false;
         setShowScrollHint(true);
       }
