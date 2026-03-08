@@ -68,6 +68,10 @@ export interface UserConfig {
   // === Settings 文件配置 ===
   /** Settings 文件扫描目录列表（默认: ["~/.claude/", "~/.claude-remote/settings/"]） */
   settingsDirs?: string[];
+
+  // === 网络配置 ===
+  /** 自定义私有网段列表（CIDR 格式），用于 CORS 白名单 */
+  customPrivateRanges?: string[];
 }
 
 /**

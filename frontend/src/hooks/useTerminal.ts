@@ -35,19 +35,16 @@ export function useTerminal(
   const isAtBottomRef = useRef(true);
   const [showScrollHint, setShowScrollHint] = useState(false);
 
-  // 用户滚动意图检测（带时间戳）
-  const userScrollIntentRef = useRef<'up' | null>(null);
-  const userScrollTimestampRef = useRef(0);
+  // 程序滚动同步标记（替代时间戳方案，避免持续输出时的竞争）
+  const isProgramScrollRef = useRef(false);
 
-  // 程序滚动时间戳（用于区分程序/用户滚动）
-  const programScrollTimestampRef = useRef(0);
+  // Touch/Wheel 用户交互状态
+  const userTouchingRef = useRef(false);
+  const touchStartYRef = useRef(0);
+  const TOUCH_SCROLL_THRESHOLD = 20; // px，有意滚动最小距离
 
   // 上一次视口位置（用于计算滚动方向）
   const lastViewportYRef = useRef(0);
-
-  // 阈值配置
-  const USER_INTENT_DURATION_MS = 2000;  // 用户意图持续时间
-  const PROGRAM_SCROLL_THRESHOLD_MS = 50; // 程序滚动事件判断阈值
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -181,25 +178,18 @@ export function useTerminal(
 
     // 监听滚动事件，实现智能 auto-follow
     term.onScroll(() => {
-      const now = Date.now();
-
-      // 如果是程序滚动触发的事件，跳过
-      if (now - programScrollTimestampRef.current < PROGRAM_SCROLL_THRESHOLD_MS) {
-        return;
-      }
+      // 同步标记过滤：程序触发的 scrollToBottom 不处理
+      if (isProgramScrollRef.current) return;
 
       const buffer = term.buffer.active;
       const viewportY = buffer.viewportY;
-      const atBottom = viewportY === buffer.length - term.rows;
+      const atBottom = viewportY >= buffer.length - term.rows;
 
       // 检测用户向上滚动意图
       const prevViewportY = lastViewportYRef.current;
       const scrollDelta = prevViewportY - viewportY; // 正值 = 向上滚动
 
       if (scrollDelta > 0 && !atBottom) {
-        // 用户向上滚动了，记录意图
-        userScrollIntentRef.current = 'up';
-        userScrollTimestampRef.current = now;
         autoFollowRef.current = false;
       }
 
@@ -208,7 +198,6 @@ export function useTerminal(
 
       // 滚动到底部时恢复自动跟随
       if (atBottom) {
-        userScrollIntentRef.current = null;
         autoFollowRef.current = true;
       }
 
@@ -216,7 +205,49 @@ export function useTerminal(
       setShowScrollHint(!autoFollowRef.current && !atBottom);
     });
 
+    // Touch/Wheel 事件：直接检测用户滚动意图，绕过 xterm onScroll 时间竞争
+    const container = containerRef.current;
+
+    const handleTouchStart = (e: Event) => {
+      const touch = (e as TouchEvent).touches?.[0];
+      if (!touch) return;
+      userTouchingRef.current = true;
+      touchStartYRef.current = touch.clientY;
+    };
+
+    const handleTouchMove = (e: Event) => {
+      const touch = (e as TouchEvent).touches?.[0];
+      if (!touch) return;
+      const deltaY = touch.clientY - touchStartYRef.current;
+      // deltaY > 0: 手指向下滑 = 内容向上移 = 查看历史
+      if (deltaY > TOUCH_SCROLL_THRESHOLD) {
+        autoFollowRef.current = false;
+        setShowScrollHint(true);
+      }
+    };
+
+    const handleTouchEnd = () => {
+      userTouchingRef.current = false;
+    };
+
+    const handleWheel = (e: Event) => {
+      // deltaY < 0: 向上滚动 = 查看历史内容
+      if ((e as WheelEvent).deltaY < 0) {
+        autoFollowRef.current = false;
+        setShowScrollHint(true);
+      }
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: true });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    container.addEventListener('wheel', handleWheel, { passive: true });
+
     return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('wheel', handleWheel);
       resizeObserver.disconnect();
       if (pendingResizeTimeoutRef.current) {
         clearTimeout(pendingResizeTimeoutRef.current);
@@ -244,22 +275,20 @@ export function useTerminal(
     const term = termRef.current;
     if (!term) return;
 
-    const now = Date.now();
+    // 用户触摸中，不自动滚动
+    if (userTouchingRef.current) return;
 
-    // 检查用户是否最近有向上滚动的意图
-    const hasUserIntent = userScrollIntentRef.current === 'up' &&
-      (now - userScrollTimestampRef.current < USER_INTENT_DURATION_MS);
-
-    if (autoFollowRef.current && !hasUserIntent) {
-      programScrollTimestampRef.current = Date.now();
+    if (autoFollowRef.current) {
+      isProgramScrollRef.current = true;
       term.scrollToBottom();
+      isProgramScrollRef.current = false;
       lastViewportYRef.current = term.buffer.active.viewportY;
       return;
     }
 
-    // 检测是否在底部
+    // auto-follow 关闭时，更新按钮显隐
     const buffer = term.buffer.active;
-    const atBottom = buffer.viewportY === buffer.length - term.rows;
+    const atBottom = buffer.viewportY >= buffer.length - term.rows;
     if (atBottom !== isAtBottomRef.current) {
       isAtBottomRef.current = atBottom;
       setShowScrollHint(!atBottom);
@@ -316,16 +345,16 @@ export function useTerminal(
     const term = termRef.current;
     if (!term) return;
 
-    // 标记为程序滚动
-    programScrollTimestampRef.current = Date.now();
+    // 同步标记程序滚动
+    isProgramScrollRef.current = true;
     term.scrollToBottom();
+    isProgramScrollRef.current = false;
     lastViewportYRef.current = term.buffer.active.viewportY;
   }, []);
 
   const setAutoFollow = useCallback((enabled: boolean) => {
     autoFollowRef.current = enabled;
     if (enabled) {
-      userScrollIntentRef.current = null;  // 清除用户意图
       setShowScrollHint(false);
     }
   }, []);

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useInstances } from '../../src/hooks/useInstances.js';
 import { useInstanceStore } from '../../src/stores/instance-store.js';
+import { useAppStore } from '../../src/stores/app-store.js';
 
 vi.mock('../../src/services/instance-api.js', () => ({
   fetchInstances: vi.fn(),
@@ -18,6 +19,10 @@ describe('useInstances', () => {
     useInstanceStore.setState({
       instances: [],
       activeInstanceId: null,
+    });
+
+    useAppStore.setState({
+      serverAvailable: null,
     });
   });
 
@@ -64,7 +69,7 @@ describe('useInstances', () => {
     });
   });
 
-  it('should NOT auto switch when active instance disappears from list', async () => {
+  it('should auto select first instance when active instance disappears from list', async () => {
     // 先预设置 store 状态（模拟用户已经切换到 inst-2）
     useInstanceStore.setState({
       instances: [
@@ -110,9 +115,8 @@ describe('useInstances', () => {
       expect(useInstanceStore.getState().instances).toHaveLength(1);
     });
 
-    // 验证：useInstances 不应该自动切换 activeInstance
-    // 这个职责应该由 ConsolePage 统一处理
-    expect(useInstanceStore.getState().activeInstanceId).toBe('inst-2');
+    // Fix 3: activeInstanceId(inst-2) 不在新列表中 → 自动选中 inst-1
+    expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
   });
 
   it('should update instances list in store when fetch succeeds', async () => {
@@ -179,5 +183,56 @@ describe('useInstances', () => {
     const { result } = renderHook(() => useInstances());
 
     expect(result.current.activeInstanceId).toBe('test-instance');
+  });
+
+  it('should clear instances when poll fails (Fix 1)', async () => {
+    // 预设 store 中有旧实例（模拟服务停止前的状态）
+    useInstanceStore.setState({
+      instances: [
+        {
+          instanceId: 'inst-old',
+          name: 'Old',
+          cwd: '/tmp',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: true,
+        },
+      ],
+      activeInstanceId: 'inst-old',
+    });
+
+    mockedFetchInstances.mockRejectedValue(new Error('Network error'));
+
+    renderHook(() => useInstances());
+
+    await waitFor(() => {
+      // 轮询失败应清空 instances，阻止 auto-switch ping-pong
+      expect(useInstanceStore.getState().instances).toEqual([]);
+      expect(useAppStore.getState().serverAvailable).toBe(false);
+    });
+  });
+
+  it('should auto select new instance after server restart (Fix 3)', async () => {
+    // 模拟旧 activeInstanceId 残留
+    useInstanceStore.setState({
+      activeInstanceId: 'inst-old',
+    });
+
+    // 服务重启后返回全新的实例
+    mockedFetchInstances.mockResolvedValue([
+      {
+        instanceId: 'inst-new',
+        name: 'New Instance',
+        cwd: '/tmp',
+        startedAt: '2026-01-02T00:00:00.000Z',
+        isCurrent: true,
+      },
+    ]);
+
+    renderHook(() => useInstances());
+
+    await waitFor(() => {
+      // 旧 activeId(inst-old) 不在新列表 → 自动选中 inst-new
+      expect(useInstanceStore.getState().activeInstanceId).toBe('inst-new');
+    });
   });
 });

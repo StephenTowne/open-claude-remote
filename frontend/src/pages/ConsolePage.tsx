@@ -187,6 +187,7 @@ export function ConsolePage() {
   const setActiveInstanceId = useInstanceStore((s) => s.setActiveInstanceId);
 
   const cachedToken = useAppStore((s) => s.cachedToken);
+  const serverAvailable = useAppStore((s) => s.serverAvailable);
   const instanceConnectionStatus = useAppStore((s) => s.instanceConnectionStatus);
   const toastMessage = useAppStore((s) => s.toastMessage);
   const showToast = useAppStore((s) => s.showToast);
@@ -201,6 +202,11 @@ export function ConsolePage() {
 
   useEffect(() => {
     if (!activeInstanceId) {
+      return;
+    }
+
+    // 服务器不可达时不切换（null 表示"未检查"，不阻止）
+    if (serverAvailable === false) {
       return;
     }
 
@@ -247,6 +253,7 @@ export function ConsolePage() {
     cachedToken,
     instanceConnectionStatus,
     instances,
+    serverAvailable,
     setActiveInstanceId,
     showToast,
   ]);

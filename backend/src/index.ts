@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import express from 'express';
 import cors from 'cors';
 import { DEFAULT_PORT } from '#shared';
-import { loadConfig, ensureDefaultUserConfig, type CliOverrides } from './config.js';
+import { loadConfig, loadUserConfig, ensureDefaultUserConfig, type CliOverrides } from './config.js';
 import { PortInUseError } from './cli-utils.js';
 import { AuthModule } from './auth/auth-middleware.js';
 import { WsServer } from './ws/ws-server.js';
@@ -20,8 +20,23 @@ import { logger, setInstanceContext } from './logger/logger.js';
 import { markGracefulShutdown } from './daemon/daemon-guard.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { IpMonitor } from './utils/ip-monitor.js';
-import { detectAllLocalIps } from './utils/network.js';
-import { printBanner } from './utils/banner.js';
+import { detectAllLocalIps, getAllNetworkInterfaces, isInCidrRange, type NetworkInterface } from './utils/network.js';
+import { printBanner, type AddressInfo } from './utils/banner.js';
+
+/**
+ * 根据网络接口信息推断接口类型
+ */
+function getInterfaceType(iface: NetworkInterface): AddressInfo['type'] {
+  if (iface.isVpn) return 'vpn';
+  if (iface.name.startsWith('en')) {
+    // macOS: en0 通常是 WiFi/en1 通常是以太网，但顺序不固定
+    return iface.name === 'en0' ? 'wlan' : 'wired';
+  }
+  if (iface.name.startsWith('eth')) return 'wired';
+  if (iface.name.startsWith('wlan') || iface.name.startsWith('wl')) return 'wlan';
+  if (iface.isPrivate) return 'private';
+  return 'other';
+}
 
 export async function startServer(cliOverrides: CliOverrides = {}): Promise<void> {
   // 1. Load configuration (global + workdir merged)
@@ -44,9 +59,25 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   const app = express();
   app.use(express.json());
 
-  // Build CORS allowlist from all local NIC IPs + loopback
-  const localIpSet = new Set([...detectAllLocalIps(), 'localhost', '127.0.0.1']);
-  logger.info({ allowedHosts: [...localIpSet] }, 'CORS allowlist initialized');
+  // Build CORS allowlist from all local NIC IPs + loopback + custom ranges
+  const userConfig = loadUserConfig();
+  const customRanges: string[] = userConfig.customPrivateRanges ?? [];
+  const allInterfaces = getAllNetworkInterfaces();
+  const localIpSet = new Set<string>(['localhost', '127.0.0.1']);
+
+  // Add all non-internal IPs
+  for (const ip of detectAllLocalIps()) {
+    localIpSet.add(ip);
+  }
+
+  // Filter interfaces in custom ranges and add them
+  for (const iface of allInterfaces) {
+    if (customRanges.some(range => isInCidrRange(iface.address, range))) {
+      localIpSet.add(iface.address);
+    }
+  }
+
+  logger.info({ allowedHosts: [...localIpSet], customRanges }, 'CORS allowlist initialized');
 
   app.use(cors({
     origin: (origin, callback) => {
@@ -162,21 +193,49 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   }
 
   // 15. IP monitor
-  const ipMonitor = new IpMonitor((newIp, oldIp) => {
-    logger.info({ oldIp, newIp }, 'IP change detected');
-    config.displayIp = newIp;
-    instanceManager.updateDisplayIp(newIp);
+  const ipMonitor = new IpMonitor(
+    (newIp, oldIp) => {
+      logger.info({ oldIp, newIp }, 'IP change detected');
+      config.displayIp = newIp;
+      instanceManager.updateDisplayIp(newIp);
 
-    // Refresh CORS allowlist on NIC change
-    const freshIps = detectAllLocalIps();
-    localIpSet.clear();
-    localIpSet.add('localhost');
-    localIpSet.add('127.0.0.1');
-    for (const ip of freshIps) {
-      localIpSet.add(ip);
+      // Refresh CORS allowlist on NIC change
+      const freshIps = detectAllLocalIps();
+      const freshInterfaces = getAllNetworkInterfaces();
+      localIpSet.clear();
+      localIpSet.add('localhost');
+      localIpSet.add('127.0.0.1');
+      for (const ip of freshIps) {
+        localIpSet.add(ip);
+      }
+      // Re-apply custom ranges
+      for (const iface of freshInterfaces) {
+        if (customRanges.some((range: string) => isInCidrRange(iface.address, range))) {
+          localIpSet.add(iface.address);
+        }
+      }
+      logger.info({ allowedHosts: [...localIpSet] }, 'CORS allowlist refreshed');
+    },
+    30000,
+    2,
+    undefined,
+    // Network interface change callback
+    (interfaces, preferredIp) => {
+      // Broadcast network change to all WebSocket clients
+      const networkMsg = {
+        type: 'network_changed' as const,
+        interfaces: interfaces.map(iface => ({
+          name: iface.name,
+          address: iface.address,
+          type: iface.isVpn ? 'vpn' as const : iface.isPrivate ? 'private' as const : 'public' as const,
+          url: `http://${iface.address}:${port}`,
+        })),
+        preferredUrl: `http://${preferredIp}:${port}`,
+      };
+      instanceManager.broadcastAll(networkMsg);
+      logger.debug({ interfaceCount: interfaces.length }, 'Network change broadcasted');
     }
-    logger.info({ allowedHosts: [...localIpSet] }, 'CORS allowlist refreshed');
-  }, 30000, 2);
+  );
 
   ipMonitor.start(config.displayIp);
 
@@ -285,8 +344,17 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
 
       if (!daemonMode) {
         // CLI 直接启动模式（pnpm dev 等）：打印 banner
+        // 收集所有可用地址
+        const allInterfaces = getAllNetworkInterfaces();
+        const addresses: AddressInfo[] = allInterfaces.map(iface => ({
+          url: `http://${iface.address}:${port}`,
+          type: getInterfaceType(iface),
+          interface: iface.name,
+        }));
+
         printBanner({
           url,
+          urls: addresses,
           token,
           instanceName: config.instanceName,
           logDir: config.logDir,

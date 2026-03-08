@@ -55,6 +55,20 @@ export interface IpChangedMessage {
   newUrl: string;
 }
 
+/** Network interface info for network change notification */
+export interface NetworkInterfaceInfo {
+  name: string;
+  address: string;
+  type: 'vpn' | 'private' | 'custom' | 'public';
+  url: string;
+}
+
+export interface NetworkChangedMessage {
+  type: 'network_changed';
+  interfaces: NetworkInterfaceInfo[];
+  preferredUrl: string;
+}
+
 export interface ServiceRefreshMessage {
   type: 'service_refresh';
   channel?: 'dingtalk' | 'wechat_work';
@@ -70,6 +84,7 @@ export type ServerMessage =
   | SessionEndedMessage
   | TerminalResizeMessage
   | IpChangedMessage
+  | NetworkChangedMessage
   | ServiceRefreshMessage;
 
 // ==============================

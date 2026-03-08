@@ -6,8 +6,18 @@
 import { generateQRCodeLines } from './qrcode-banner.js';
 import { getCurrentVersion } from '../update.js';
 
-export interface BannerOptions {
+/** 网络地址信息 */
+export interface AddressInfo {
   url: string;
+  type: 'wlan' | 'vpn' | 'wired' | 'other' | 'private' | 'public';
+  interface: string;
+}
+
+export interface BannerOptions {
+  /** 首选 URL（用于大 QR 码） */
+  url: string;
+  /** 所有可用地址列表 */
+  urls?: AddressInfo[];
   token: string;
   instanceName: string;
   logDir: string;
@@ -18,10 +28,22 @@ export interface BannerOptions {
 }
 
 /**
+ * 获取地址类型的显示标签
+ */
+function getTypeLabel(type: AddressInfo['type']): string {
+  switch (type) {
+    case 'wlan': return '📶';
+    case 'vpn': return '🔒';
+    case 'wired': return '🔌';
+    default: return '🌐';
+  }
+}
+
+/**
  * 将 banner 打印到 stderr（CLI 使用）
  */
 export function printBanner(options: BannerOptions): void {
-  const { url, token, instanceName, logDir, pid, instanceId, warnings = [], showExitHint = true } = options;
+  const { url, token, instanceName, logDir, pid, instanceId, urls = [], warnings = [], showExitHint = true } = options;
   const qrUrl = `${url}?token=${token}`;
   const qrLines = generateQRCodeLines(qrUrl);
 
@@ -36,7 +58,21 @@ export function printBanner(options: BannerOptions): void {
 
   const leftLines: string[] = [];
   leftLines.push(instanceLine);
-  leftLines.push(`URL:       ${url}`);
+
+  // Display all available URLs with their types
+  if (urls.length > 0) {
+    leftLines.push('URLs:');
+    // Find the max length for alignment
+    const maxUrlLen = Math.max(...urls.map(u => u.url.length));
+    for (const addr of urls) {
+      const icon = getTypeLabel(addr.type);
+      const paddedUrl = addr.url.padEnd(maxUrlLen);
+      leftLines.push(`  ${icon} ${paddedUrl} (${addr.interface})`);
+    }
+  } else {
+    leftLines.push(`URL:       ${url}`);
+  }
+
   leftLines.push(`PID:       ${pid}`);
   leftLines.push(`Logs:      ${logDir}`);
   leftLines.push('');

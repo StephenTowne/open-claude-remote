@@ -49,8 +49,21 @@ Scan the QR code shown in your terminal with your phone. The auth token is auto-
 - Real-time terminal output streamed to your phone
 - Full ANSI color rendering via xterm.js
 - 10K-line scrollback buffer, auto-restored on reconnect
+- **Multi-network support** — displays all available IPs (WiFi, VPN, Ethernet) on startup
 - LAN IP change notification with new connection URL
 - Smart auto-scroll with a "scroll to bottom" floating button — respects your scroll position when browsing history
+
+### Multi-Network Access (WiFi + VPN)
+
+Access Claude Code Remote from multiple network interfaces simultaneously:
+
+- **Automatic network detection** — discovers all available IPv4 interfaces on startup
+- **VPN support** — detects common VPN interfaces (WireGuard, Tailscale, ZeroTier, PPP, etc.)
+- **Custom CIDR ranges** — configure `customPrivateRanges` to add company-specific networks
+- **Network change notifications** — WebSocket `network_changed` events notify clients when interfaces change
+- **Unified CORS** — all detected IPs are automatically added to the CORS allowlist
+
+Example: When connected to both WiFi (192.168.x.x) and company VPN (30.x.x.x), both addresses are displayed on startup and accessible via the web UI.
 
 ### Quick Actions
 - One-tap keys: Esc, Enter, Tab, arrows, Shift+Tab
@@ -209,6 +222,7 @@ Config file: `~/.claude-remote/settings.json` (legacy `config.json` is auto-migr
 | `workspaces` | string[] | [] | Allowed working directories for web-spawned instances |
 | `settingsDirs` | string[] | ["~/.claude/", "~/.claude-remote/settings/"] | Directories to scan for settings files |
 | `notifications` | object | — | Notification channels config (see below) |
+| `customPrivateRanges` | string[] | [] | Custom CIDR ranges for CORS allowlist (e.g., `["30.0.0.0/8"]` for VPN networks) |
 
 > **Note**: Port is fixed at 8866. All instances run in a single daemon process.
 
@@ -543,8 +557,21 @@ claude-remote
 - 实时终端输出推送到手机
 - 通过 xterm.js 完整渲染 ANSI 颜色
 - 1万行滚动缓冲区，重连时自动恢复
+- **多网络支持** — 启动时显示所有可用 IP（WiFi、VPN、以太网）
 - 局域网 IP 变更通知，附带新连接地址
 - 智能自动滚动，配有"滚动到底部"悬浮按钮 — 浏览历史时尊重你的滚动位置
+
+### 多网络访问（WiFi + VPN）
+
+同时从多个网络接口访问 Claude Code Remote：
+
+- **自动网络检测** — 启动时自动发现所有可用的 IPv4 接口
+- **VPN 支持** — 自动识别常见 VPN 接口（WireGuard、Tailscale、ZeroTier、PPP 等）
+- **自定义 CIDR 网段** — 配置 `customPrivateRanges` 添加公司特定网络
+- **网络变更通知** — WebSocket `network_changed` 事件在接口变化时通知客户端
+- **统一 CORS** — 所有检测到的 IP 自动添加到 CORS 白名单
+
+示例：当同时连接 WiFi（192.168.x.x）和公司 VPN（30.x.x.x）时，启动时会显示两个地址，都可以通过 Web UI 访问。
 
 ### 快捷操作
 - 一键发送：Esc、Enter、Tab、方向键、Shift+Tab
@@ -703,6 +730,7 @@ claude-remote update
 | `workspaces` | string[] | [] | Web 生成实例允许的工作目录 |
 | `settingsDirs` | string[] | ["~/.claude/", "~/.claude-remote/settings/"] | 设置文件扫描目录 |
 | `notifications` | object | — | 通知渠道配置（见下文） |
+| `customPrivateRanges` | string[] | [] | CORS 白名单的自定义 CIDR 网段（如 `["30.0.0.0/8"]` 用于 VPN 网络） |
 
 > **注意**：端口固定为 8866。所有实例运行在单个守护进程中。
 

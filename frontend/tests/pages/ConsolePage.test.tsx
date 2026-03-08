@@ -151,6 +151,7 @@ describe('ConsolePage', () => {
       sessionStatus: 'idle',
       cachedToken: 'cached-token',
       toastMessage: null,
+      serverAvailable: true,
     });
 
     useInstanceStore.setState({
@@ -250,6 +251,47 @@ describe('ConsolePage', () => {
       expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
     });
 
+    expect(screen.queryByText(/Switched to/)).toBeNull();
+  });
+
+  it('should NOT auto switch when serverAvailable is false (Fix 2)', async () => {
+    mockedAuthenticate.mockResolvedValue(true);
+
+    // 服务不可达
+    useAppStore.setState({
+      serverAvailable: false,
+      instanceConnectionStatus: { 'inst-1': 'disconnected' },
+    });
+
+    useInstanceStore.setState({
+      instances: [
+        {
+          instanceId: 'inst-1',
+          name: 'Current',
+          cwd: '/tmp/current',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          isCurrent: true,
+        },
+        {
+          instanceId: 'inst-2',
+          name: 'B',
+          cwd: '/tmp/b',
+          startedAt: '2026-01-01T00:01:00.000Z',
+          isCurrent: true,
+        },
+      ],
+    });
+
+    render(<ConsolePage />);
+
+    // 等一个 tick 确保 effect 运行
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // serverAvailable=false 时不应自动切换，保持原实例
+    expect(useInstanceStore.getState().activeInstanceId).toBe('inst-1');
+    expect(mockedAuthenticate).not.toHaveBeenCalled();
     expect(screen.queryByText(/Switched to/)).toBeNull();
   });
 
