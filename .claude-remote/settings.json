@@ -76,30 +76,6 @@
       "autoSend": false
     },
     {
-      "label": "/code-review-expert",
-      "command": "/code-review-expert",
-      "enabled": true,
-      "desc": "\"Expert code review of current git changes with a ",
-      "autoSend": false,
-      "fromSkill": true
-    },
-    {
-      "label": "/systematic-debugging",
-      "command": "/systematic-debugging",
-      "enabled": true,
-      "desc": "Systematic root-cause debugging methodology with 5",
-      "autoSend": false,
-      "fromSkill": true
-    },
-    {
-      "label": "/finish-task",
-      "command": "/finish-task",
-      "enabled": true,
-      "desc": "Task completion gate — mandatory final step after ",
-      "autoSend": true,
-      "fromSkill": true
-    },
-    {
       "label": "/auto-doc",
       "command": "/auto-doc",
       "enabled": true,
@@ -108,19 +84,11 @@
       "fromSkill": true
     },
     {
-      "label": "/sync-opensource",
-      "command": "/sync-opensource",
-      "enabled": false,
-      "desc": "Sync master branch to opensource branch and push t",
-      "autoSend": true,
-      "fromSkill": true
-    },
-    {
-      "label": "/simulate-install",
-      "command": "/simulate-install",
-      "enabled": false,
-      "desc": "Simulate a real npm/pnpm global install from the r",
-      "autoSend": true,
+      "label": "/code-review-expert",
+      "command": "/code-review-expert",
+      "enabled": true,
+      "desc": "\"Expert code review of current git changes with a ",
+      "autoSend": false,
       "fromSkill": true
     },
     {
@@ -128,6 +96,14 @@
       "command": "/dev-link",
       "enabled": false,
       "desc": "将本地项目链接到全局 pnpm，确保 `claude-remote` 命令使用当前项目编译产物。触发",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/finish-task",
+      "command": "/finish-task",
+      "enabled": true,
+      "desc": "Task completion gate — mandatory final step after ",
       "autoSend": true,
       "fromSkill": true
     },
@@ -140,11 +116,35 @@
       "fromSkill": true
     },
     {
+      "label": "/simulate-install",
+      "command": "/simulate-install",
+      "enabled": false,
+      "desc": "Simulate a real npm/pnpm global install from the r",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
       "label": "/skill-creator",
       "command": "/skill-creator",
       "enabled": false,
       "desc": "Guide for creating effective skills. This skill sh",
       "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/sync-opensource",
+      "command": "/sync-opensource",
+      "enabled": false,
+      "desc": "Sync master branch to opensource branch and push t",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/systematic-debugging",
+      "command": "/systematic-debugging",
+      "enabled": true,
+      "desc": "Systematic root-cause debugging methodology with 5",
+      "autoSend": false,
       "fromSkill": true
     },
     {
