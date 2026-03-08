@@ -48,6 +48,6 @@ After the script completes, report the outcome to the user:
 
 ## Excluded Files
 
-`.claude/`, `.aci/`, `CLAUDE.md`, `ARCHITECTURE.md`, `LEGAL.md`
+`.claude/`, `.claude-remote/`, `.aci/`, `docs/`, `CLAUDE.md`, `ARCHITECTURE.md`, `LEGAL.md`, `INDEX.md`
 
 Edit `scripts/sync-opensource.sh` EXCLUDED_PATHS to modify the list.

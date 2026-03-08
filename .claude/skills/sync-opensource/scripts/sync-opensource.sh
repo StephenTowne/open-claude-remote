@@ -11,7 +11,7 @@ OPENSOURCE_BRANCH="opensource"
 GITHUB_REMOTE="github"
 GITHUB_TARGET_BRANCH="main"
 
-EXCLUDED_PATHS=(".claude/" ".aci/" "CLAUDE.md" "ARCHITECTURE.md" "LEGAL.md")
+EXCLUDED_PATHS=(".claude/" ".claude-remote/" ".aci/" "docs/" "CLAUDE.md" "ARCHITECTURE.md" "LEGAL.md" "INDEX.md")
 EXCLUSION_MARKER="# Open source exclusions"
 
 # --- Colors ------------------------------------------------------------------
