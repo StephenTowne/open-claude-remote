@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import express from 'express';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 
 // Mock logger
@@ -33,6 +33,20 @@ vi.mock('../../../src/utils/file-lock.js', () => ({
   withFileLockAsync: (_lockPath: string, fn: () => Promise<unknown>) => fn(),
 }));
 
+// Mock InstanceManager - 创建一个 mock 实例供路由使用
+const mockInstances = vi.hoisted(() => new Map<string, { instanceId: string; cwd: string }>());
+
+const mockInstanceManager = vi.hoisted(() => ({
+  getInstance: (instanceId: string) => mockInstances.get(instanceId),
+  listInstances: () => Array.from(mockInstances.values()).map(inst => ({
+    instanceId: inst.instanceId,
+    cwd: inst.cwd,
+    name: 'test-instance',
+    startedAt: new Date().toISOString(),
+  })),
+  broadcastAll: vi.fn(),
+}));
+
 import { createConfigRoutes } from '../../../src/api/config-routes.js';
 import { AuthModule } from '../../../src/auth/auth-middleware.js';
 
@@ -57,7 +71,7 @@ describe('config-routes', () => {
       cookieName: 'session_id_test_config',
     });
 
-    app.use('/api', createConfigRoutes(authModule));
+    app.use('/api', createConfigRoutes(authModule, undefined, undefined, mockInstanceManager as any));
 
     server = createServer(app);
     await new Promise<void>((resolve) => {
@@ -101,7 +115,7 @@ describe('config-routes', () => {
     expect(res.status).toBe(401);
   });
 
-  it('should return null when config file does not exist', async () => {
+  it('should return default config (lazy-filled) when config file does not exist', async () => {
     const cookie = await authenticate();
     const res = await fetch(`${baseUrl}/api/config`, {
       headers: { Cookie: cookie },
@@ -109,7 +123,11 @@ describe('config-routes', () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.config).toBeNull();
+    // 懒填充：配置文件不存在时返回默认值，而非 null
+    expect(body.config).toBeDefined();
+    expect(body.config.shortcuts).toBeDefined();
+    expect(body.config.shortcuts.length).toBeGreaterThan(0);
+    expect(body.config.commands).toBeDefined();
     expect(body.configPath).toContain('settings.json');
   });
 
@@ -339,7 +357,6 @@ describe('config-routes', () => {
       configPath,
       JSON.stringify({
         token: 'secret-token',
-        port: 4000,
         host: '192.168.1.100',
         instanceName: 'my-instance',
         claudeCommand: '/usr/local/bin/claude',
@@ -368,7 +385,6 @@ describe('config-routes', () => {
     // 验证所有字段都被保留（合并而非替换）
     const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
     expect(saved.token).toBe('secret-token');       // 保留
-    expect(saved.port).toBe(4000);                   // 保留（不应被覆盖）
     expect(saved.host).toBe('192.168.1.100');        // 保留（不应被覆盖）
     expect(saved.instanceName).toBe('my-instance');  // 保留（不应被覆盖）
     expect(saved.claudeCommand).toBe('/usr/local/bin/claude'); // 保留
@@ -459,9 +475,6 @@ describe('config-routes', () => {
       expect(body.config.commands).toBeDefined();
       expect(body.config.shortcuts.length).toBeGreaterThan(0);
       expect(body.config.commands.length).toBeGreaterThan(0);
-
-      // 验证其他字段保留
-      expect(body.config.port).toBe(4000);
     });
 
     it('should NOT fill when shortcuts and commands already exist', async () => {
@@ -867,6 +880,175 @@ describe('config-routes', () => {
         const body = await res.json();
         expect(body.error).toContain('not configured');
       });
+    });
+  });
+
+  describe('instance isolation', () => {
+    let projectDir1: string;
+
+    beforeEach(() => {
+      // 清空 mock instances
+      mockInstances.clear();
+    });
+
+    it('should return merged config (global + project) when instanceId is provided', async () => {
+      // 创建项目目录和项目配置
+      projectDir1 = join(testConfigDir, 'project1');
+      mkdirSync(join(projectDir1, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        join(projectDir1, '.claude-remote', 'settings.json'),
+        JSON.stringify({
+          shortcuts: [{ label: 'Project1 Shortcut', data: 'p1', enabled: true }],
+          commands: [{ label: 'Project1 Command', command: '/p1', enabled: true }],
+        }),
+        'utf-8'
+      );
+
+      // 创建全局配置
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          shortcuts: [{ label: 'Global Shortcut', data: 'global', enabled: true }],
+          commands: [{ label: 'Global Command', command: '/global', enabled: true }],
+        }),
+        'utf-8'
+      );
+
+      // 注册 mock instance
+      mockInstances.set('instance-1', { instanceId: 'instance-1', cwd: projectDir1 });
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/config?instanceId=instance-1`, {
+        headers: { Cookie: cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // 项目配置覆盖全局配置
+      const projectShortcut = body.config.shortcuts.find((s: any) => s.label === 'Project1 Shortcut');
+      expect(projectShortcut).toBeDefined();
+      // 全局配置的快捷键应该被合并（非冲突的保留）
+      const globalShortcut = body.config.shortcuts.find((s: any) => s.label === 'Global Shortcut');
+      expect(globalShortcut).toBeDefined();
+    });
+
+    it('should return global config when instanceId is not found', async () => {
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          shortcuts: [{ label: 'Global Only', data: 'global', enabled: true }],
+        }),
+        'utf-8'
+      );
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/config?instanceId=non-existent`, {
+        headers: { Cookie: cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // 应该返回全局配置
+      expect(body.config.shortcuts.find((s: any) => s.label === 'Global Only')).toBeDefined();
+    });
+
+    it('should use first instance cwd when no instanceId but active instances exist', async () => {
+      projectDir1 = join(testConfigDir, 'project-auto');
+      mkdirSync(join(projectDir1, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        join(projectDir1, '.claude-remote', 'settings.json'),
+        JSON.stringify({
+          shortcuts: [{ label: 'Auto Project', data: 'auto', enabled: true }],
+        }),
+        'utf-8'
+      );
+
+      // 注册 mock instance
+      mockInstances.set('instance-auto', { instanceId: 'instance-auto', cwd: projectDir1 });
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/config`, {
+        headers: { Cookie: cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // 应该使用第一个实例的配置
+      expect(body.config.shortcuts.find((s: any) => s.label === 'Auto Project')).toBeDefined();
+    });
+
+    it('should save project-level shortcuts/commands to project config', async () => {
+      projectDir1 = join(testConfigDir, 'project-save');
+      mkdirSync(join(projectDir1, '.claude-remote'), { recursive: true });
+
+      // 创建全局配置
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          shortcuts: [{ label: 'Global Shortcut', data: 'global', enabled: true }],
+        }),
+        'utf-8'
+      );
+
+      // 注册 mock instance
+      mockInstances.set('instance-save', { instanceId: 'instance-save', cwd: projectDir1 });
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/config?instanceId=instance-save`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          shortcuts: [{ label: 'Project Save', data: 'ps', enabled: true }],
+          commands: [{ label: 'Project Cmd', command: '/pc', enabled: true }],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      // 验证项目配置已保存
+      const projectConfigPath = join(projectDir1, '.claude-remote', 'settings.json');
+      expect(existsSync(projectConfigPath)).toBe(true);
+      const saved = JSON.parse(readFileSync(projectConfigPath, 'utf-8'));
+      expect(saved.shortcuts).toHaveLength(1);
+      expect(saved.shortcuts[0].label).toBe('Project Save');
+      expect(saved.commands).toHaveLength(1);
+      expect(saved.commands[0].label).toBe('Project Cmd');
+    });
+
+    it('should save global fields to global config even with instanceId', async () => {
+      projectDir1 = join(testConfigDir, 'project-global-save');
+      mkdirSync(join(projectDir1, '.claude-remote'), { recursive: true });
+
+      mkdirSync(join(testConfigDir, '.claude-remote'), { recursive: true });
+
+      // 注册 mock instance
+      mockInstances.set('instance-gs', { instanceId: 'instance-gs', cwd: projectDir1 });
+
+      const cookie = await authenticate();
+      const res = await fetch(`${baseUrl}/api/config?instanceId=instance-gs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({
+          claudeCommand: '/custom/claude',
+          shortcuts: [{ label: 'Test', data: 't', enabled: true }],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      // 验证全局配置包含 claudeCommand
+      const savedGlobal = JSON.parse(readFileSync(configPath, 'utf-8'));
+      expect(savedGlobal.claudeCommand).toBe('/custom/claude');
+
+      // 验证项目配置包含 shortcuts
+      const projectConfigPath = join(projectDir1, '.claude-remote', 'settings.json');
+      const savedProject = JSON.parse(readFileSync(projectConfigPath, 'utf-8'));
+      expect(savedProject.shortcuts).toHaveLength(1);
+      // 项目配置不应包含 claudeCommand
+      expect(savedProject.claudeCommand).toBeUndefined();
     });
   });
 });

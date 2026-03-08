@@ -119,14 +119,39 @@ describe('useTerminal', () => {
     vi.clearAllMocks();
   });
 
+  // ---- Touch/Wheel 事件辅助函数 ----
+  function fireTouchStart(el: HTMLElement, clientY: number) {
+    const event = new Event('touchstart', { bubbles: true });
+    Object.defineProperty(event, 'touches', { value: [{ clientY }] });
+    el.dispatchEvent(event);
+  }
+
+  function fireTouchMove(el: HTMLElement, clientY: number) {
+    const event = new Event('touchmove', { bubbles: true });
+    Object.defineProperty(event, 'touches', { value: [{ clientY }] });
+    el.dispatchEvent(event);
+  }
+
+  function fireTouchEnd(el: HTMLElement) {
+    el.dispatchEvent(new Event('touchend', { bubbles: true }));
+  }
+
+  function fireWheelUp(el: HTMLElement) {
+    const event = new Event('wheel', { bubbles: true });
+    Object.defineProperty(event, 'deltaY', { value: -100 });
+    el.dispatchEvent(event);
+  }
+
   function renderUseTerminal(onResize?: (cols: number, rows: number) => void) {
     const div = document.createElement('div');
     document.body.appendChild(div);
 
-    return renderHook(() => {
+    const hookResult = renderHook(() => {
       const containerRef = useRef<HTMLDivElement>(div);
       return useTerminal(containerRef, onResize);
     });
+
+    return { ...hookResult, container: div };
   }
 
   it('should call onResize when ResizeObserver triggers after fitAddon.fit()', () => {
@@ -411,9 +436,55 @@ describe('useTerminal', () => {
       expect(result.current.showScrollHint).toBe(false);
     });
 
-    it('should show scroll hint even after rapid auto-scrolls (timestamp mechanism)', async () => {
-      // 测试场景：PTY 持续输出时，用户滚动应能正常触发按钮显示
-      // 时间戳机制确保程序滚动后短暂时间内跳过 onScroll 事件
+    it('should filter program scroll via sync flag and detect user scroll immediately', async () => {
+      // 测试场景：同步标记确保程序 scrollToBottom 触发的 onScroll 被过滤
+      // 用户滚动无需等待时间窗口过期，立即生效
+      const { result } = renderUseTerminal();
+
+      expect(mockTermOnScroll).toHaveBeenCalled();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      // 设置初始位置（底部）
+      mockBuffer.active.viewportY = 76;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback(); // 初始化 lastViewportYRef
+      });
+
+      // 模拟 scrollToBottom 同步触发 onScroll（真实 xterm 行为）
+      mockTermScrollToBottom.mockImplementation(() => {
+        scrollCallback(); // 应被 isProgramScrollRef 过滤
+      });
+
+      // PTY 输出 → RAF → autoScrollIfNeeded → scrollToBottom → onScroll（被过滤）
+      act(() => {
+        result.current.write('output 1');
+      });
+
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // 尽管 onScroll 在 auto-scroll 期间触发，auto-follow 仍为 true
+      expect(result.current.showScrollHint).toBe(false);
+
+      // 重置 mock
+      mockTermScrollToBottom.mockReset();
+
+      // 用户向上滚动 — 无需等待，立即生效
+      mockBuffer.active.viewportY = 50;
+
+      act(() => {
+        scrollCallback();
+      });
+
+      expect(result.current.showScrollHint).toBe(true);
+    });
+
+    it('should NOT auto-scroll when user has scrolled up and user intent is active', async () => {
+      // 回归测试：用户手动上滑后，新输出不应强制拉回底部
       vi.useFakeTimers();
 
       const { result } = renderUseTerminal();
@@ -430,39 +501,341 @@ describe('useTerminal', () => {
         scrollCallback(); // 初始化 lastViewportYRef
       });
 
-      // 模拟 PTY 输出触发 auto-scroll
+      // 用户向上滚动（模拟手动上滑）
+      mockBuffer.active.viewportY = 50;
       act(() => {
-        result.current.write('output 1');
+        scrollCallback();
+      });
+
+      // 确认用户滚动意图已触发，按钮显示
+      expect(result.current.showScrollHint).toBe(true);
+
+      // 清空之前的 scrollToBottom 调用记录
+      mockTermScrollToBottom.mockClear();
+
+      // 模拟新输出到达（PTY 持续输出）
+      act(() => {
+        result.current.write('new output line 1\n');
       });
 
       await act(async () => {
         rafCallback?.(0);
       });
 
-      // 程序滚动触发的 onScroll 事件应该被跳过（时间戳检查）
-      // 此时 autoFollow 仍为 true，showScrollHint 应为 false
+      // 关键断言：scrollToBottom 不应被调用（用户正在浏览历史）
+      expect(mockTermScrollToBottom).not.toHaveBeenCalled();
+
+      // 再次输出
+      mockTermScrollToBottom.mockClear();
       act(() => {
-        scrollCallback(); // 程序滚动事件（会被跳过）
+        result.current.write('new output line 2\n');
       });
 
-      expect(result.current.showScrollHint).toBe(false);
+      await act(async () => {
+        rafCallback?.(0);
+      });
 
-      // 模拟时间流逝超过阈值（PROGRAM_SCROLL_THRESHOLD_MS = 50ms）
+      // 仍然不应自动滚动
+      expect(mockTermScrollToBottom).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('should prioritize user scroll intent over programmatic scroll proximity', async () => {
+      // 回归测试：程序滚动与用户滚动近邻发生时，用户意图优先
+      vi.useFakeTimers();
+
+      const { result } = renderUseTerminal();
+
+      expect(mockTermOnScroll).toHaveBeenCalled();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      // 设置初始位置（底部）
+      mockBuffer.active.viewportY = 76;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback(); // 初始化
+      });
+
+      // 模拟 PTY 持续输出触发 auto-scroll
+      act(() => {
+        result.current.write('output before scroll');
+      });
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // 等待程序滚动时间戳过期
       act(() => {
         vi.advanceTimersByTime(100);
       });
 
-      // 模拟用户向上滚动
-      mockBuffer.active.viewportY = 50;
-
+      // 用户向上滚动（此时应该能正常检测）
+      mockBuffer.active.viewportY = 40;
       act(() => {
-        scrollCallback(); // 用户滚动事件（不会被跳过）
+        scrollCallback();
       });
 
-      // 用户滚动应该正常触发按钮显示
+      // 按钮应该显示（用户意图被正确识别）
       expect(result.current.showScrollHint).toBe(true);
 
+      // 清空记录
+      mockTermScrollToBottom.mockClear();
+
+      // 快速再次写入（模拟紧随其后的输出）
+      act(() => {
+        result.current.write('rapid follow-up output');
+      });
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // 不应该自动滚动，因为用户意图仍然有效
+      expect(mockTermScrollToBottom).not.toHaveBeenCalled();
+
       vi.useRealTimers();
+    });
+
+    it('should resume auto-scroll only after explicit scrollToBottom call and setAutoFollow(true)', async () => {
+      // 回归测试：点击"回到底部"后恢复自动跟随
+      vi.useFakeTimers();
+
+      const { result } = renderUseTerminal();
+
+      expect(mockTermOnScroll).toHaveBeenCalled();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      // 设置初始位置（底部）
+      mockBuffer.active.viewportY = 76;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => {
+        scrollCallback();
+      });
+
+      // 用户向上滚动
+      mockBuffer.active.viewportY = 50;
+      act(() => {
+        scrollCallback();
+      });
+
+      expect(result.current.showScrollHint).toBe(true);
+
+      // 模拟用户点击"回到底部"按钮
+      act(() => {
+        result.current.scrollToBottom();
+        result.current.setAutoFollow(true);
+      });
+
+      // 按钮应该隐藏
+      expect(result.current.showScrollHint).toBe(false);
+
+      // 清空记录
+      mockTermScrollToBottom.mockClear();
+
+      // 新输出应该触发自动滚动
+      act(() => {
+        result.current.write('output after returning to bottom');
+      });
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      expect(mockTermScrollToBottom).toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+  });
+
+  // ---- Touch/Wheel scroll detection tests ----
+
+  describe('touch/wheel scroll detection', () => {
+    it('should disable auto-follow when touch scrolls up beyond threshold', () => {
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireTouchStart(container, 200);
+        fireTouchMove(container, 230); // 30px > 20px threshold, 手指向下滑 = 查看历史
+      });
+
+      expect(result.current.showScrollHint).toBe(true);
+    });
+
+    it('should NOT show scroll hint on touch scroll when content fits in one screen', () => {
+      // 模拟内容不足一屏的情况：buffer length <= rows
+      mockBuffer.active.length = 24; // 等于 rows
+      mockTermState.rows = 24;
+      mockBuffer.active.viewportY = 0;
+
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireTouchStart(container, 200);
+        fireTouchMove(container, 250); // 50px > 20px threshold
+      });
+
+      // 内容不足一屏，不应该显示回到底部按钮
+      expect(result.current.showScrollHint).toBe(false);
+    });
+
+    it('should show scroll hint on touch scroll when content exceeds one screen', () => {
+      // 模拟内容超过一屏的情况：buffer length > rows
+      mockBuffer.active.length = 100; // 远大于 rows
+      mockTermState.rows = 24;
+      mockBuffer.active.viewportY = 76;
+
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireTouchStart(container, 200);
+        fireTouchMove(container, 250); // 50px > 20px threshold
+      });
+
+      // 内容超过一屏，应该显示回到底部按钮
+      expect(result.current.showScrollHint).toBe(true);
+    });
+
+    it('should NOT disable auto-follow when touch distance below threshold', () => {
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireTouchStart(container, 200);
+        fireTouchMove(container, 210); // 10px < 20px threshold
+      });
+
+      expect(result.current.showScrollHint).toBe(false);
+    });
+
+    it('should NOT auto-scroll when user is touching', async () => {
+      const { result, container } = renderUseTerminal();
+
+      // 用户开始触摸
+      act(() => {
+        fireTouchStart(container, 200);
+      });
+
+      mockTermScrollToBottom.mockClear();
+
+      // 触摸期间写入数据
+      act(() => {
+        result.current.write('output during touch');
+      });
+
+      await act(async () => {
+        rafCallback?.(0);
+      });
+
+      // 触摸中不应自动滚动
+      expect(mockTermScrollToBottom).not.toHaveBeenCalled();
+
+      // 触摸结束
+      act(() => {
+        fireTouchEnd(container);
+      });
+    });
+
+    it('should disable auto-follow on wheel scroll up', () => {
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireWheelUp(container);
+      });
+
+      expect(result.current.showScrollHint).toBe(true);
+    });
+
+    it('should NOT show scroll hint on wheel scroll when content fits in one screen', () => {
+      // 模拟内容不足一屏的情况：buffer length <= rows
+      mockBuffer.active.length = 24; // 等于 rows
+      mockTermState.rows = 24;
+      mockBuffer.active.viewportY = 0;
+
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireWheelUp(container);
+      });
+
+      // 内容不足一屏，不应该显示回到底部按钮
+      expect(result.current.showScrollHint).toBe(false);
+    });
+
+    it('should show scroll hint on wheel scroll when content exceeds one screen', () => {
+      // 模拟内容超过一屏的情况：buffer length > rows
+      mockBuffer.active.length = 100; // 远大于 rows
+      mockTermState.rows = 24;
+      mockBuffer.active.viewportY = 76;
+
+      const { result, container } = renderUseTerminal();
+
+      act(() => {
+        fireWheelUp(container);
+      });
+
+      // 内容超过一屏，应该显示回到底部按钮
+      expect(result.current.showScrollHint).toBe(true);
+    });
+
+    it('should reliably interrupt auto-scroll during continuous PTY output', async () => {
+      // 核心回归：PTY 持续输出期间 touch 上滑能可靠中断
+      const { result, container } = renderUseTerminal();
+
+      // 模拟持续 PTY 输出
+      act(() => { result.current.write('line 1\n'); });
+      await act(async () => { rafCallback?.(0); });
+      expect(mockTermScrollToBottom).toHaveBeenCalled();
+      mockTermScrollToBottom.mockClear();
+
+      // 用户在输出期间触摸并上滑
+      act(() => {
+        fireTouchStart(container, 200);
+        fireTouchMove(container, 250); // 查看历史
+      });
+
+      // 更多 PTY 输出到达
+      act(() => { result.current.write('line 2\n'); });
+      await act(async () => { rafCallback?.(0); });
+
+      // 不应强制滚动到底部（用户正在浏览历史）
+      expect(mockTermScrollToBottom).not.toHaveBeenCalled();
+      expect(result.current.showScrollHint).toBe(true);
+
+      // 触摸结束
+      act(() => { fireTouchEnd(container); });
+
+      // 继续输出 — autoFollow 已关闭，仍不自动滚动
+      mockTermScrollToBottom.mockClear();
+      act(() => { result.current.write('line 3\n'); });
+      await act(async () => { rafCallback?.(0); });
+      expect(mockTermScrollToBottom).not.toHaveBeenCalled();
+    });
+
+    it('should filter program scrollToBottom in onScroll via sync flag', async () => {
+      // 程序 scrollToBottom 同步触发的 onScroll 应被过滤
+      const { result } = renderUseTerminal();
+      const scrollCallback = mockTermOnScroll.mock.calls[0][0];
+
+      mockBuffer.active.viewportY = 76;
+      mockBuffer.active.length = 100;
+      mockTermState.rows = 24;
+
+      act(() => { scrollCallback(); }); // 初始化
+
+      // 让 scrollToBottom 同步触发 onScroll（模拟真实 xterm 行为）
+      mockTermScrollToBottom.mockImplementation(() => {
+        scrollCallback();
+      });
+
+      act(() => { result.current.write('output'); });
+      await act(async () => { rafCallback?.(0); });
+
+      // onScroll 在 auto-scroll 期间触发，但被同步标记过滤
+      expect(result.current.showScrollHint).toBe(false);
+
+      mockTermScrollToBottom.mockReset();
     });
   });
 

@@ -38,8 +38,11 @@ export async function healthCheck(): Promise<boolean> {
   }
 }
 
-export async function getUserConfig(): Promise<{ config: SafeUserConfig | null; configPath: string }> {
-  const res = await fetch(`${API_BASE}/config`, {
+export async function getUserConfig(instanceId?: string): Promise<{ config: SafeUserConfig | null; configPath: string }> {
+  const url = instanceId
+    ? `${API_BASE}/config?instanceId=${encodeURIComponent(instanceId)}`
+    : `${API_BASE}/config`;
+  const res = await fetch(url, {
     credentials: 'include',
   });
 
@@ -54,8 +57,11 @@ export async function getUserConfig(): Promise<{ config: SafeUserConfig | null; 
   return res.json();
 }
 
-export async function updateUserConfig(config: UserConfig): Promise<boolean> {
-  const res = await fetch(`${API_BASE}/config`, {
+export async function updateUserConfig(config: UserConfig, instanceId?: string): Promise<boolean> {
+  const url = instanceId
+    ? `${API_BASE}/config?instanceId=${encodeURIComponent(instanceId)}`
+    : `${API_BASE}/config`;
+  const res = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

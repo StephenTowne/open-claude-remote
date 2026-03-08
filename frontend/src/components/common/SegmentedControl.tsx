@@ -186,6 +186,7 @@ export function SegmentedControl<T>({
 const styles: Record<string, React.CSSProperties> = {
   container: {
     display: 'flex',
+    width: '100%',
     maxWidth: '100%',
     overflowX: 'auto',
     background: 'var(--bg-tertiary)',
@@ -223,8 +224,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   option: {
-    flexShrink: 0,
-    minWidth: 80,
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     minHeight: 44,
     display: 'flex',
     flexDirection: 'column' as const,

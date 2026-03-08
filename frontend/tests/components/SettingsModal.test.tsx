@@ -6,6 +6,13 @@ import * as apiClient from '../../src/services/api-client.js';
 vi.mock('../../src/services/api-client.js', () => ({
   getUserConfig: vi.fn(),
   updateUserConfig: vi.fn(),
+  updateNotificationChannelEnabled: vi.fn(),
+}));
+
+// Mock useAppStore
+vi.mock('../../src/stores/app-store.js', () => ({
+  useAppStore: (selector: (state: { showToast: (msg: string) => void }) => unknown) =>
+    selector({ showToast: vi.fn() }),
 }));
 
 describe('SettingsModal', () => {
@@ -111,6 +118,92 @@ describe('SettingsModal', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Failed to save')).toBeDefined();
+    });
+  });
+
+  describe('CommandSettings 禁用自动排序', () => {
+    beforeEach(() => {
+      vi.mocked(apiClient.getUserConfig).mockResolvedValue({
+        config: {
+          shortcuts: [],
+          commands: [
+            { label: '/alpha', command: '/alpha', enabled: true },
+            { label: '/beta', command: '/beta', enabled: true },
+            { label: '/gamma', command: '/gamma', enabled: false },
+          ],
+        },
+        configPath: '/test/config.json',
+      });
+    });
+
+    const switchToCommandsTab = async () => {
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Settings' })).toBeDefined();
+      });
+      const commandTab = screen.getAllByRole('button').find(b => b.textContent === 'Commands');
+      expect(commandTab).toBeDefined();
+      fireEvent.click(commandTab!);
+      await waitFor(() => {
+        expect(screen.getByText('/alpha')).toBeDefined();
+      });
+    };
+
+    it('toggle enabled 不改变命令位置', async () => {
+      render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
+      await switchToCommandsTab();
+
+      // 初始：/alpha(on), /beta(on), /gamma(off)
+      const switches = screen.getAllByRole('switch');
+      expect(switches[0].getAttribute('aria-checked')).toBe('true');
+      expect(switches[1].getAttribute('aria-checked')).toBe('true');
+      expect(switches[2].getAttribute('aria-checked')).toBe('false');
+
+      // 禁用 /alpha - 顺序应保持不变
+      fireEvent.click(switches[0]);
+
+      // 位置不变: /alpha(off), /beta(on), /gamma(off)
+      await waitFor(() => {
+        const editButtons = screen.getAllByRole('button')
+          .filter(b => b.getAttribute('aria-label')?.startsWith('Edit command'));
+        expect(editButtons[0].textContent).toBe('/alpha');
+        expect(editButtons[1].textContent).toBe('/beta');
+        expect(editButtons[2].textContent).toBe('/gamma');
+      });
+    });
+
+    it('编辑状态在 toggle 后仍指向正确项', async () => {
+      render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
+      await switchToCommandsTab();
+
+      // 开始编辑 /beta（点击其 label 按钮）
+      fireEvent.click(screen.getByText('/beta'));
+      expect(screen.getByDisplayValue('/beta')).toBeDefined();
+
+      // 切换 /alpha 为禁用 - 顺序应保持不变
+      const switches = screen.getAllByRole('switch');
+      fireEvent.click(switches[0]); // /alpha 的 toggle
+
+      // /beta 应该仍在编辑状态（位置不变）
+      await waitFor(() => {
+        expect(screen.getByDisplayValue('/beta')).toBeDefined();
+      });
+    });
+
+    it('删除按钮删除正确项（位置不变）', async () => {
+      render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
+      await switchToCommandsTab();
+
+      // 删除第二项（/beta）
+      const deleteButtons = screen.getAllByRole('button')
+        .filter(b => b.getAttribute('aria-label') === 'Delete');
+      fireEvent.click(deleteButtons[1]);
+
+      // /beta 应被删除，/alpha 和 /gamma 仍在
+      await waitFor(() => {
+        expect(screen.queryByText('/beta')).toBeNull();
+        expect(screen.getByText('/alpha')).toBeDefined();
+        expect(screen.getByText('/gamma')).toBeDefined();
+      });
     });
   });
 });

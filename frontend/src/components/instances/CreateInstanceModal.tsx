@@ -5,6 +5,7 @@ import { SegmentedControl } from '../common/SegmentedControl.js';
 import type { SegmentedControlOption } from '../common/SegmentedControl.js';
 import { BottomSheet } from '../common/BottomSheet.js';
 import { mergeTextareaStyle } from '../../styles/input.js';
+import { useAppStore } from '../../stores/app-store.js';
 import type { SettingsFile, InstanceInfo } from '#shared';
 
 interface CreateInstanceModalProps {
@@ -124,6 +125,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pendingSettingsPathRef = useRef<string | null>(null);
+  const showToast = useAppStore((s) => s.showToast);
 
   // 将 workspaces 转换为 ActionSheetOption 格式
   const workspaceOptions: ActionSheetOption<string>[] = useMemo(() => {
@@ -261,6 +263,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
 
     setLoading(true);
     setError(null);
+    showToast(copySource ? 'Copying instance…' : 'Creating instance…');
 
     try {
       // 构建 claudeArgs
@@ -291,6 +294,7 @@ export function CreateInstanceModal({ isOpen, onClose, onSuccess, copySource }: 
 
       // 计算新实例名称（与 instance-spawner.ts 逻辑一致）
       const newInstanceName = name.trim() || cwd.split('/').pop() || 'unknown';
+      showToast('Instance created, starting…');
       onSuccess(newInstanceName);
       onClose();
     } catch (err) {

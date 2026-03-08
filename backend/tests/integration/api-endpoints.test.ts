@@ -25,7 +25,10 @@ describe('REST API Endpoints', () => {
       const res = await fetch(`${ctx.baseUrl}/api/health`);
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body).toEqual({ status: 'ok' });
+      expect(body.status).toBe('ok');
+      // 还应包含运行时信息
+      expect(body.version).toBeDefined();
+      expect(body.pid).toBeDefined();
     });
 
     it('should not require authentication', async () => {
@@ -33,10 +36,18 @@ describe('REST API Endpoints', () => {
       expect(res.status).toBe(200);
     });
 
-    it('should not leak sensitive information', async () => {
+    it('should return runtime info for monitoring', async () => {
       const res = await fetch(`${ctx.baseUrl}/api/health`);
       const body = await res.json();
-      expect(Object.keys(body)).toEqual(['status']);
+      // 返回的都是非敏感的运行时状态信息，用于健康检查和监控
+      expect(body).toHaveProperty('status');
+      expect(body).toHaveProperty('version');
+      expect(body).toHaveProperty('pid');
+      expect(body).toHaveProperty('port');
+      expect(body).toHaveProperty('instanceCount');
+      // 不应包含敏感信息如 token、secret 等
+      expect(body).not.toHaveProperty('token');
+      expect(body).not.toHaveProperty('secret');
     });
   });
 

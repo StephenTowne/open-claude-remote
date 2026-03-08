@@ -6,6 +6,9 @@
  * 启动成功后通过 IPC 通知父进程，然后断开 IPC。
  */
 
+import { installDaemonGuard } from './daemon-guard.js';
+installDaemonGuard();
+
 // Daemon 不需要 CLI 模式的 logger 配置
 delete process.env.CLI_MODE;
 // 标记为无终端模式

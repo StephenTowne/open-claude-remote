@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import express from 'express';
 import cors from 'cors';
 import { DEFAULT_PORT } from '#shared';
-import { loadConfig, ensureDefaultUserConfig, type CliOverrides } from './config.js';
+import { loadConfig, loadUserConfig, ensureDefaultUserConfig, type CliOverrides } from './config.js';
 import { PortInUseError } from './cli-utils.js';
 import { AuthModule } from './auth/auth-middleware.js';
 import { WsServer } from './ws/ws-server.js';
@@ -17,9 +17,24 @@ import { PushService } from './push/push-service.js';
 import { createNotificationManager } from './notification/notification-manager.js';
 import { createNotificationServiceFactory } from './notification/notification-service-factory.js';
 import { logger, setInstanceContext } from './logger/logger.js';
+import { markGracefulShutdown } from './daemon/daemon-guard.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { IpMonitor } from './utils/ip-monitor.js';
-import { printBanner } from './utils/banner.js';
+import { detectAllLocalIps, getAllNetworkInterfaces, isInCidrRange, type NetworkInterface } from './utils/network.js';
+import { printBanner, type AddressInfo } from './utils/banner.js';
+
+/**
+ * 根据网络接口信息推断接口类型。
+ * 注意：macOS en0 不一定是 WiFi（Mac Pro/iMac 上可能是以太网），
+ * Linux wlan/wl 前缀才是可靠的无线标识。对于无法区分的接口退化为 private/other。
+ */
+function getInterfaceType(iface: NetworkInterface): AddressInfo['type'] {
+  if (iface.isVpn) return 'vpn';
+  if (iface.name.startsWith('wlan') || iface.name.startsWith('wl')) return 'wlan';
+  if (iface.name.startsWith('eth')) return 'wired';
+  if (iface.isPrivate) return 'private';
+  return 'other';
+}
 
 export async function startServer(cliOverrides: CliOverrides = {}): Promise<void> {
   // 1. Load configuration (global + workdir merged)
@@ -41,6 +56,20 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   // 5. Create Express app
   const app = express();
   app.use(express.json());
+
+  // Build CORS allowlist from all local NIC IPs + loopback
+  // Note: detectAllLocalIps() already returns ALL non-internal IPs (including VPN interfaces),
+  // so customPrivateRanges is not needed here — it's used for interface type classification only.
+  const userConfig = loadUserConfig();
+  const customRanges: string[] = userConfig.customPrivateRanges ?? [];
+  const localIpSet = new Set<string>(['localhost', '127.0.0.1']);
+
+  for (const ip of detectAllLocalIps()) {
+    localIpSet.add(ip);
+  }
+
+  logger.info({ allowedHosts: [...localIpSet] }, 'CORS allowlist initialized');
+
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin) {
@@ -49,8 +78,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
       }
       try {
         const url = new URL(origin);
-        const allowedHosts = [config.displayIp, 'localhost', '127.0.0.1'];
-        if (allowedHosts.includes(url.hostname)) {
+        if (localIpSet.has(url.hostname)) {
           callback(null, true);
           return;
         }
@@ -102,6 +130,8 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     pushService,
     notificationManager,
     notificationServiceFactory,
+    port,
+    customPrivateRanges: customRanges,
     onShutdown: () => shutdown(0),
   }));
 
@@ -151,15 +181,49 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     relay = isTTY ? new TerminalRelay(firstSession.ptyManager) : undefined;
     if (relay) {
       relay.start();
+      firstSession.setRelay(relay);
     }
   }
 
   // 15. IP monitor
-  const ipMonitor = new IpMonitor((newIp, oldIp) => {
-    logger.info({ oldIp, newIp }, 'IP change detected');
-    config.displayIp = newIp;
-    instanceManager.updateDisplayIp(newIp);
-  }, 30000, 2);
+  const ipMonitor = new IpMonitor(
+    (newIp, oldIp) => {
+      logger.info({ oldIp, newIp }, 'IP change detected');
+      config.displayIp = newIp;
+      instanceManager.updateDisplayIp(newIp);
+
+      // Refresh CORS allowlist on NIC change
+      localIpSet.clear();
+      localIpSet.add('localhost');
+      localIpSet.add('127.0.0.1');
+      for (const ip of detectAllLocalIps()) {
+        localIpSet.add(ip);
+      }
+      logger.info({ allowedHosts: [...localIpSet] }, 'CORS allowlist refreshed');
+    },
+    30000,
+    2,
+    undefined,
+    // Network interface change callback
+    (interfaces, preferredIp) => {
+      // Broadcast network change to all WebSocket clients
+      const networkMsg = {
+        type: 'network_changed' as const,
+        interfaces: interfaces.map(iface => ({
+          name: iface.name,
+          address: iface.address,
+          type: iface.isVpn ? 'vpn' as const
+            : iface.isPrivate ? 'private' as const
+            : customRanges.some(range => isInCidrRange(iface.address, range)) ? 'custom' as const
+            : 'public' as const,
+          url: `http://${iface.address}:${port}`,
+        })),
+        preferredUrl: `http://${preferredIp}:${port}`,
+      };
+      instanceManager.broadcastAll(networkMsg);
+      logger.debug({ interfaceCount: interfaces.length }, 'Network change broadcasted');
+    }
+  );
 
   ipMonitor.start(config.displayIp);
 
@@ -168,6 +232,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   const shutdown = (exitCode: number = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    markGracefulShutdown();
     logger.info({ exitCode }, 'Shutting down...');
     if (relay) {
       relay.stop();
@@ -267,8 +332,17 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
 
       if (!daemonMode) {
         // CLI 直接启动模式（pnpm dev 等）：打印 banner
+        // 收集所有可用地址
+        const allInterfaces = getAllNetworkInterfaces();
+        const addresses: AddressInfo[] = allInterfaces.map(iface => ({
+          url: `http://${iface.address}:${port}`,
+          type: getInterfaceType(iface),
+          interface: iface.name,
+        }));
+
         printBanner({
           url,
+          urls: addresses,
           token,
           instanceName: config.instanceName,
           logDir: config.logDir,

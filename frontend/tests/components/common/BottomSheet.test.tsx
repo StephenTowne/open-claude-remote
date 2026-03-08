@@ -106,4 +106,65 @@ describe('BottomSheet', () => {
 
     expect(screen.getByText('Footer Button')).toBeDefined();
   });
+
+  describe('拖拽手柄交互', () => {
+    it('拖拽超过阈值关闭面板', async () => {
+      render(<BottomSheet {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Sheet')).toBeDefined();
+      });
+
+      // 找到拖拽手柄区域（高度 44px 的容器）
+      const handleArea = document.querySelector('div[style*="height: 44"]') as HTMLElement;
+      expect(handleArea).toBeDefined();
+
+      // 模拟触摸拖拽：开始 -> 移动（超过100px）-> 结束
+      fireEvent.touchStart(handleArea!, { touches: [{ clientY: 300, identifier: 0 }] });
+      fireEvent.touchMove(handleArea!, { touches: [{ clientY: 420, identifier: 0 }] });
+      fireEvent.touchEnd(handleArea!);
+
+      await waitFor(() => {
+        expect(mockOnClose).toHaveBeenCalledTimes(1);
+      }, { timeout: 500 });
+    });
+
+    it('拖拽距离不足时面板回弹不关闭', async () => {
+      render(<BottomSheet {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Sheet')).toBeDefined();
+      });
+
+      const handleArea = document.querySelector('div[style*="height: 44"]') as HTMLElement;
+
+      // 模拟小距离拖拽（50px，介于 5px 和 100px 阈值之间）
+      fireEvent.touchStart(handleArea!, { touches: [{ clientY: 300, identifier: 0 }] });
+      fireEvent.touchMove(handleArea!, { touches: [{ clientY: 350, identifier: 0 }] });
+      fireEvent.touchEnd(handleArea!);
+
+      // 面板仍应打开（不调用 onClose）
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(mockOnClose).not.toHaveBeenCalled();
+    });
+
+    it('轻触拖拽手柄区域关闭面板', async () => {
+      render(<BottomSheet {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Sheet')).toBeDefined();
+      });
+
+      const handleArea = document.querySelector('div[style*="height: 44"]') as HTMLElement;
+
+      // 模拟轻触：触摸开始和结束位置几乎相同（< 5px）
+      fireEvent.touchStart(handleArea!, { touches: [{ clientY: 300, identifier: 0 }] });
+      fireEvent.touchMove(handleArea!, { touches: [{ clientY: 302, identifier: 0 }] });
+      fireEvent.touchEnd(handleArea!);
+
+      await waitFor(() => {
+        expect(mockOnClose).toHaveBeenCalledTimes(1);
+      }, { timeout: 500 });
+    });
+  });
 });

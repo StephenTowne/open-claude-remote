@@ -4,6 +4,7 @@ import {
   closestCenter,
   DragEndEvent,
 } from '@dnd-kit/core';
+import { useAppStore } from '../../stores/app-store.js';
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -15,9 +16,48 @@ import { SortableItemShell } from './SortableItemShell.js';
 import { useDndSensors } from './useDndSensors.js';
 import { mergeTextareaStyle } from '../../styles/input.js';
 
-/** 按 enabled 状态排序：启用的在前，禁用的在后（稳定排序保持相对顺序） */
-const sortByEnabled = <T extends { enabled: boolean }>(items: T[]): T[] =>
-  [...items].sort((a, b) => Number(b.enabled) - Number(a.enabled));
+/**
+ * CommandSettings 组件
+ * 管理可配置的命令列表，支持拖拽排序、启用/禁用、编辑、删除
+ */
+
+/**
+ * Auto-send 图标按钮
+ * 显示当前状态，点击切换
+ */
+function AutoSendButton({
+  autoSend,
+  onToggle,
+}: {
+  autoSend: boolean;
+  onToggle: () => void;
+}) {
+  const isAutoSend = autoSend ?? true;
+  return (
+    <button
+      onClick={onToggle}
+      aria-label="Auto-send toggle"
+      title="Auto-send toggle"
+      style={{
+        width: 32,
+        height: 32,
+        padding: 0,
+        borderRadius: 6,
+        border: 'none',
+        background: isAutoSend ? 'var(--status-running)' : 'var(--bg-primary)',
+        color: isAutoSend ? '#fff' : 'var(--text-secondary)',
+        cursor: 'pointer',
+        fontSize: 14,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}
+    >
+      {isAutoSend ? '↗' : '✎'}
+    </button>
+  );
+}
 
 interface CommandSettingsProps {
   commands: WithId<ConfigurableCommand>[];
@@ -25,21 +65,21 @@ interface CommandSettingsProps {
 }
 
 export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const sensors = useDndSensors();
 
-  const startEdit = (index: number) => {
-    setEditingIndex(index);
-    // 编辑时显示实际命令（去掉 / 前缀以便编辑）
-    setEditValue(commands[index].command);
+  const startEdit = (id: string) => {
+    const cmd = commands.find((c) => c._id === id);
+    if (!cmd) return;
+    setEditingId(id);
+    setEditValue(cmd.command);
   };
 
-  const saveEdit = (index: number) => {
+  const saveEdit = (id: string | null) => {
     // 取消编辑
-    if (index < 0) {
-      setEditingIndex(null);
+    if (!id) {
+      setEditingId(null);
       setEditValue('');
       return;
     }
@@ -47,7 +87,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
     let value = editValue.trim();
     if (!value) {
       // 空值直接删除
-      deleteCommand(index);
+      deleteCommand(id);
       return;
     }
 
@@ -56,59 +96,46 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
       value = '/' + value;
     }
 
-    const newCommands = [...commands];
-    // label 默认为命令本身
-    newCommands[index] = {
-      ...newCommands[index],
-      label: value,
-      command: value,
-    };
+    const newCommands = commands.map((c) =>
+      c._id === id ? { ...c, label: value, command: value } : c,
+    );
     onChange(newCommands);
-    setEditingIndex(null);
+    setEditingId(null);
     setEditValue('');
   };
 
-  const toggleEnabled = (index: number) => {
-    const newCommands = [...commands];
-    newCommands[index] = {
-      ...newCommands[index],
-      enabled: !newCommands[index].enabled,
-    };
-    onChange(sortByEnabled(newCommands));
-  };
-
-  const toggleAutoSend = (index: number) => {
-    const newCommands = [...commands];
-    newCommands[index] = {
-      ...newCommands[index],
-      autoSend: !(newCommands[index].autoSend ?? true),
-    };
+  const toggleEnabled = (id: string) => {
+    const newCommands = commands.map((c) =>
+      c._id === id ? { ...c, enabled: !c.enabled } : c,
+    );
     onChange(newCommands);
   };
 
-  const toggleExpand = (index: number) => {
-    setExpandedIndex(prev => prev === index ? null : index);
+  const showToast = useAppStore((s) => s.showToast);
+
+  const toggleAutoSend = (id: string) => {
+    const cmd = commands.find((c) => c._id === id);
+    if (!cmd) return;
+    const newAutoSendValue = !(cmd.autoSend ?? true);
+    const newCommands = commands.map((c) =>
+      c._id === id ? { ...c, autoSend: newAutoSendValue } : c,
+    );
+    onChange(newCommands);
+    showToast(newAutoSendValue ? 'Commands will auto-send on tap' : 'Commands will be inserted for editing');
   };
 
   const addCommand = () => {
-    // 新项添加到列表开头，enabled: true，autoSend: true（默认），排序后自然在最前面
-    const newCommands: WithId<ConfigurableCommand>[] = [{ label: '/new', command: '/new', enabled: true, autoSend: true, _id: generateId() }, ...commands];
-    onChange(sortByEnabled(newCommands));
-    // 自动开始编辑新添加的项（索引 0）
-    setEditingIndex(0);
+    const newId = generateId();
+    // 新项目添加到列表末尾，不再自动排序
+    const newCommands: WithId<ConfigurableCommand>[] = [...commands, { label: '/new', command: '/new', enabled: true, autoSend: true, _id: newId }];
+    onChange(newCommands);
+    setEditingId(newId);
     setEditValue('/new');
   };
 
-  const deleteCommand = (index: number) => {
-    const newCommands = commands.filter((_, i) => i !== index);
+  const deleteCommand = (id: string) => {
+    const newCommands = commands.filter((c) => c._id !== id);
     onChange(newCommands);
-    // 如果删除的是展开的项，关闭展开状态
-    if (expandedIndex === index) {
-      setExpandedIndex(null);
-    } else if (expandedIndex !== null && expandedIndex > index) {
-      // 如果删除的项在展开项之前，更新展开项索引
-      setExpandedIndex(expandedIndex - 1);
-    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -122,18 +149,25 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
       const [removed] = newCommands.splice(oldIndex, 1);
       newCommands.splice(newIndex, 0, removed);
       onChange(newCommands);
-
-      // 更新展开状态索引
-      if (expandedIndex !== null) {
-        if (expandedIndex === oldIndex) {
-          setExpandedIndex(newIndex);
-        } else if (oldIndex < expandedIndex && newIndex >= expandedIndex) {
-          setExpandedIndex(expandedIndex - 1);
-        } else if (oldIndex > expandedIndex && newIndex <= expandedIndex) {
-          setExpandedIndex(expandedIndex + 1);
-        }
-      }
     }
+  };
+
+  const moveToFirst = (id: string) => {
+    const index = commands.findIndex((c) => c._id === id);
+    if (index <= 0) return;
+    const newCommands = [...commands];
+    const [removed] = newCommands.splice(index, 1);
+    newCommands.unshift(removed);
+    onChange(newCommands);
+  };
+
+  const moveToLast = (id: string) => {
+    const index = commands.findIndex((c) => c._id === id);
+    if (index === -1 || index === commands.length - 1) return;
+    const newCommands = [...commands];
+    const [removed] = newCommands.splice(index, 1);
+    newCommands.push(removed);
+    onChange(newCommands);
   };
 
   return (
@@ -183,68 +217,38 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
           items={commands.map((c) => c._id)}
           strategy={verticalListSortingStrategy}
         >
-          {commands.map((cmd, index) => (
+          {commands.map((cmd) => (
             <SortableItemShell
               key={cmd._id}
               id={cmd._id}
               enabled={cmd.enabled}
-              onToggle={() => toggleEnabled(index)}
-              onDelete={() => deleteCommand(index)}
-              isExpandable={true}
-              isExpanded={expandedIndex === index}
-              onToggleExpand={() => toggleExpand(index)}
-              detailContent={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button
-                    role="switch"
-                    aria-checked={cmd.autoSend ?? true}
-                    aria-label={(cmd.autoSend ?? true) ? 'Auto-send is on, click to turn off' : 'Auto-send is off, click to turn on'}
-                    onClick={() => toggleAutoSend(index)}
-                    style={{
-                      width: 36,
-                      height: 22,
-                      borderRadius: 11,
-                      border: 'none',
-                      background: (cmd.autoSend ?? true) ? 'var(--status-running)' : 'var(--bg-primary)',
-                      cursor: 'pointer',
-                      position: 'relative' as const,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <span style={{
-                      position: 'absolute' as const,
-                      top: 2,
-                      left: (cmd.autoSend ?? true) ? 16 : 2,
-                      width: 18,
-                      height: 18,
-                      borderRadius: '50%',
-                      background: '#fff',
-                      transition: 'left 0.15s ease',
-                    }} />
-                  </button>
-                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    Auto-send on click
-                  </span>
-                </div>
+              onToggle={() => toggleEnabled(cmd._id)}
+              onDelete={() => deleteCommand(cmd._id)}
+              onMoveToFirst={() => moveToFirst(cmd._id)}
+              onMoveToLast={() => moveToLast(cmd._id)}
+              extraAction={
+                <AutoSendButton
+                  autoSend={cmd.autoSend ?? true}
+                  onToggle={() => toggleAutoSend(cmd._id)}
+                />
               }
             >
               {/* 命令输入/显示 */}
-              {editingIndex === index ? (
+              {editingId === cmd._id ? (
                 <textarea
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      saveEdit(index);
+                      saveEdit(cmd._id);
                     }
                     if (e.key === 'Escape') {
-                      // 取消编辑
                       setEditValue('');
-                      saveEdit(-1); // -1 表示取消
+                      saveEdit(null);
                     }
                   }}
-                  onBlur={() => saveEdit(index)}
+                  onBlur={() => saveEdit(cmd._id)}
                   autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="off"
@@ -252,9 +256,9 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
                   inputMode="text"
                   rows={1}
                   placeholder="Enter command…"
-                  aria-label={`Command ${index + 1}`}
+                  aria-label={`Edit ${cmd.label}`}
                   style={mergeTextareaStyle({
-                    flex: 1,
+                    flex: '1 1 180px',
                     minWidth: 0,
                     height: 36,
                     padding: '0 12px',
@@ -267,10 +271,10 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
               ) : (
                 <button
                   type="button"
-                  onClick={() => startEdit(index)}
+                  onClick={() => startEdit(cmd._id)}
                   aria-label={`Edit command ${cmd.label}`}
                   style={{
-                    flex: 1,
+                    flex: '1 1 180px',
                     minWidth: 0,
                     height: 36,
                     padding: '0 12px',

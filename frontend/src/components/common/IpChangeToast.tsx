@@ -3,12 +3,14 @@ import { useAppStore } from '../../stores/app-store.js';
 export function IpChangeToast() {
   const ipChangeInfo = useAppStore((s) => s.ipChangeInfo);
   const setIpChangeInfo = useAppStore((s) => s.setIpChangeInfo);
+  const showToast = useAppStore((s) => s.showToast);
 
   if (!ipChangeInfo) return null;
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(ipChangeInfo.newUrl);
     setIpChangeInfo(null);
+    showToast('URL copied to clipboard');
   };
 
   const handleClose = () => {

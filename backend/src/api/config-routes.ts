@@ -2,15 +2,21 @@ import { Router } from 'express';
 import { readFile, writeFile } from 'fs/promises';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
+import { homedir } from 'node:os';
 import { AuthModule } from '../auth/auth-middleware.js';
 import { createAuthRoutes } from './auth-routes.js';
 import { logger } from '../logger/logger.js';
 import { withFileLockAsync } from '../utils/file-lock.js';
 import {
   type UserConfig,
+  type WorkdirConfig,
   fillDefaultShortcuts,
   fillDefaultCommands,
+  loadUserConfig as loadUserConfigSync,
+  loadWorkdirConfig,
+  mergeConfigs,
+  saveWorkdirConfig,
+  getWorkdirConfigLock,
 } from '../config.js';
 import {
   scanSkills,
@@ -27,9 +33,9 @@ import type { NotificationManager } from '../notification/notification-manager.j
 import type { NotificationServiceFactory } from '../notification/notification-service-factory.js';
 import type { InstanceManager } from '../instance/instance-manager.js';
 
-const CONFIG_DIR = join(homedir(), '.claude-remote');
-const CONFIG_FILE = join(CONFIG_DIR, 'settings.json');
-const CONFIG_LOCK = CONFIG_FILE + '.lock';
+function getGlobalConfigLock(): string {
+  return getGlobalConfigFile() + '.lock';
+}
 
 /**
  * 验证配置结构
@@ -108,32 +114,33 @@ function validateConfigStructure(config: unknown): config is UserConfig {
 }
 
 /**
- * 读取用户配置文件
+ * 获取全局配置目录路径
  */
-async function loadUserConfig(): Promise<UserConfig | null> {
-  try {
-    if (!existsSync(CONFIG_FILE)) {
-      return null;
-    }
-    const content = await readFile(CONFIG_FILE, 'utf-8');
-    return JSON.parse(content) as UserConfig;
-  } catch (error) {
-    logger.error({ error, path: CONFIG_FILE }, 'Failed to load user config');
-    return null;
-  }
+function getGlobalConfigDir(): string {
+  return join(homedir(), '.claude-remote');
+}
+
+/**
+ * 获取全局配置文件路径
+ */
+function getGlobalConfigFile(): string {
+  return join(getGlobalConfigDir(), 'settings.json');
 }
 
 /**
  * 保存配置文件
  */
 async function saveUserConfig(config: UserConfig): Promise<void> {
+  const configDir = getGlobalConfigDir();
+  const configFile = getGlobalConfigFile();
+
   // 确保目录存在
-  if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+  if (!existsSync(configDir)) {
+    mkdirSync(configDir, { recursive: true, mode: 0o700 });
   }
 
   // 直接写入文件
-  await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
+  await writeFile(configFile, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
 export function createConfigRoutes(
@@ -149,36 +156,67 @@ export function createConfigRoutes(
 
   /**
    * GET /api/config - 获取用户配置
+   * 支持实例隔离：查询哪个实例就返回该实例对应的合并配置（全局 + 项目配置）
    */
   router.get('/config', authModule.requireAuth.bind(authModule), async (req, res) => {
     try {
-      const config = await loadUserConfig();
+      const instanceId = req.query.instanceId as string | undefined;
 
-      if (!config) {
-        // 配置文件不存在，返回 null 让前端使用自己的默认值
-        res.json({ config: null, configPath: CONFIG_FILE });
-        return;
+      // 1. 加载全局配置
+      const globalConfig = loadUserConfigSync();
+
+      // 2. 确定工作目录和项目配置
+      let cwd: string;
+      let workdirConfig: WorkdirConfig = {};
+
+      if (instanceId) {
+        // 传入 instanceId，使用该实例的 cwd
+        const instance = instanceManager?.getInstance(instanceId);
+        if (instance) {
+          cwd = instance.cwd;
+          workdirConfig = loadWorkdirConfig(cwd);
+          logger.debug({ instanceId, cwd }, 'Using specified instance for config');
+        } else {
+          // 实例不存在，fallback 到全局配置的 claudeCwd
+          cwd = globalConfig.claudeCwd ?? process.cwd();
+          workdirConfig = loadWorkdirConfig(cwd);
+          logger.warn({ instanceId, fallbackCwd: cwd }, 'Instance not found, using fallback cwd');
+        }
+      } else {
+        // 没有指定实例，检查活跃实例
+        const activeInstances = instanceManager?.listInstances() ?? [];
+        if (activeInstances.length > 0) {
+          // 使用第一个实例的 cwd
+          cwd = activeInstances[0].cwd;
+          workdirConfig = loadWorkdirConfig(cwd);
+          logger.debug({ instanceId: activeInstances[0].instanceId, cwd }, 'Using first instance for config');
+        } else if (globalConfig.claudeCwd) {
+          // 无实例但有全局配置的 claudeCwd
+          cwd = globalConfig.claudeCwd;
+          workdirConfig = loadWorkdirConfig(cwd);
+        } else {
+          // 最后 fallback
+          cwd = process.cwd();
+          logger.warn({ fallbackCwd: cwd }, 'No instance, falling back to process.cwd()');
+        }
       }
 
-      // 懒填充默认值（不持久化，仅返回时填充）
-      // 好处：配置文件保持精简，默认值更新时用户自动受益
-      let filledConfig = config;
-      if (!config.shortcuts) {
-        filledConfig = fillDefaultShortcuts(filledConfig);
+      // 3. 合并全局配置和项目配置
+      let mergedConfig = mergeConfigs(globalConfig, workdirConfig);
+
+      // 4. 填充默认值
+      if (!mergedConfig.shortcuts) {
+        mergedConfig = fillDefaultShortcuts(mergedConfig);
       }
-      if (!config.commands) {
-        filledConfig = fillDefaultCommands(filledConfig);
+      if (!mergedConfig.commands) {
+        mergedConfig = fillDefaultCommands(mergedConfig);
       }
 
-      // 扫描并合并 Skill Commands
-      const claudeCwd = filledConfig.claudeCwd ?? process.cwd();
-      if (!filledConfig.claudeCwd) {
-        logger.warn({ fallbackCwd: claudeCwd }, 'claudeCwd not set in config, falling back to process.cwd() for skill scan');
-      }
-      const skills = scanSkills(claudeCwd);
+      // 5. 扫描项目目录下的 skills（使用正确的 cwd）
+      const skills = scanSkills(cwd);
       const skillCommands = convertSkillsToCommands(skills);
-      const mergeResult = mergeSkillCommands(filledConfig.commands ?? [], skillCommands);
-      filledConfig = { ...filledConfig, commands: mergeResult.commands };
+      const mergeResult = mergeSkillCommands(mergedConfig.commands ?? [], skillCommands);
+      mergedConfig = { ...mergedConfig, commands: mergeResult.commands };
 
       if (mergeResult.added > 0 || mergeResult.removed > 0) {
         logger.info({
@@ -186,21 +224,22 @@ export function createConfigRoutes(
           removed: mergeResult.removed,
           preserved: mergeResult.preserved,
           total: mergeResult.total,
+          cwd,
         }, 'Skill commands merged');
       }
 
       // 安全处理：不暴露敏感字段（token、webhook URL 等）
-      const { token: _, notifications: _notif, ...safeConfig } = filledConfig;
+      const { token: _, notifications: _notif, ...safeConfig } = mergedConfig;
 
       // 构建通知配置的安全视图
-      const safeNotifications: SafeNotificationConfigs = getNotificationStatus(filledConfig.notifications);
+      const safeNotifications: SafeNotificationConfigs = getNotificationStatus(mergedConfig.notifications);
 
       const responseConfig = {
         ...safeConfig,
         notifications: safeNotifications,
       };
 
-      res.json({ config: responseConfig, configPath: CONFIG_FILE });
+      res.json({ config: responseConfig, configPath: getGlobalConfigFile() });
     } catch (error) {
       logger.error({ error }, 'Failed to get config');
       res.status(500).json({ error: 'Failed to load config' });
@@ -209,9 +248,11 @@ export function createConfigRoutes(
 
   /**
    * PUT /api/config - 更新用户配置
+   * 支持实例隔离：项目级配置保存到项目目录，全局配置保存到用户目录
    */
   router.put('/config', authModule.requireAuth.bind(authModule), async (req, res) => {
     try {
+      const instanceId = req.query.instanceId as string | undefined;
       const newConfig = req.body as UserConfig & { notifications?: NotificationConfigs };
 
       // 验证配置结构
@@ -220,18 +261,34 @@ export function createConfigRoutes(
         return;
       }
 
-      // 文件锁保护 read-modify-write，防止与其他模块并发写入冲突
-      await withFileLockAsync(CONFIG_LOCK, async () => {
-        // 合并现有配置和新配置（前端可能只发送部分字段）
-        const existingConfig = (await loadUserConfig()) ?? {};
-        const mergedConfig: UserConfig & { notifications?: NotificationConfigs } = { ...existingConfig, ...newConfig };
+      // 分离项目级配置和全局配置
+      const { shortcuts, commands, ...globalFields } = newConfig;
+
+      // 判断 shortcuts/commands 的保存位置：
+      // - 有 instanceId 且实例存在 → 保存到项目配置
+      // - 无 instanceId 或实例不存在 → 保存到全局配置（向后兼容）
+      const instance = instanceId ? instanceManager?.getInstance(instanceId) : undefined;
+      const hasProjectFields = shortcuts !== undefined || commands !== undefined;
+
+      // 1. 保存全局配置
+      await withFileLockAsync(getGlobalConfigLock(), async () => {
+        const existingGlobal = loadUserConfigSync();
+        const mergedGlobal: UserConfig & { notifications?: NotificationConfigs } = {
+          ...existingGlobal,
+          ...globalFields,
+        };
+
+        // 无实例时，shortcuts/commands 保存到全局配置（向后兼容）
+        if (!(instance && hasProjectFields)) {
+          if (shortcuts !== undefined) mergedGlobal.shortcuts = shortcuts;
+          if (commands !== undefined) mergedGlobal.commands = commands;
+        }
 
         // 处理通知配置：逐渠道深合并，保留已有字段（如 enabled）
         if (newConfig.notifications) {
-          const existingNotif = existingConfig.notifications ?? {};
+          const existingNotif = existingGlobal.notifications ?? {};
           const merged: NotificationConfigs = { ...existingNotif };
 
-          // 逐渠道合并：新值覆盖，但保留已有字段
           if (newConfig.notifications.dingtalk) {
             merged.dingtalk = { ...existingNotif.dingtalk, ...newConfig.notifications.dingtalk };
           }
@@ -239,11 +296,27 @@ export function createConfigRoutes(
             merged.wechat_work = { ...existingNotif.wechat_work, ...newConfig.notifications.wechat_work };
           }
 
-          mergedConfig.notifications = merged;
+          mergedGlobal.notifications = merged;
         }
 
-        await saveUserConfig(mergedConfig as UserConfig);
+        await saveUserConfig(mergedGlobal as UserConfig);
       });
+
+      // 2. 保存项目级配置（有实例时保存 shortcuts/commands）
+      let projectConfigPath: string | undefined;
+      if (instance && hasProjectFields) {
+        const projectLock = getWorkdirConfigLock(instance.cwd);
+        await withFileLockAsync(projectLock, async () => {
+          const existingProject = loadWorkdirConfig(instance.cwd);
+          const mergedProject: WorkdirConfig = {
+            ...existingProject,
+            ...(shortcuts !== undefined && { shortcuts }),
+            ...(commands !== undefined && { commands }),
+          };
+          await saveWorkdirConfig(instance.cwd, mergedProject);
+          projectConfigPath = instance.cwd;
+        });
+      }
 
       // 触发服务缓存刷新（当前实例即时生效）
       if (notificationServiceFactory) {
@@ -258,8 +331,8 @@ export function createConfigRoutes(
         });
       }
 
-      logger.info({ configPath: CONFIG_FILE }, 'User config updated');
-      res.json({ success: true, configPath: CONFIG_FILE });
+      logger.info({ configPath: getGlobalConfigFile(), instanceId, projectConfigPath }, 'User config updated');
+      res.json({ success: true, configPath: getGlobalConfigFile() });
     } catch (error) {
       logger.error({ error }, 'Failed to update config');
       res.status(500).json({ error: 'Failed to save config' });
@@ -286,8 +359,8 @@ export function createConfigRoutes(
       }
 
       // 文件锁保护 read-modify-write，返回结果供外部统一处理响应
-      const result = await withFileLockAsync(CONFIG_LOCK, async () => {
-        const config = (await loadUserConfig()) ?? {};
+      const result = await withFileLockAsync(getGlobalConfigLock(), async () => {
+        const config = loadUserConfigSync() ?? {};
         const notifications = config.notifications ?? {};
 
         // 检查渠道是否已配置
