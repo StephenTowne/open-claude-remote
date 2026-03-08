@@ -14,9 +14,10 @@ import type { WithId } from './SettingsModal.js';
 import { SortableItemShell } from './SortableItemShell.js';
 import { useDndSensors } from './useDndSensors.js';
 
-/** 按 enabled 状态排序：启用的在前，禁用的在后（稳定排序保持相对顺序） */
-const sortByEnabled = <T extends { enabled: boolean }>(items: T[]): T[] =>
-  [...items].sort((a, b) => Number(b.enabled) - Number(a.enabled));
+/**
+ * ShortcutSettings 组件
+ * 管理可配置的快捷键列表，支持拖拽排序、启用/禁用、按键捕获、删除
+ */
 
 interface ShortcutSettingsProps {
   shortcuts: WithId<ConfigurableShortcut>[];
@@ -120,23 +121,20 @@ function keyEventToAnsi(e: React.KeyboardEvent): { label: string; data: string }
 }
 
 export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps) {
-  const [capturingIndex, setCapturingIndex] = useState<number | null>(null);
+  const [capturingId, setCapturingId] = useState<string | null>(null);
   const sensors = useDndSensors();
 
-  const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
+  const handleKeyDown = (e: React.KeyboardEvent, id: string) => {
     e.preventDefault();
     e.stopPropagation();
 
     const result = keyEventToAnsi(e);
     if (result) {
-      const newShortcuts = [...shortcuts];
-      newShortcuts[index] = {
-        ...newShortcuts[index],
-        label: result.label,
-        data: result.data,
-      };
+      const newShortcuts = shortcuts.map((s) =>
+        s._id === id ? { ...s, label: result.label, data: result.data } : s
+      );
       onChange(newShortcuts);
-      setCapturingIndex(null);
+      setCapturingId(null);
     }
   };
 
@@ -146,18 +144,19 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
       ...newShortcuts[index],
       enabled: !newShortcuts[index].enabled,
     };
-    onChange(sortByEnabled(newShortcuts));
+    onChange(newShortcuts);
   };
 
   const addShortcut = () => {
-    // 新项添加到列表开头，enabled: true，排序后自然在最前面
+    const newId = generateId();
+    // 新项目添加到列表末尾，不再自动排序
     const newShortcuts = [
-      { label: 'New', data: '', enabled: true, _id: generateId() },
       ...shortcuts,
+      { label: 'New', data: '', enabled: true, _id: newId },
     ];
-    onChange(sortByEnabled(newShortcuts));
-    // 自动开始捕获新添加的项（索引 0）
-    setCapturingIndex(0);
+    onChange(newShortcuts);
+    // 自动开始捕获新添加的项
+    setCapturingId(newId);
   };
 
   const deleteShortcut = (index: number) => {
@@ -177,6 +176,24 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
       newShortcuts.splice(newIndex, 0, removed);
       onChange(newShortcuts);
     }
+  };
+
+  const moveToFirst = (id: string) => {
+    const index = shortcuts.findIndex((s) => s._id === id);
+    if (index <= 0) return;
+    const newShortcuts = [...shortcuts];
+    const [removed] = newShortcuts.splice(index, 1);
+    newShortcuts.unshift(removed);
+    onChange(newShortcuts);
+  };
+
+  const moveToLast = (id: string) => {
+    const index = shortcuts.findIndex((s) => s._id === id);
+    if (index === -1 || index === shortcuts.length - 1) return;
+    const newShortcuts = [...shortcuts];
+    const [removed] = newShortcuts.splice(index, 1);
+    newShortcuts.push(removed);
+    onChange(newShortcuts);
   };
 
   return (
@@ -226,13 +243,21 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
           items={shortcuts.map((s) => s._id)}
           strategy={verticalListSortingStrategy}
         >
-          {shortcuts.map((shortcut, index) => (
+          {shortcuts.map((shortcut) => (
             <SortableItemShell
               key={shortcut._id}
               id={shortcut._id}
               enabled={shortcut.enabled}
-              onToggle={() => toggleEnabled(index)}
-              onDelete={() => deleteShortcut(index)}
+              onToggle={() => {
+                const index = shortcuts.findIndex((s) => s._id === shortcut._id);
+                if (index !== -1) toggleEnabled(index);
+              }}
+              onDelete={() => {
+                const index = shortcuts.findIndex((s) => s._id === shortcut._id);
+                if (index !== -1) deleteShortcut(index);
+              }}
+              onMoveToFirst={() => moveToFirst(shortcut._id)}
+              onMoveToLast={() => moveToLast(shortcut._id)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                 {/* 按键捕获输入框 */}
@@ -242,17 +267,17 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
                   readOnly
                   autoComplete="off"
                   placeholder="Press key to capture"
-                  onClick={() => setCapturingIndex(index)}
-                  onKeyDown={(e) => handleKeyDown(e, index)}
-                  onBlur={() => setCapturingIndex(null)}
-                  aria-label={`Shortcut ${index + 1}`}
+                  onClick={() => setCapturingId(shortcut._id)}
+                  onKeyDown={(e) => handleKeyDown(e, shortcut._id)}
+                  onBlur={() => setCapturingId(null)}
+                  aria-label={`Shortcut ${shortcut.label}`}
                   style={{
                     flex: 1,
                     minWidth: 0,
                     height: 36,
                     padding: '0 12px',
                     borderRadius: 6,
-                    border: capturingIndex === index
+                    border: capturingId === shortcut._id
                       ? '2px solid var(--status-running)'
                       : '1px solid var(--border-color)',
                     background: 'var(--bg-primary)',
@@ -292,7 +317,7 @@ export function ShortcutSettings({ shortcuts, onChange }: ShortcutSettingsProps)
         </SortableContext>
       </DndContext>
 
-      {capturingIndex !== null && (
+      {capturingId !== null && (
         <div style={{
           fontSize: 12,
           color: 'var(--text-secondary)',

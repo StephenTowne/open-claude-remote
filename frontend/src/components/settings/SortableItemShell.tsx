@@ -10,6 +10,10 @@ interface SortableItemShellProps {
   children: ReactNode;
   /** 额外的操作按钮（如 auto-send 切换） */
   extraAction?: ReactNode;
+  /** 移到最前 */
+  onMoveToFirst?: () => void;
+  /** 移到最后 */
+  onMoveToLast?: () => void;
 }
 
 /**
@@ -23,6 +27,8 @@ export function SortableItemShell({
   onDelete,
   children,
   extraAction,
+  onMoveToFirst,
+  onMoveToLast,
 }: SortableItemShellProps) {
   const {
     attributes,
@@ -111,6 +117,59 @@ export function SortableItemShell({
 
         {/* 额外操作按钮 */}
         {extraAction}
+
+        {/* 移到首尾按钮 */}
+        {(onMoveToFirst || onMoveToLast) && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            flexShrink: 0,
+          }}>
+            {onMoveToFirst && (
+              <button
+                aria-label="Move to first"
+                onClick={onMoveToFirst}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 6,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ⤒
+              </button>
+            )}
+            {onMoveToLast && (
+              <button
+                aria-label="Move to last"
+                onClick={onMoveToLast}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 6,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ⤓
+              </button>
+            )}
+          </div>
+        )}
 
         {/* 删除按钮 */}
         <button

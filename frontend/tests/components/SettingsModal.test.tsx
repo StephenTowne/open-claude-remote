@@ -121,7 +121,7 @@ describe('SettingsModal', () => {
     });
   });
 
-  describe('CommandSettings index-safety', () => {
+  describe('CommandSettings 禁用自动排序', () => {
     beforeEach(() => {
       vi.mocked(apiClient.getUserConfig).mockResolvedValue({
         config: {
@@ -148,27 +148,7 @@ describe('SettingsModal', () => {
       });
     };
 
-    it('编辑状态在排序后仍指向正确项', async () => {
-      render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
-      await switchToCommandsTab();
-
-      // 开始编辑 /beta（点击其 label 按钮）
-      fireEvent.click(screen.getByText('/beta'));
-      expect(screen.getByDisplayValue('/beta')).toBeDefined();
-
-      // 切换 /alpha 为禁用 → sortByEnabled → [/beta(on), /alpha(off), /gamma(off)]
-      const switches = screen.getAllByRole('switch');
-      fireEvent.click(switches[0]); // /alpha 的 toggle
-
-      // 排序后，/alpha 应该显示为按钮（不在编辑状态）
-      await waitFor(() => {
-        expect(screen.getByText('/alpha')).toBeDefined();
-      });
-      // /beta 应该仍在编辑状态
-      expect(screen.getByDisplayValue('/beta')).toBeDefined();
-    });
-
-    it('toggle enabled 后排序不影响其他项状态', async () => {
+    it('toggle enabled 不改变命令位置', async () => {
       render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
       await switchToCommandsTab();
 
@@ -178,37 +158,45 @@ describe('SettingsModal', () => {
       expect(switches[1].getAttribute('aria-checked')).toBe('true');
       expect(switches[2].getAttribute('aria-checked')).toBe('false');
 
-      // 禁用 /alpha
+      // 禁用 /alpha - 顺序应保持不变
       fireEvent.click(switches[0]);
 
-      // 排序后: [/beta(on), /alpha(off), /gamma(off)]
-      await waitFor(() => {
-        const newSwitches = screen.getAllByRole('switch');
-        expect(newSwitches[0].getAttribute('aria-checked')).toBe('true');  // /beta
-        expect(newSwitches[1].getAttribute('aria-checked')).toBe('false'); // /alpha
-        expect(newSwitches[2].getAttribute('aria-checked')).toBe('false'); // /gamma
-      });
-    });
-
-    it('排序后 delete 删除正确项', async () => {
-      render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
-      await switchToCommandsTab();
-
-      // 禁用 /alpha → sort → [/beta(on), /alpha(off), /gamma(off)]
-      const switches = screen.getAllByRole('switch');
-      fireEvent.click(switches[0]);
-
-      // 排序后，第一个命令应该是 /beta
+      // 位置不变: /alpha(off), /beta(on), /gamma(off)
       await waitFor(() => {
         const editButtons = screen.getAllByRole('button')
           .filter(b => b.getAttribute('aria-label')?.startsWith('Edit command'));
-        expect(editButtons[0].textContent).toBe('/beta');
+        expect(editButtons[0].textContent).toBe('/alpha');
+        expect(editButtons[1].textContent).toBe('/beta');
+        expect(editButtons[2].textContent).toBe('/gamma');
       });
+    });
 
-      // 删除第一项（/beta）
+    it('编辑状态在 toggle 后仍指向正确项', async () => {
+      render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
+      await switchToCommandsTab();
+
+      // 开始编辑 /beta（点击其 label 按钮）
+      fireEvent.click(screen.getByText('/beta'));
+      expect(screen.getByDisplayValue('/beta')).toBeDefined();
+
+      // 切换 /alpha 为禁用 - 顺序应保持不变
+      const switches = screen.getAllByRole('switch');
+      fireEvent.click(switches[0]); // /alpha 的 toggle
+
+      // /beta 应该仍在编辑状态（位置不变）
+      await waitFor(() => {
+        expect(screen.getByDisplayValue('/beta')).toBeDefined();
+      });
+    });
+
+    it('删除按钮删除正确项（位置不变）', async () => {
+      render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
+      await switchToCommandsTab();
+
+      // 删除第二项（/beta）
       const deleteButtons = screen.getAllByRole('button')
         .filter(b => b.getAttribute('aria-label') === 'Delete');
-      fireEvent.click(deleteButtons[0]);
+      fireEvent.click(deleteButtons[1]);
 
       // /beta 应被删除，/alpha 和 /gamma 仍在
       await waitFor(() => {

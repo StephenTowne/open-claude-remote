@@ -16,9 +16,10 @@ import { SortableItemShell } from './SortableItemShell.js';
 import { useDndSensors } from './useDndSensors.js';
 import { mergeTextareaStyle } from '../../styles/input.js';
 
-/** 按 enabled 状态排序：启用的在前，禁用的在后（稳定排序保持相对顺序） */
-const sortByEnabled = <T extends { enabled: boolean }>(items: T[]): T[] =>
-  [...items].sort((a, b) => Number(b.enabled) - Number(a.enabled));
+/**
+ * CommandSettings 组件
+ * 管理可配置的命令列表，支持拖拽排序、启用/禁用、编辑、删除
+ */
 
 /**
  * Auto-send 图标按钮
@@ -107,7 +108,7 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
     const newCommands = commands.map((c) =>
       c._id === id ? { ...c, enabled: !c.enabled } : c,
     );
-    onChange(sortByEnabled(newCommands));
+    onChange(newCommands);
   };
 
   const showToast = useAppStore((s) => s.showToast);
@@ -125,8 +126,9 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
 
   const addCommand = () => {
     const newId = generateId();
-    const newCommands: WithId<ConfigurableCommand>[] = [{ label: '/new', command: '/new', enabled: true, autoSend: true, _id: newId }, ...commands];
-    onChange(sortByEnabled(newCommands));
+    // 新项目添加到列表末尾，不再自动排序
+    const newCommands: WithId<ConfigurableCommand>[] = [...commands, { label: '/new', command: '/new', enabled: true, autoSend: true, _id: newId }];
+    onChange(newCommands);
     setEditingId(newId);
     setEditValue('/new');
   };
@@ -148,6 +150,24 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
       newCommands.splice(newIndex, 0, removed);
       onChange(newCommands);
     }
+  };
+
+  const moveToFirst = (id: string) => {
+    const index = commands.findIndex((c) => c._id === id);
+    if (index <= 0) return;
+    const newCommands = [...commands];
+    const [removed] = newCommands.splice(index, 1);
+    newCommands.unshift(removed);
+    onChange(newCommands);
+  };
+
+  const moveToLast = (id: string) => {
+    const index = commands.findIndex((c) => c._id === id);
+    if (index === -1 || index === commands.length - 1) return;
+    const newCommands = [...commands];
+    const [removed] = newCommands.splice(index, 1);
+    newCommands.push(removed);
+    onChange(newCommands);
   };
 
   return (
@@ -204,6 +224,8 @@ export function CommandSettings({ commands, onChange }: CommandSettingsProps) {
               enabled={cmd.enabled}
               onToggle={() => toggleEnabled(cmd._id)}
               onDelete={() => deleteCommand(cmd._id)}
+              onMoveToFirst={() => moveToFirst(cmd._id)}
+              onMoveToLast={() => moveToLast(cmd._id)}
               extraAction={
                 <AutoSendButton
                   autoSend={cmd.autoSend ?? true}
