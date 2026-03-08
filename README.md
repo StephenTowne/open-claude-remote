@@ -49,8 +49,22 @@ Scan the QR code shown in your terminal with your phone. The auth token is auto-
 - Real-time terminal output streamed to your phone
 - Full ANSI color rendering via xterm.js
 - 10K-line scrollback buffer, auto-restored on reconnect
+- **Multi-network support** — displays all available IPs (WiFi, VPN, Ethernet) on startup
 - LAN IP change notification with new connection URL
-- Smart auto-scroll with a "scroll to bottom" floating button
+- Smart auto-scroll with a "scroll to bottom" floating button — respects your scroll position when browsing history
+- **Tap-to-focus** — clicking anywhere in the terminal automatically focuses the input bar for a seamless typing experience
+
+### Multi-Network Access (WiFi + VPN)
+
+Access Claude Code Remote from multiple network interfaces simultaneously:
+
+- **Automatic network detection** — discovers all available IPv4 interfaces on startup
+- **VPN support** — detects common VPN interfaces (WireGuard, Tailscale, ZeroTier, PPP, etc.)
+- **Custom CIDR ranges** — configure `customPrivateRanges` to add company-specific networks
+- **Network change notifications** — WebSocket `network_changed` events notify clients when interfaces change
+- **Unified CORS** — all detected IPs are automatically added to the CORS allowlist
+
+Example: When connected to both WiFi (192.168.x.x) and company VPN (30.x.x.x), both addresses are displayed on startup and accessible via the web UI.
 
 ### Quick Actions
 - One-tap keys: Esc, Enter, Tab, arrows, Shift+Tab
@@ -209,6 +223,7 @@ Config file: `~/.claude-remote/settings.json` (legacy `config.json` is auto-migr
 | `workspaces` | string[] | [] | Allowed working directories for web-spawned instances |
 | `settingsDirs` | string[] | ["~/.claude/", "~/.claude-remote/settings/"] | Directories to scan for settings files |
 | `notifications` | object | — | Notification channels config (see below) |
+| `customPrivateRanges` | string[] | [] | Custom CIDR ranges for CORS allowlist (e.g., `["30.0.0.0/8"]` for VPN networks) |
 
 > **Note**: Port is fixed at 8866. All instances run in a single daemon process.
 
@@ -221,6 +236,16 @@ Config file: `~/.claude-remote/settings.json` (legacy `config.json` is auto-migr
 | `enabled` | boolean | true | Whether the channel is active |
 
 **Priority**: CLI args > config file > defaults (except `claudeArgs` which is merged)
+
+### Project-level Configuration
+
+Shortcuts and commands are automatically saved per-project when configured through the Web UI with an active instance:
+
+- Configuration is stored in `<project-dir>/.claude-remote/settings.json`
+- When opening settings from an instance view, `shortcuts` and `commands` changes are saved to the project directory
+- When opening settings without an active instance, changes are saved to the global config (`~/.claude-remote/settings.json`)
+
+This allows each project to have its own set of commands while sharing global settings like notifications.
 
 ### Shortcuts
 
@@ -533,8 +558,22 @@ claude-remote
 - 实时终端输出推送到手机
 - 通过 xterm.js 完整渲染 ANSI 颜色
 - 1万行滚动缓冲区，重连时自动恢复
+- **多网络支持** — 启动时显示所有可用 IP（WiFi、VPN、以太网）
 - 局域网 IP 变更通知，附带新连接地址
-- 智能自动滚动，配有"滚动到底部"悬浮按钮
+- 智能自动滚动，配有"滚动到底部"悬浮按钮 — 浏览历史时尊重你的滚动位置
+- **点击聚焦** — 点击终端任意位置自动聚焦输入框，打字体验更流畅
+
+### 多网络访问（WiFi + VPN）
+
+同时从多个网络接口访问 Claude Code Remote：
+
+- **自动网络检测** — 启动时自动发现所有可用的 IPv4 接口
+- **VPN 支持** — 自动识别常见 VPN 接口（WireGuard、Tailscale、ZeroTier、PPP 等）
+- **自定义 CIDR 网段** — 配置 `customPrivateRanges` 添加公司特定网络
+- **网络变更通知** — WebSocket `network_changed` 事件在接口变化时通知客户端
+- **统一 CORS** — 所有检测到的 IP 自动添加到 CORS 白名单
+
+示例：当同时连接 WiFi（192.168.x.x）和公司 VPN（30.x.x.x）时，启动时会显示两个地址，都可以通过 Web UI 访问。
 
 ### 快捷操作
 - 一键发送：Esc、Enter、Tab、方向键、Shift+Tab
@@ -693,6 +732,7 @@ claude-remote update
 | `workspaces` | string[] | [] | Web 生成实例允许的工作目录 |
 | `settingsDirs` | string[] | ["~/.claude/", "~/.claude-remote/settings/"] | 设置文件扫描目录 |
 | `notifications` | object | — | 通知渠道配置（见下文） |
+| `customPrivateRanges` | string[] | [] | CORS 白名单的自定义 CIDR 网段（如 `["30.0.0.0/8"]` 用于 VPN 网络） |
 
 > **注意**：端口固定为 8866。所有实例运行在单个守护进程中。
 
@@ -705,6 +745,16 @@ claude-remote update
 | `enabled` | boolean | true | 渠道是否启用 |
 
 **优先级**：CLI 参数 > 配置文件 > 默认值（`claudeArgs` 除外，它是合并的）
+
+### 项目级配置
+
+通过 Web UI 配置时，快捷键和命令会自动按项目保存：
+
+- 配置存储在 `<项目目录>/.claude-remote/settings.json`
+- 从实例视图打开设置时，`shortcuts` 和 `commands` 的变更会保存到项目目录
+- 没有活跃实例时打开设置，变更会保存到全局配置（`~/.claude-remote/settings.json`）
+
+这样每个项目可以有自己的一组命令，同时共享通知等全局设置。
 
 ### 快捷键
 

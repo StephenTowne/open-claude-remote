@@ -1,0 +1,167 @@
+{
+  "shortcuts": [
+    {
+      "label": "S-Tab",
+      "data": "\u001b[Z",
+      "enabled": true,
+      "desc": "Shift+Tab, 向前切换"
+    },
+    {
+      "label": "Esc",
+      "data": "\u001b",
+      "enabled": true
+    },
+    {
+      "label": "Enter",
+      "data": "\r",
+      "enabled": true
+    },
+    {
+      "label": "Tab",
+      "data": "\t",
+      "enabled": true
+    },
+    {
+      "label": "↑",
+      "data": "\u001b[A",
+      "enabled": true
+    },
+    {
+      "label": "↓",
+      "data": "\u001b[B",
+      "enabled": true
+    },
+    {
+      "label": "←",
+      "data": "\u001b[D",
+      "enabled": true
+    },
+    {
+      "label": "→",
+      "data": "\u001b[C",
+      "enabled": true
+    }
+  ],
+  "commands": [
+    {
+      "label": "/clear",
+      "command": "/clear",
+      "enabled": true,
+      "autoSend": true
+    },
+    {
+      "label": "/compact",
+      "command": "/compact",
+      "enabled": true
+    },
+    {
+      "label": "/resume",
+      "command": "/resume",
+      "enabled": true
+    },
+    {
+      "label": "/stats",
+      "command": "/stats",
+      "enabled": true
+    },
+    {
+      "label": "/exit",
+      "command": "/exit",
+      "enabled": true
+    },
+    {
+      "label": "/feature-dev:feature-dev",
+      "command": "/feature-dev:feature-dev",
+      "enabled": true,
+      "autoSend": false
+    },
+    {
+      "label": "/auto-doc",
+      "command": "/auto-doc",
+      "enabled": true,
+      "desc": "Maintains project navigation docs (ARCHITECTURE.md",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/code-review-expert",
+      "command": "/code-review-expert",
+      "enabled": true,
+      "desc": "\"Expert code review of current git changes with a ",
+      "autoSend": false,
+      "fromSkill": true
+    },
+    {
+      "label": "/dev-link",
+      "command": "/dev-link",
+      "enabled": false,
+      "desc": "将本地项目链接到全局 pnpm，确保 `claude-remote` 命令使用当前项目编译产物。触发",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/finish-task",
+      "command": "/finish-task",
+      "enabled": true,
+      "desc": "Task completion gate — mandatory final step after ",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/prd-generator",
+      "command": "/prd-generator",
+      "enabled": false,
+      "desc": "Generate comprehensive Product Requirements Docume",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/simulate-install",
+      "command": "/simulate-install",
+      "enabled": false,
+      "desc": "Simulate a real npm/pnpm global install from the r",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/skill-creator",
+      "command": "/skill-creator",
+      "enabled": false,
+      "desc": "Guide for creating effective skills. This skill sh",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/sync-opensource",
+      "command": "/sync-opensource",
+      "enabled": false,
+      "desc": "Sync master branch to opensource branch and push t",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/systematic-debugging",
+      "command": "/systematic-debugging",
+      "enabled": true,
+      "desc": "Systematic root-cause debugging methodology with 5",
+      "autoSend": false,
+      "fromSkill": true
+    },
+    {
+      "label": "/testing-patterns",
+      "command": "/testing-patterns",
+      "enabled": true,
+      "desc": "Language-agnostic testing methodology covering TDD",
+      "autoSend": true,
+      "fromSkill": true
+    },
+    {
+      "label": "/web-design-guidelines",
+      "command": "/web-design-guidelines",
+      "enabled": true,
+      "desc": "Review UI code for Web Interface Guidelines compli",
+      "autoSend": true,
+      "fromSkill": true
+    }
+  ]
+}

@@ -48,7 +48,8 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen }
         adaptToPtyColsRef.current(0, 0);
         writeRef.current(msg.data);
         setSessionStatus(msg.status);
-        scrollToBottomRef.current();
+        // 注意：不强制滚动到底部，尊重用户的当前滚动位置
+        // 如果用户正在浏览历史内容，保持其视图位置
         break;
       case 'terminal_resize':
         if (msg.cols && msg.cols > 0) {
@@ -145,12 +146,17 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen }
     setAutoFollow(true);
   }, [scrollToBottom, setAutoFollow]);
 
+  // 处理点击 Terminal 区域时聚焦 InputBar
+  const handleFocusInput = useCallback(() => {
+    inputBarRef.current?.focus();
+  }, []);
+
   return (
     <>
       <ConnectionBanner />
       <IpChangeToast />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <TerminalView containerRef={containerRef} />
+        <TerminalView containerRef={containerRef} onFocusInput={handleFocusInput} />
         <ScrollToBottomButton visible={showScrollHint} onClick={handleScrollToBottom} />
       </div>
       <CommandPicker
@@ -186,6 +192,7 @@ export function ConsolePage() {
   const setActiveInstanceId = useInstanceStore((s) => s.setActiveInstanceId);
 
   const cachedToken = useAppStore((s) => s.cachedToken);
+  const serverAvailable = useAppStore((s) => s.serverAvailable);
   const instanceConnectionStatus = useAppStore((s) => s.instanceConnectionStatus);
   const toastMessage = useAppStore((s) => s.toastMessage);
   const showToast = useAppStore((s) => s.showToast);
@@ -200,6 +207,11 @@ export function ConsolePage() {
 
   useEffect(() => {
     if (!activeInstanceId) {
+      return;
+    }
+
+    // 服务器不可达时不切换（null 表示"未检查"，不阻止）
+    if (serverAvailable === false) {
       return;
     }
 
@@ -246,6 +258,7 @@ export function ConsolePage() {
     cachedToken,
     instanceConnectionStatus,
     instances,
+    serverAvailable,
     setActiveInstanceId,
     showToast,
   ]);
@@ -267,7 +280,12 @@ export function ConsolePage() {
       }
     }
     setActiveInstanceId(targetId);
-  }, [cachedToken, setActiveInstanceId]);
+    // 显示切换提示（仅手动切换时，与自动切换的提示保持一致）
+    const targetInstance = instances.find(i => i.instanceId === targetId);
+    if (targetInstance) {
+      showToast(`Switched to ${targetInstance.name}`);
+    }
+  }, [cachedToken, setActiveInstanceId, instances, showToast]);
 
   // 复制成功后自动切换到新实例
   // InstanceTabs.handleCreateSuccess 已轮询并更新了 store，这里直接读取切换
@@ -315,7 +333,7 @@ export function ConsolePage() {
           isKeyboardOpen={isKeyboardOpen}
         />
       </div>
-      {toastMessage && <div className="app-toast" role="status" aria-live="polite">{toastMessage}</div>}
+      {toastMessage && <div className="app-toast app-toast-top" role="status" aria-live="polite">{toastMessage}</div>}
     </div>
   );
 }

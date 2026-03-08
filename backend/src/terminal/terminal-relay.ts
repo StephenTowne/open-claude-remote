@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { PtyManager } from '../pty/pty-manager.js';
 import type { IPtyManager } from '../pty/types.js';
 import { logger } from '../logger/logger.js';
@@ -5,6 +6,7 @@ import { logger } from '../logger/logger.js';
 /**
  * Relays PC terminal stdin/stdout to/from the PTY process.
  * Sets stdin to raw mode so all keystrokes pass through directly.
+ * Emits: 'local_input' (PC keyboard input), 'local_resize' (cols, rows)
  */
 const CTRL_C = '\x03';
 // Kitty keyboard protocol CSI u variants for Ctrl+C:
@@ -13,14 +15,16 @@ const CTRL_C = '\x03';
 const KITTY_CTRL_C_RE = /\x1b\[99;5(?::(?:[12]))?(?:;\d+)*u/;
 const DOUBLE_CTRL_C_WINDOW_MS = 500;
 
-export class TerminalRelay {
+export class TerminalRelay extends EventEmitter {
   private stdinHandler: ((data: Buffer) => void) | null = null;
   private resizeHandler: (() => void) | null = null;
   private wasRaw: boolean = false;
   private lastCtrlCTime: number = 0;
   private resizePaused: boolean = false;
 
-  constructor(private ptyManager: IPtyManager) {}
+  constructor(private ptyManager: IPtyManager) {
+    super();
+  }
 
   /**
    * Start relaying stdin → PTY and listen for terminal resize.
@@ -40,6 +44,7 @@ export class TerminalRelay {
     this.stdinHandler = (data: Buffer) => {
       const str = data.toString();
       this.ptyManager.write(str);
+      this.emit('local_input');
 
       // Double Ctrl+C within window → send SIGINT to proxy process itself
       // Support both classic ETX (\x03) and kitty keyboard protocol CSI u encoding
@@ -59,11 +64,13 @@ export class TerminalRelay {
 
     // Terminal resize → PTY resize
     this.resizeHandler = () => {
-      if (this.resizePaused) return;
       const cols = process.stdout.columns;
       const rows = process.stdout.rows;
       if (cols && rows) {
-        this.ptyManager.resize(cols, rows);
+        this.emit('local_resize', cols, rows);
+        if (!this.resizePaused) {
+          this.ptyManager.resize(cols, rows);
+        }
       }
     };
     process.stdout.on('resize', this.resizeHandler);

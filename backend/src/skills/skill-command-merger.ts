@@ -39,8 +39,14 @@ export function mergeSkillCommands(
   const nonSkillCommands: ConfigurableCommand[] = [];
   const existingSkillCommands = new Map<string, ConfigurableCommand>();
 
+  // 构建新 skill label 集合，用于 orphan 检测
+  const newSkillLabels = new Set(newSkillCommands.map((c) => c.label));
+
   for (const cmd of existingCommands) {
     if (isSkillCommand(cmd)) {
+      existingSkillCommands.set(cmd.label, cmd);
+    } else if (newSkillLabels.has(cmd.label)) {
+      // Orphan: 丢失 fromSkill 标记但与新 skill 同名 → 回收为 skill command
       existingSkillCommands.set(cmd.label, cmd);
     } else {
       nonSkillCommands.push(cmd);

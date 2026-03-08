@@ -6,6 +6,8 @@ import { getUserConfig, updateUserConfig, updateNotificationChannelEnabled } fro
 import { DEFAULT_SHORTCUTS, DEFAULT_COMMANDS, type UserConfig, type ConfigurableShortcut, type ConfigurableCommand } from '../../config/commands.js';
 import { DINGTALK_WEBHOOK_PATTERN, SENDKEY_PATTERN, type SafeNotificationConfigs } from '#shared';
 import { BottomSheet } from '../common/BottomSheet.js';
+import { useInstanceStore } from '../../stores/instance-store.js';
+import { useAppStore } from '../../stores/app-store.js';
 
 export type WithId<T> = T & { _id: string };
 
@@ -27,6 +29,8 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const activeInstanceId = useInstanceStore((state) => state.activeInstanceId);
+  const showToast = useAppStore((s) => s.showToast);
   const idCounter = useRef(0);
 
   function nextId(): string {
@@ -46,7 +50,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
 
   const loadConfig = async () => {
     try {
-      const { config } = await getUserConfig();
+      const { config } = await getUserConfig(activeInstanceId ?? undefined);
       if (config) {
         setShortcuts(config.shortcuts.map(s => withId(s)));
         setCommands(config.commands.map(c => withId(c)));
@@ -79,13 +83,17 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
       [channel]: { ...prev[channel], configured: true, enabled },
     }));
 
+    const channelName = channel === 'dingtalk' ? 'DingTalk' : 'WeChat Work';
+
     try {
       await updateNotificationChannelEnabled(channel, enabled);
+      showToast(`${channelName} notifications ${enabled ? 'enabled' : 'disabled'}`);
     } catch (err) {
       // 失败回滚
       setNotificationStatus(prevStatus);
       console.error('Failed to update channel enabled status:', err);
-      setError('Failed to update channel status');
+      setError(`Failed to update ${channelName.toLowerCase()}`);
+      showToast(`Failed to update ${channelName.toLowerCase()}`);
       setTimeout(() => setError(null), 2000);
     }
   };
@@ -132,7 +140,7 @@ export function SettingsModal({ isOpen, onClose, onConfigSaved }: SettingsModalP
         config.notifications = notifications;
       }
 
-      const ok = await updateUserConfig(config);
+      const ok = await updateUserConfig(config, activeInstanceId ?? undefined);
       if (ok) {
         setSuccess(true);
         // 仅更新有新 URL 输入的渠道状态，保留已有 configured/enabled

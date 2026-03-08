@@ -8,6 +8,9 @@ const DEFAULT_INSTANCE_ID = '__default__';
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
 
+// Track first disconnect per instance to avoid spamming reconnection toast
+const disconnectToastShownRef = new Map<string, boolean>();
+
 export function useWebSocket(
   onMessage: (msg: ServerMessage) => void,
   wsUrl?: string,
@@ -24,6 +27,7 @@ export function useWebSocket(
   const setConnectionStatusRef = useRef(setConnectionStatus);
   const setInstanceConnectionStatus = useAppStore((s) => s.setInstanceConnectionStatus);
   const setInstanceConnectionStatusRef = useRef(setInstanceConnectionStatus);
+  const showToast = useAppStore((s) => s.showToast);
 
   const setStatus = useCallback((status: 'connecting' | 'connected' | 'disconnected') => {
     // Only update global connectionStatus for default (single-instance) connections.
@@ -95,6 +99,10 @@ export function useWebSocket(
       }
       setStatus('connected');
       reconnectAttempt.current = 0;
+      // Clear disconnect toast flag on successful reconnect
+      disconnectToastShownRef.set(instanceId, false);
+      // 连接成功后立即发送 activate，通知后端切换到此客户端
+      ws.send(JSON.stringify({ type: 'activate' }));
     };
 
     ws.onmessage = (event) => {
@@ -115,6 +123,12 @@ export function useWebSocket(
       }
       wsRef.current = null;
       setStatus('disconnected');
+
+      // Show reconnection toast only on first disconnect for this instance
+      if (!disconnectToastShownRef.get(instanceId)) {
+        showToast('Connection lost. Reconnecting…');
+        disconnectToastShownRef.set(instanceId, true);
+      }
 
       // Try to re-authenticate before reconnecting (handles backend restart)
       const cachedToken = loadToken();
@@ -165,11 +179,18 @@ export function useWebSocket(
     const handleOffline = () => {
       wsRef.current?.close();
     };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'activate' }));
+      }
+    };
     window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       isDisposedRef.current = true;
       connectionTokenRef.current++;
       window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
         reconnectTimer.current = undefined;

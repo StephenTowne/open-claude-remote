@@ -71,6 +71,11 @@ button {
   white-space: nowrap;
 }
 
+.app-toast-top {
+  top: calc(var(--statusbar-height) + var(--safe-top) + 8px);
+  bottom: auto;
+}
+
 /* Focus-visible for keyboard navigation */
 .focus-ring:focus-visible {
   outline: none;
@@ -123,3 +128,24 @@ button {
   height: 100%;
   width: 100%;
 }
+
+/* Toast animation for mobile warning */
+@keyframes fadeInOut {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  10% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  90% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+}
+

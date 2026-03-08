@@ -28,9 +28,10 @@ export function useInstances() {
         setServerAvailable(true);
         setInstances(instances);
 
-        // 自动选中逻辑：没有活跃实例且有可用实例时，自动选中第一个
+        // 自动选中逻辑：没有活跃实例 或 活跃实例不在新列表中 → 自动选中
         const currentActive = useInstanceStore.getState().activeInstanceId;
-        if (!currentActive && instances.length > 0) {
+        const activeStillExists = currentActive && instances.some(i => i.instanceId === currentActive);
+        if ((!currentActive || !activeStillExists) && instances.length > 0) {
           const current = instances.find(i => i.isCurrent) ?? instances[0];
           if (current) {
             setActiveInstanceId(current.instanceId);
@@ -40,6 +41,7 @@ export function useInstances() {
       } catch {
         if (cancelled) return;
         setServerAvailable(false);
+        setInstances([]);  // 清理 stale instances，阻止 auto-switch ping-pong
       }
     };
 

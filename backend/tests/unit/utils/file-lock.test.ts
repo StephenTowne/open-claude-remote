@@ -156,4 +156,36 @@ describe('file-lock', () => {
       expect(existsSync(lockPath)).toBe(false);
     });
   });
+
+  describe('parent directory does not exist', () => {
+    it('should create parent directory when it does not exist (sync)', () => {
+      // 模拟 ~/.claude-remote 不存在的场景
+      const nonExistentDir = join(tmpdir(), `no-parent-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const lockPath = join(nonExistentDir, 'settings.json.lock');
+
+      // 确保目录不存在
+      expect(existsSync(nonExistentDir)).toBe(false);
+
+      // 应该自动创建父目录并成功获取锁
+      const result = withFileLock(lockPath, () => 'success');
+      expect(result).toBe('success');
+      expect(existsSync(lockPath)).toBe(false);
+
+      // 清理
+      rmSync(nonExistentDir, { recursive: true, force: true });
+    });
+
+    it('should create parent directory when it does not exist (async)', async () => {
+      const nonExistentDir = join(tmpdir(), `no-parent-async-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const lockPath = join(nonExistentDir, 'settings.json.lock');
+
+      expect(existsSync(nonExistentDir)).toBe(false);
+
+      const result = await withFileLockAsync(lockPath, async () => 'async-success');
+      expect(result).toBe('async-success');
+      expect(existsSync(lockPath)).toBe(false);
+
+      rmSync(nonExistentDir, { recursive: true, force: true });
+    });
+  });
 });

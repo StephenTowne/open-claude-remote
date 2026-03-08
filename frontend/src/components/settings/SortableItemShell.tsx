@@ -8,20 +8,17 @@ interface SortableItemShellProps {
   onToggle: () => void;
   onDelete: () => void;
   children: ReactNode;
-  /** 是否可展开 */
-  isExpandable?: boolean;
-  /** 是否已展开 */
-  isExpanded?: boolean;
-  /** 展开/收起切换回调 */
-  onToggleExpand?: () => void;
-  /** 展开后显示的详情内容 */
-  detailContent?: ReactNode;
+  /** 额外的操作按钮（如 auto-send 切换） */
+  extraAction?: ReactNode;
+  /** 移到最前 */
+  onMoveToFirst?: () => void;
+  /** 移到最后 */
+  onMoveToLast?: () => void;
 }
 
 /**
  * 可排序列表项的外壳组件
- * 提供：拖拽手柄 | toggle 开关 | {children} | 展开按钮 | 删除按钮
- * 支持展开详情面板
+ * 提供：拖拽手柄 | toggle 开关 | {children} | 额外操作 | 删除按钮
  */
 export function SortableItemShell({
   id,
@@ -29,10 +26,9 @@ export function SortableItemShell({
   onToggle,
   onDelete,
   children,
-  isExpandable,
-  isExpanded,
-  onToggleExpand,
-  detailContent,
+  extraAction,
+  onMoveToFirst,
+  onMoveToLast,
 }: SortableItemShellProps) {
   const {
     attributes,
@@ -62,8 +58,8 @@ export function SortableItemShell({
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
-        padding: '12px 16px',
+        gap: 8,
+        padding: '12px 12px',
         minHeight: 'var(--min-touch-target, 44px)',
         overflow: 'hidden',
       }}>
@@ -119,41 +115,68 @@ export function SortableItemShell({
         {/* 中间内容（由调用者提供） */}
         {children}
 
-        {/* 展开按钮 */}
-        {isExpandable && (
-          <button
-            aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
-            aria-expanded={isExpanded}
-            onClick={onToggleExpand}
-            style={{
-              width: 28,
-              height: 28,
-              padding: 0,
-              borderRadius: 6,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              fontSize: 12,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <span style={{
-              display: 'inline-block',
-              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)',
-              transition: 'transform 0.2s ease',
-            }}>
-              ▼
-            </span>
-          </button>
+        {/* 额外操作按钮 */}
+        {extraAction}
+
+        {/* 移到首尾按钮 */}
+        {(onMoveToFirst || onMoveToLast) && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            flexShrink: 0,
+          }}>
+            {onMoveToFirst && (
+              <button
+                aria-label="Move to first"
+                title="Move to first"
+                onClick={onMoveToFirst}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 6,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ⤒
+              </button>
+            )}
+            {onMoveToLast && (
+              <button
+                aria-label="Move to last"
+                title="Move to last"
+                onClick={onMoveToLast}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 6,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ⤓
+              </button>
+            )}
+          </div>
         )}
 
         {/* 删除按钮 */}
         <button
           aria-label="Delete"
+          title="Delete"
           onClick={onDelete}
           style={{
             width: 32,
@@ -170,17 +193,6 @@ export function SortableItemShell({
           ×
         </button>
       </div>
-
-      {/* 详情面板（展开时显示） */}
-      {isExpandable && isExpanded && (
-        <div style={{
-          padding: '8px 16px 12px 68px',
-          borderTop: '1px solid var(--border-color)',
-          background: 'var(--bg-secondary)',
-        }}>
-          {detailContent}
-        </div>
-      )}
     </div>
   );
 }
