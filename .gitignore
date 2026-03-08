@@ -24,3 +24,6 @@ settings.local.json
 CLAUDE.md
 ARCHITECTURE.md
 LEGAL.md
+.claude-remote/
+docs/
+INDEX.md
