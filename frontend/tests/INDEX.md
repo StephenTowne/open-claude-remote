@@ -7,6 +7,8 @@
 ## components/
 - ActionSheetSelect.test.tsx: ActionSheetSelect 组件测试，选项渲染/选择回调/键盘导航
 - CommandPicker.test.tsx: CommandPicker 组件测试，命令选择/快捷键发送交互
+- CommandSettings.test.tsx: CommandSettings 组件测试，命令列表渲染/编辑/删除交互
+- ShortcutSettings.test.tsx: ShortcutSettings 组件测试，快捷方式配置渲染/编辑交互
 - InputBar.test.tsx: InputBar 组件测试，文本输入/空输入 Enter 发送
 - ScrollToBottomButton.test.tsx: ScrollToBottomButton 组件测试，可见性切换/点击回调
 - SegmentedControl.test.tsx: SegmentedControl 组件测试，选项渲染/选中状态/键盘导航
@@ -27,6 +29,7 @@
 - useUserConfig.test.tsx: 用户配置 hook 测试，配置加载/全局刷新通知
 - useViewport.test.tsx: 视口 hook 测试，移动端/桌面端检测结果
 - useWebSocket.connection-isolation.test.ts: WebSocket 连接隔离测试，多实例会话独立性
+- useWebSocket.activate.test.ts: WebSocket Activate 测试，instanceId/nickname 同步逻辑
 
 ## pages/
 - AuthPage.test.tsx: AuthPage 页面测试，Token 输入/登录验证/错误处理

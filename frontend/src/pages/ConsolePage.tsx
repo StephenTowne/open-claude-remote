@@ -146,12 +146,17 @@ function ConsoleContent({ wsUrl, instanceId, showCommandPicker, isKeyboardOpen }
     setAutoFollow(true);
   }, [scrollToBottom, setAutoFollow]);
 
+  // 处理点击 Terminal 区域时聚焦 InputBar
+  const handleFocusInput = useCallback(() => {
+    inputBarRef.current?.focus();
+  }, []);
+
   return (
     <>
       <ConnectionBanner />
       <IpChangeToast />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <TerminalView containerRef={containerRef} />
+        <TerminalView containerRef={containerRef} onFocusInput={handleFocusInput} />
         <ScrollToBottomButton visible={showScrollHint} onClick={handleScrollToBottom} />
       </div>
       <CommandPicker

@@ -212,6 +212,23 @@ export class InstanceSession extends EventEmitter {
       this.handleClientRemoval(clientInfo, 'error');
     });
 
+    // Attach 客户端连接时立即设为活跃端
+    if (clientType === 'attach') {
+      const prev = this._activeSource;
+      this._activeSource = 'attach';
+
+      // 暂停 local relay 的 resize
+      if (prev === 'local' && this._relay) {
+        this._relay.pauseResize();
+      }
+
+      logger.info({
+        instanceId: this.instanceId,
+        prev,
+        next: 'attach',
+      }, 'Active source switched on attach connect');
+    }
+
     // 发送历史数据
     this.sendTo(ws, {
       type: 'history_sync',

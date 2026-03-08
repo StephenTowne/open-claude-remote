@@ -85,6 +85,8 @@ export class IpMonitor {
     }
     this.pendingIp = null;
     this.stabilityCount = 0;
+    this.pendingInterfaces = null;
+    this.interfaceStabilityCount = 0;
   }
 
   /**

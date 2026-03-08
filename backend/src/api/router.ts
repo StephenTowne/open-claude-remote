@@ -19,6 +19,10 @@ export interface ApiRouterOptions {
   pushService?: PushService;
   notificationManager?: NotificationManager;
   notificationServiceFactory?: NotificationServiceFactory;
+  /** 服务监听端口 */
+  port: number;
+  /** 自定义私有网段（CIDR 格式） */
+  customPrivateRanges?: string[];
   /** 关闭 daemon 的回调 */
   onShutdown?: () => void;
 }
@@ -28,7 +32,12 @@ export function createApiRouter(opts: ApiRouterOptions): Router {
 
   router.use(createHealthRoutes(opts.instanceManager));
   router.use(createAuthRoutes(opts.authModule));
-  router.use(createStatusRoutes(opts.authModule, opts.instanceManager));
+  router.use(createStatusRoutes({
+    authModule: opts.authModule,
+    instanceManager: opts.instanceManager,
+    port: opts.port,
+    customPrivateRanges: opts.customPrivateRanges,
+  }));
   router.use(createHookRoutes(opts.instanceManager));
   router.use(createConfigRoutes(
     opts.authModule,

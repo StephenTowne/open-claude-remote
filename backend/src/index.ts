@@ -24,16 +24,14 @@ import { detectAllLocalIps, getAllNetworkInterfaces, isInCidrRange, type Network
 import { printBanner, type AddressInfo } from './utils/banner.js';
 
 /**
- * 根据网络接口信息推断接口类型
+ * 根据网络接口信息推断接口类型。
+ * 注意：macOS en0 不一定是 WiFi（Mac Pro/iMac 上可能是以太网），
+ * Linux wlan/wl 前缀才是可靠的无线标识。对于无法区分的接口退化为 private/other。
  */
 function getInterfaceType(iface: NetworkInterface): AddressInfo['type'] {
   if (iface.isVpn) return 'vpn';
-  if (iface.name.startsWith('en')) {
-    // macOS: en0 通常是 WiFi/en1 通常是以太网，但顺序不固定
-    return iface.name === 'en0' ? 'wlan' : 'wired';
-  }
-  if (iface.name.startsWith('eth')) return 'wired';
   if (iface.name.startsWith('wlan') || iface.name.startsWith('wl')) return 'wlan';
+  if (iface.name.startsWith('eth')) return 'wired';
   if (iface.isPrivate) return 'private';
   return 'other';
 }
@@ -59,25 +57,18 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   const app = express();
   app.use(express.json());
 
-  // Build CORS allowlist from all local NIC IPs + loopback + custom ranges
+  // Build CORS allowlist from all local NIC IPs + loopback
+  // Note: detectAllLocalIps() already returns ALL non-internal IPs (including VPN interfaces),
+  // so customPrivateRanges is not needed here — it's used for interface type classification only.
   const userConfig = loadUserConfig();
   const customRanges: string[] = userConfig.customPrivateRanges ?? [];
-  const allInterfaces = getAllNetworkInterfaces();
   const localIpSet = new Set<string>(['localhost', '127.0.0.1']);
 
-  // Add all non-internal IPs
   for (const ip of detectAllLocalIps()) {
     localIpSet.add(ip);
   }
 
-  // Filter interfaces in custom ranges and add them
-  for (const iface of allInterfaces) {
-    if (customRanges.some(range => isInCidrRange(iface.address, range))) {
-      localIpSet.add(iface.address);
-    }
-  }
-
-  logger.info({ allowedHosts: [...localIpSet], customRanges }, 'CORS allowlist initialized');
+  logger.info({ allowedHosts: [...localIpSet] }, 'CORS allowlist initialized');
 
   app.use(cors({
     origin: (origin, callback) => {
@@ -139,6 +130,8 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
     pushService,
     notificationManager,
     notificationServiceFactory,
+    port,
+    customPrivateRanges: customRanges,
     onShutdown: () => shutdown(0),
   }));
 
@@ -200,19 +193,11 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
       instanceManager.updateDisplayIp(newIp);
 
       // Refresh CORS allowlist on NIC change
-      const freshIps = detectAllLocalIps();
-      const freshInterfaces = getAllNetworkInterfaces();
       localIpSet.clear();
       localIpSet.add('localhost');
       localIpSet.add('127.0.0.1');
-      for (const ip of freshIps) {
+      for (const ip of detectAllLocalIps()) {
         localIpSet.add(ip);
-      }
-      // Re-apply custom ranges
-      for (const iface of freshInterfaces) {
-        if (customRanges.some((range: string) => isInCidrRange(iface.address, range))) {
-          localIpSet.add(iface.address);
-        }
       }
       logger.info({ allowedHosts: [...localIpSet] }, 'CORS allowlist refreshed');
     },
@@ -227,7 +212,10 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
         interfaces: interfaces.map(iface => ({
           name: iface.name,
           address: iface.address,
-          type: iface.isVpn ? 'vpn' as const : iface.isPrivate ? 'private' as const : 'public' as const,
+          type: iface.isVpn ? 'vpn' as const
+            : iface.isPrivate ? 'private' as const
+            : customRanges.some(range => isInCidrRange(iface.address, range)) ? 'custom' as const
+            : 'public' as const,
           url: `http://${iface.address}:${port}`,
         })),
         preferredUrl: `http://${preferredIp}:${port}`,

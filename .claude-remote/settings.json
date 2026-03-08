@@ -1,6 +1,12 @@
 {
   "shortcuts": [
     {
+      "label": "S-Tab",
+      "data": "\u001b[Z",
+      "enabled": true,
+      "desc": "Shift+Tab, 向前切换"
+    },
+    {
       "label": "Esc",
       "data": "\u001b",
       "enabled": true
@@ -34,12 +40,6 @@
       "label": "→",
       "data": "\u001b[C",
       "enabled": true
-    },
-    {
-      "label": "S-Tab",
-      "data": "\u001b[Z",
-      "enabled": true,
-      "desc": "Shift+Tab, 向前切换"
     }
   ],
   "commands": [
@@ -150,7 +150,7 @@
     {
       "label": "/testing-patterns",
       "command": "/testing-patterns",
-      "enabled": false,
+      "enabled": true,
       "desc": "Language-agnostic testing methodology covering TDD",
       "autoSend": true,
       "fromSkill": true
@@ -158,7 +158,7 @@
     {
       "label": "/web-design-guidelines",
       "command": "/web-design-guidelines",
-      "enabled": false,
+      "enabled": true,
       "desc": "Review UI code for Web Interface Guidelines compli",
       "autoSend": true,
       "fromSkill": true

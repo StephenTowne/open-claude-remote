@@ -52,6 +52,7 @@ Scan the QR code shown in your terminal with your phone. The auth token is auto-
 - **Multi-network support** — displays all available IPs (WiFi, VPN, Ethernet) on startup
 - LAN IP change notification with new connection URL
 - Smart auto-scroll with a "scroll to bottom" floating button — respects your scroll position when browsing history
+- **Tap-to-focus** — clicking anywhere in the terminal automatically focuses the input bar for a seamless typing experience
 
 ### Multi-Network Access (WiFi + VPN)
 
@@ -560,6 +561,7 @@ claude-remote
 - **多网络支持** — 启动时显示所有可用 IP（WiFi、VPN、以太网）
 - 局域网 IP 变更通知，附带新连接地址
 - 智能自动滚动，配有"滚动到底部"悬浮按钮 — 浏览历史时尊重你的滚动位置
+- **点击聚焦** — 点击终端任意位置自动聚焦输入框，打字体验更流畅
 
 ### 多网络访问（WiFi + VPN）
 

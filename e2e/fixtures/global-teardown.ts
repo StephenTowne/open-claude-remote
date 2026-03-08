@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { createConnection } from 'node:net';
 import { restoreE2eHooks } from '../helpers/hooks-setup.js';
 
-const PORT = 3000;
+const PORT = 13000;
 const HOST = '127.0.0.1';
 
 function isPortInUse(): Promise<boolean> {

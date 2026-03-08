@@ -2,9 +2,17 @@ import { Router } from 'express';
 import { AuthModule } from '../auth/auth-middleware.js';
 import type { InstanceManager } from '../instance/instance-manager.js';
 import { getAllNetworkInterfaces, isInCidrRange } from '../utils/network.js';
-import { loadUserConfig } from '../config.js';
+import { DEFAULT_PORT } from '#shared';
 
-export function createStatusRoutes(authModule: AuthModule, instanceManager: InstanceManager): Router {
+export interface StatusRoutesOptions {
+  authModule: AuthModule;
+  instanceManager: InstanceManager;
+  port: number;
+  customPrivateRanges?: string[];
+}
+
+export function createStatusRoutes(opts: StatusRoutesOptions): Router {
+  const { authModule, instanceManager, port, customPrivateRanges: customRanges = [] } = opts;
   const router = Router();
 
   // Session validation endpoint - checks if user is authenticated
@@ -28,12 +36,7 @@ export function createStatusRoutes(authModule: AuthModule, instanceManager: Inst
   });
 
   // Network information endpoint - returns all available network interfaces
-  router.get('/network', authModule.requireAuth, (req, res) => {
-    // Infer port from request headers or use default
-    const port = req.headers.host?.includes(':')
-      ? parseInt(req.headers.host.split(':')[1], 10)
-      : 8866;
-    const customRanges = loadUserConfig().customPrivateRanges ?? [];
+  router.get('/network', authModule.requireAuth, (_req, res) => {
     const interfaces = getAllNetworkInterfaces();
 
     const networkInfo = interfaces.map(iface => {
@@ -50,7 +53,7 @@ export function createStatusRoutes(authModule: AuthModule, instanceManager: Inst
 
     res.json({
       interfaces: networkInfo,
-      preferredUrl: `http://${req.headers.host ?? `127.0.0.1:${port}`}`,
+      preferredUrl: `http://127.0.0.1:${port}`,
     });
   });
 

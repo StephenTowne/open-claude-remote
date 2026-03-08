@@ -673,6 +673,64 @@ describe('InstanceSession', () => {
       expect(session.ptyManager.write).not.toHaveBeenCalled();
     });
 
+    // --- Attach 连接时立即设为活跃端 ---
+
+    it('should set attach as active source immediately on connect', () => {
+      const relay = makeMockRelay();
+      session.setRelay(relay);
+      expect(session.activeSource).toBe('local');
+
+      const ws = makeMockWs();
+      session.addClient(ws as any, 'attach');
+
+      // attach 连接后立即成为活跃端，无需等待 user_input
+      expect(session.activeSource).toBe('attach');
+    });
+
+    it('should pause relay when attach becomes active on connect', () => {
+      const relay = makeMockRelay();
+      session.setRelay(relay);
+
+      const ws = makeMockWs();
+      session.addClient(ws as any, 'attach');
+
+      // relay 应该被暂停
+      expect(relay.pauseResize).toHaveBeenCalled();
+    });
+
+    it('should replace webapp as active source when attach connects', () => {
+      const relay = makeMockRelay();
+      session.setRelay(relay);
+
+      // 先连接 webapp 并成为活跃端
+      const wsWebapp = makeMockWs();
+      session.addClient(wsWebapp as any, 'webapp');
+      const webappMsg = wsWebapp.on.mock.calls.find((c: any[]) => c[0] === 'message')?.[1];
+      webappMsg!(JSON.stringify({ type: 'user_input', data: 'x' }));
+      expect(session.activeSource).toBe('webapp');
+      expect(relay.pauseResize).toHaveBeenCalled(); // webapp 成为活跃端时暂停 relay
+
+      relay.pauseResize.mockClear();
+
+      // attach 连接时立即取代 webapp 成为活跃端
+      const wsAttach = makeMockWs();
+      session.addClient(wsAttach as any, 'attach');
+      expect(session.activeSource).toBe('attach');
+      // relay 已经被 webapp 暂停过了，attach 连接时不会重复调用
+      expect(relay.pauseResize).not.toHaveBeenCalled();
+    });
+
+    it('should set attach as active source even without relay', () => {
+      // 无 relay，activeSource = null
+      expect(session.activeSource).toBeNull();
+
+      const ws = makeMockWs();
+      session.addClient(ws as any, 'attach');
+
+      // attach 连接后立即成为活跃端
+      expect(session.activeSource).toBe('attach');
+    });
+
     // --- P3: stale size cleanup ---
 
     it('should clear lastKnownSizes for disconnected client type when no remaining', () => {
