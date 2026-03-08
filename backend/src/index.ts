@@ -17,6 +17,7 @@ import { PushService } from './push/push-service.js';
 import { createNotificationManager } from './notification/notification-manager.js';
 import { createNotificationServiceFactory } from './notification/notification-service-factory.js';
 import { logger, setInstanceContext } from './logger/logger.js';
+import { markGracefulShutdown } from './daemon/daemon-guard.js';
 import { getOrCreateSharedToken } from './registry/shared-token.js';
 import { IpMonitor } from './utils/ip-monitor.js';
 import { detectAllLocalIps } from './utils/network.js';
@@ -184,6 +185,7 @@ export async function startServer(cliOverrides: CliOverrides = {}): Promise<void
   const shutdown = (exitCode: number = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    markGracefulShutdown();
     logger.info({ exitCode }, 'Shutting down...');
     if (relay) {
       relay.stop();
